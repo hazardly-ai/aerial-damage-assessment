@@ -5,31 +5,36 @@
 @tailwind utilities;
 
 :root {
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --primary: 199 89% 48%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  --accent: 24 95% 53%;
-  --accent-foreground: 222 47% 11%;
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 199 89% 48%;
-  --radius: 0.75rem;
+	--background: 210 40% 98%;
+	--foreground: 222 47% 11%;
+	--card: 0 0% 100%;
+	--card-foreground: 222 47% 11%;
+	--popover: 0 0% 100%;
+	--popover-foreground: 222 47% 11%;
+	--primary: 199 89% 48%;
+	--primary-foreground: 0 0% 100%;
+	--secondary: 210 40% 96%;
+	--secondary-foreground: 222 47% 11%;
+	--muted: 210 40% 96%;
+	--muted-foreground: 215 16% 47%;
+	--accent: 24 95% 53%;
+	--accent-foreground: 222 47% 11%;
+	--destructive: 0 84% 60%;
+	--destructive-foreground: 0 0% 100%;
+	--border: 214 32% 91%;
+	--input: 214 32% 91%;
+	--ring: 199 89% 48%;
+	--radius: 0.75rem;
 }
 
 body {
-  margin: 0;
-  min-height: 100vh;
-  font-family: "Space Grotesk", "Segoe UI", sans-serif;
-  background: radial-gradient(circle at top, #f1f5f9, #e2e8f0 40%, #dbeafe 100%);
+	margin: 0;
+	min-height: 100vh;
+	font-family: "Space Grotesk", "Segoe UI", sans-serif;
+	background: radial-gradient(
+		circle at top,
+		#f1f5f9,
+		#e2e8f0 40%,
+		#dbeafe 100%
+	);
 }
