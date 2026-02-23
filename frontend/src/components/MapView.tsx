@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
+import React, { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Button } from "@/components/ui/button";
+import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png";
 
 import preImage from "@/assets/hurricane-harvey_00000018_pre_disaster.png";
-import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png";
+import { Button } from "@/components/ui/button";
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 

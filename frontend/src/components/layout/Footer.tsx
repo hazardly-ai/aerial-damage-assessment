@@ -1,13 +1,13 @@
 import React from "react";
 import { FaEnvelope, FaGithub } from "react-icons/fa";
 import {
+	APP_DESCRIPTION,
 	APP_NAME,
-	TEAM_NAME,
+	CONTRIBUTORS,
 	DATASET_NAME,
 	DATASET_URL,
 	GITHUB_URL,
-	APP_DESCRIPTION,
-	CONTRIBUTORS,
+	TEAM_NAME,
 } from "@/constants/app";
 
 export default function Footer() {
@@ -102,14 +102,20 @@ export default function Footer() {
 				</div>
 
 				{/* Bottom */}
-				<div className="border-t border-border pt-6 text-center text-sm text-muted-foreground">
+				<div className="border-t border-border pt-6 text-center">
+					<div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mb-2">
+						<span>
+							© {new Date().getFullYear()} {TEAM_NAME}
+						</span>
+					</div>
 					<a
 						href={GITHUB_URL}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="hover:text-primary transition"
+						className="inline-flex items-center gap-2 text-sm text-foreground hover:text-primary transition font-medium"
 					>
-						© {new Date().getFullYear()} {TEAM_NAME}
+						<FaGithub />
+						<span>View on GitHub</span>
 					</a>
 				</div>
 			</div>
