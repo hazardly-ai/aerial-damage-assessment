@@ -25,7 +25,7 @@ export function ChatWidget() {
 			{open && (
 				<div className="w-80 h-[450px] bg-card text-card-foreground border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200">
 
-					{/* Header (Gradient Kept) */}
+					{/* Header */}
 					<div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-primary to-indigo-500 text-white">
 						<div className="flex items-center gap-2 font-semibold">
 							<Sparkles className="h-4 w-4" />
@@ -46,7 +46,7 @@ export function ChatWidget() {
 						</div>
 					</div>
 
-					{/* Input */}
+					{/* Message Input */}
 					<div className="border-t border-border p-3 flex gap-2 bg-card">
 						<input
 							className="
@@ -72,7 +72,7 @@ export function ChatWidget() {
 				</div>
 			)}
 
-			{/* Floating Button (Gradient Kept) */}
+			{/* Floating Button */}
 			<button
 				onClick={() => setOpen((prev) => !prev)}
 				className="
