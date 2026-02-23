@@ -21,37 +21,37 @@ export type Contributor = {
 export const CONTRIBUTORS: Contributor[] = [
     {
         name: "Nishil Jaiswal",
-        role: "Team Leader & Backend",
+        role: "Team Leader & Back-end",
         email: "nsj240001@utdallas.edu",
         github: "https://github.com/NishilJ"
     },
     {
         name: "Shiv Bhakta",
-        role: "Backend",
+        role: "Back-end",
         email: "dal486719@utdallas.edu",
         github: "https://github.com/shivbhakta10"
     },
     {
         name: "James Harrison",
-        role: "Frontend",
+        role: "Front-end",
         email: "jth220000@utdallas.edu",
         github: "https://github.com/James5657"
     },
     {
         name: "Anoop Kondepudi",
-        role: "Backend",
+        role: "Back-end",
         email: "dal500238@utdallas.edu",
         github: "https://github.com/Anoop-Kondepudi"
     },
     {
         name: "Natalie Larksukthom",
-        role: "Frontend",
+        role: "Front-end",
         email: "nxl220022@utdallas.edu",
         github: "https://github.com/TheNat20"
     },
     {
         name: "Shirya Vetapalem",
-        role: "Backend",
+        role: "Back-end",
         email: "srv210000@utdallas.edu",
         github: "https://github.com/SRV1302"
     },
