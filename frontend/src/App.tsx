@@ -4,6 +4,9 @@ import { Button } from "@/components/ui/button";
 import { ChatWidget } from "@/components/ui/ChatWidget";
 import Footer from "@/components/layout/Footer";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import {
+	APP_NAME,
+} from "@/constants/app"
 
 export default function App() {
 	const [preImage, setPreImage] = useState<File | null>(null);
@@ -65,12 +68,14 @@ export default function App() {
 		<div className="flex flex-col min-h-screen bg-background text-foreground">
 
 			{/* Header */}
+			{/* Header */}
 			<div className="z-10 bg-background/95 backdrop-blur border-b border-border">
 				<div className="mx-auto max-w-6xl px-6 py-8">
 					<div className="flex justify-between items-start gap-6">
 						<header className="space-y-3">
+
 							<p className="text-sm uppercase tracking-[0.35em] text-muted-foreground">
-								Aerial Damage Assessment
+								{APP_NAME}
 							</p>
 
 							<h1 className="text-3xl sm:text-4xl font-semibold leading-tight">
@@ -81,6 +86,7 @@ export default function App() {
 								Inspect, quantify, and triage damage with a unified dashboard
 								combining satellite imagery and AI damage detection.
 							</p>
+
 						</header>
 
 						<ThemeToggle />
