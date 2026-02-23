@@ -26,15 +26,40 @@
 	--ring: 199 89% 48%;
 	--radius: 0.75rem;
 }
+.dark {
+	--background: 220 10% 6%;          /* near black */
+	--foreground: 210 20% 96%;         /* soft white */
+
+	--card: 220 10% 9%;                /* dark gray */
+	--card-foreground: 210 20% 96%;
+
+	--popover: 220 10% 9%;
+	--popover-foreground: 210 20% 96%;
+
+	--primary: 199 89% 55%;            /* keep your blue accent */
+	--primary-foreground: 0 0% 100%;
+
+	--secondary: 220 8% 14%;
+	--secondary-foreground: 210 20% 96%;
+
+	--muted: 220 8% 14%;
+	--muted-foreground: 215 15% 70%;
+
+	--accent: 24 95% 55%;
+	--accent-foreground: 0 0% 100%;
+
+	--destructive: 0 70% 40%;
+	--destructive-foreground: 0 0% 100%;
+
+	--border: 220 8% 18%;
+	--input: 220 8% 18%;
+	--ring: 199 89% 55%;
+}
 
 body {
 	margin: 0;
 	min-height: 100vh;
 	font-family: "Space Grotesk", "Segoe UI", sans-serif;
-	background: radial-gradient(
-		circle at top,
-		#f1f5f9,
-		#e2e8f0 40%,
-		#dbeafe 100%
-	);
+	background-color: hsl(var(--background));
+	color: hsl(var(--foreground));
 }
