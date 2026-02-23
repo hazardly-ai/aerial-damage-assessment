@@ -5,15 +5,18 @@
 @tailwind utilities;
 
 html {
-	transition: background-color 300ms ease, color 300ms ease;
+	transition:
+		background-color 300ms ease,
+		color 300ms ease;
 }
 
 *,
 *::before,
 *::after {
-	transition: background-color 300ms ease,
-	color 300ms ease,
-	border-color 300ms ease;
+	transition:
+		background-color 300ms ease,
+		color 300ms ease,
+		border-color 300ms ease;
 }
 
 :root {
@@ -39,16 +42,16 @@ html {
 	--radius: 0.75rem;
 }
 .dark {
-	--background: 220 10% 6%;          /* near black */
-	--foreground: 210 20% 96%;         /* soft white */
+	--background: 220 10% 6%; /* near black */
+	--foreground: 210 20% 96%; /* soft white */
 
-	--card: 220 10% 9%;                /* dark gray */
+	--card: 220 10% 9%; /* dark gray */
 	--card-foreground: 210 20% 96%;
 
 	--popover: 220 10% 9%;
 	--popover-foreground: 210 20% 96%;
 
-	--primary: 199 89% 55%;            /* keep your blue accent */
+	--primary: 199 89% 55%; /* keep your blue accent */
 	--primary-foreground: 0 0% 100%;
 
 	--secondary: 220 8% 14%;
