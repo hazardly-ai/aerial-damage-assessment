@@ -13,7 +13,7 @@ import {
 export default function Footer() {
     return (
         <footer className="bg-card text-card-foreground border-t border-border mt-12">
-            <div className="max-w-6xl mx-auto px-6 py-12 flex flex-col gap-10">
+            <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col gap-8">
 
                 {/* Top Grid */}
                 <div className="grid md:grid-cols-3 gap-8">
@@ -44,48 +44,39 @@ export default function Footer() {
                             Contributors
                         </h4>
 
-                        <ul className="space-y-4 text-muted-foreground">
+                        <ul className="space-y-3 text-muted-foreground">
                             {CONTRIBUTORS.map((person, index) => (
-                                <li key={index} className="space-y-1">
+                                <li key={index} className="flex items-center justify-between">
 
-                                    {/* Name Row */}
-                                    <div className="flex items-center justify-between">
-
-                                        {/* Name */}
-                                        <span className="font-medium text-foreground">
-			{person.name}
-		</span>
-
-                                        {/* Icons (Right Side) */}
-                                        <div className="flex items-center gap-3">
-
-                                            {/* Mail Icon */}
-                                            <a
-                                                href={`mailto:${person.email}`}
-                                                className="hover:text-primary transition"
-                                                title="Send Email"
-                                            >
-                                                <FaEnvelope />
-                                            </a>
-
-                                            {/* GitHub Icon */}
-                                            <a
-                                                href={person.github}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="hover:text-primary transition"
-                                                title="GitHub Profile"
-                                            >
-                                                <FaGithub  />
-                                            </a>
-
-                                        </div>
-
+                                    {/* Name + Role */}
+                                    <div className="text-sm">
+										<span className="font-medium text-foreground">
+											{person.name}
+										</span>
+                                        <span className="text-muted-foreground ml-2">
+											— {person.role}
+										</span>
                                     </div>
 
-                                    {/* Role */}
-                                    <div className="text-sm text-muted-foreground">
-                                        {person.role}
+                                    {/* Icons */}
+                                    <div className="flex items-center gap-3">
+                                        <a
+                                            href={`mailto:${person.email}`}
+                                            className="hover:text-primary transition"
+                                            title="Send Email"
+                                        >
+                                            <FaEnvelope />
+                                        </a>
+
+                                        <a
+                                            href={person.github}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="hover:text-primary transition"
+                                            title="GitHub Profile"
+                                        >
+                                            <FaGithub />
+                                        </a>
                                     </div>
 
                                 </li>
