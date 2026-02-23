@@ -34,7 +34,13 @@ export default function Footer() {
                             Course Information
                         </h4>
                         <p className="text-muted-foreground leading-relaxed">
-                            This project was developed for CS 4485 at the University of Texas at Dallas.
+                            This project was developed for CS 4485 Computer Science Project at <a
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:text-primary transition"
+                            href={"https://utdallas.edu"}>
+                            The University of Texas at Dallas
+                        </a>.
                         </p>
                     </div>
 
