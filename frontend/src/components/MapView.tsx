@@ -41,6 +41,13 @@ export default function MapView() {
 			center: [-95.386, 29.757],
 			zoom: 14
 		})
+		map.addControl(
+			new mapboxgl.NavigationControl({
+				showCompass: true,
+				showZoom: true
+			}),
+			"top-right"
+		)
 
 		map.on("load", () => {
 			const img = new Image()
