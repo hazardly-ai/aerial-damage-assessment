@@ -4,6 +4,18 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+	transition: background-color 300ms ease, color 300ms ease;
+}
+
+*,
+*::before,
+*::after {
+	transition: background-color 300ms ease,
+	color 300ms ease,
+	border-color 300ms ease;
+}
+
 :root {
 	--background: 210 40% 98%;
 	--foreground: 222 47% 11%;
