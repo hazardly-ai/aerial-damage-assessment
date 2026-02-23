@@ -2,11 +2,13 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.4.0"
 	},
-
 	"scripts": {
 		"format": "biome format --write .",
 		"lint": "biome lint --write .",
 		"check": "biome check --write .",
 		"ci": "biome ci ."
+	},
+	"dependencies": {
+		"react-icons": "^5.5.0"
 	}
 }

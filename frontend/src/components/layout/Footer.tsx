@@ -1,5 +1,5 @@
 import React from "react"
-import { Mail, Github } from "lucide-react"
+import { FaEnvelope, FaGithub } from "react-icons/fa"
 import {
     APP_NAME,
     TEAM_NAME,
@@ -65,7 +65,7 @@ export default function Footer() {
                                                 className="hover:text-primary transition"
                                                 title="Send Email"
                                             >
-                                                <Mail className="h-4 w-4" />
+                                                <FaEnvelope />
                                             </a>
 
                                             {/* GitHub Icon */}
@@ -76,7 +76,7 @@ export default function Footer() {
                                                 className="hover:text-primary transition"
                                                 title="GitHub Profile"
                                             >
-                                                <Github className="h-4 w-4" />
+                                                <FaGithub  />
                                             </a>
 
                                         </div>
