@@ -8,6 +8,12 @@ import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png"
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
 
+if (!mapboxgl.accessToken) {
+	console.error(
+		"MapBox access token is missing. Please set VITE_MAPBOX_TOKEN in your .env file",
+	);
+}
+
 type ImageCoordinates = [
 	[number, number],
 	[number, number],
