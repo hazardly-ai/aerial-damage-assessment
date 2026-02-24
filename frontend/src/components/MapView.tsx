@@ -1,5 +1,5 @@
 import mapboxgl from "mapbox-gl";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png";
 

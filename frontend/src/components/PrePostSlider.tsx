@@ -12,17 +12,19 @@ export default function PrePostSlider({
 }: PrePostSliderProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const handleRef = useRef<HTMLDivElement | null>(null);
+
 	const [sliderX, setSliderX] = useState(0);
 	const [viewMode, setViewMode] = useState<"pre" | "post" | "slider">("slider");
 	const [preURL, setPreURL] = useState<string | null>(null);
 	const [postURL, setPostURL] = useState<string | null>(null);
 	const [loaded, setLoaded] = useState(false);
 
-	// Preload images and only display after both loaded
+	// Preload images
 	useEffect(() => {
 		if (!preImage || !postImage) return;
 
 		setLoaded(false);
+
 		const preObj = URL.createObjectURL(preImage);
 		const postObj = URL.createObjectURL(postImage);
 
@@ -36,9 +38,9 @@ export default function PrePostSlider({
 		};
 
 		preImg.src = preObj;
-		preImg.onload = onLoad;
-
 		postImg.src = postObj;
+
+		preImg.onload = onLoad;
 		postImg.onload = onLoad;
 
 		setPreURL(preObj);
@@ -50,27 +52,41 @@ export default function PrePostSlider({
 		};
 	}, [preImage, postImage]);
 
-	// Initialize slider in middle
+	// Initialize slider in middle once loaded
 	useEffect(() => {
-		if (containerRef.current) setSliderX(containerRef.current.offsetWidth / 2);
-	}, [preURL, postURL, loaded]);
+		if (!loaded) return;
+
+		const container = containerRef.current;
+		if (!container) return;
+
+		setSliderX(container.offsetWidth / 2);
+	}, [loaded]);
 
 	// Drag logic
 	useEffect(() => {
-		if (!handleRef.current || !containerRef.current) return;
-
 		const handle = handleRef.current;
 		const container = containerRef.current;
+		if (!handle || !container) return;
+
 		let isDragging = false;
 
-		const onMouseDown = () => (isDragging = true);
-		const onMouseUp = () => (isDragging = false);
+		const onMouseDown = () => {
+			isDragging = true;
+		};
+
+		const onMouseUp = () => {
+			isDragging = false;
+		};
+
 		const onMouseMove = (e: MouseEvent) => {
 			if (!isDragging) return;
+
 			const rect = container.getBoundingClientRect();
 			let newX = e.clientX - rect.left;
+
 			if (newX < 0) newX = 0;
 			if (newX > rect.width) newX = rect.width;
+
 			setSliderX(newX);
 		};
 
@@ -79,9 +95,11 @@ export default function PrePostSlider({
 		window.addEventListener("mousemove", onMouseMove);
 
 		const handleResize = () => {
-			if (containerRef.current)
-				setSliderX(containerRef.current.offsetWidth / 2);
+			const current = containerRef.current;
+			if (!current) return;
+			setSliderX(current.offsetWidth / 2);
 		};
+
 		window.addEventListener("resize", handleResize);
 
 		return () => {
@@ -90,9 +108,9 @@ export default function PrePostSlider({
 			window.removeEventListener("mousemove", onMouseMove);
 			window.removeEventListener("resize", handleResize);
 		};
-	}, [preURL, postURL]);
+	}, []);
 
-	if (!preImage || !postImage || !loaded) {
+	if (!preImage || !postImage || !loaded || !preURL || !postURL) {
 		return (
 			<div className="flex h-64 w-full max-w-3xl items-center justify-center rounded-xl border border-border bg-card text-muted-foreground">
 				Upload both Pre and Post images to view
@@ -100,23 +118,31 @@ export default function PrePostSlider({
 		);
 	}
 
+	const containerWidth = containerRef.current?.offsetWidth ?? 1;
+	const clipPercentage = 100 - (sliderX / containerWidth) * 100;
+
 	return (
-		<div className="flex flex-col items-center gap-4 w-full">
+		<div className="flex w-full flex-col items-center gap-4">
 			{/* Toggle Buttons */}
 			<div className="flex gap-2">
 				<Button
+					type="button"
 					variant={viewMode === "pre" ? "default" : "outline"}
 					onClick={() => setViewMode("pre")}
 				>
 					Show Pre
 				</Button>
+
 				<Button
+					type="button"
 					variant={viewMode === "post" ? "default" : "outline"}
 					onClick={() => setViewMode("post")}
 				>
 					Show Post
 				</Button>
+
 				<Button
+					type="button"
 					variant={viewMode === "slider" ? "default" : "outline"}
 					onClick={() => setViewMode("slider")}
 				>
@@ -127,26 +153,26 @@ export default function PrePostSlider({
 			{/* Slider Container */}
 			<div
 				ref={containerRef}
-				className="relative w-full max-w-3xl h-64 overflow-hidden rounded-xl border border-border shadow-lg bg-card select-none"
+				className="relative h-64 w-full max-w-3xl select-none overflow-hidden rounded-xl border border-border bg-card shadow-lg"
 			>
 				{/* Pre image */}
 				<img
-					src={preURL!}
-					alt="Pre"
-					className="absolute top-0 left-0 w-full h-full object-cover"
+					src={preURL}
+					alt="Pre disaster"
+					className="absolute left-0 top-0 h-full w-full object-cover"
 					style={{ opacity: viewMode === "post" ? 0 : 1 }}
 				/>
 
 				{/* Post image */}
 				<img
-					src={postURL!}
-					alt="Post"
-					className="absolute top-0 left-0 w-full h-full object-cover pointer-events-none transition-opacity duration-300"
+					src={postURL}
+					alt="Post disaster"
+					className="absolute left-0 top-0 h-full w-full object-cover pointer-events-none transition-opacity duration-300"
 					style={{
 						opacity: viewMode === "pre" ? 0 : 1,
 						clipPath:
 							viewMode === "slider"
-								? `inset(0 ${100 - (sliderX / containerRef.current!.offsetWidth) * 100}% 0 0)`
+								? `inset(0 ${clipPercentage}% 0 0)`
 								: "inset(0 0 0 0)",
 					}}
 				/>
@@ -155,7 +181,7 @@ export default function PrePostSlider({
 				{viewMode === "slider" && (
 					<div
 						ref={handleRef}
-						className="absolute top-0 -translate-x-1/2 w-2 h-full bg-white border border-gray-400 cursor-ew-resize"
+						className="absolute top-0 h-full w-2 -translate-x-1/2 cursor-ew-resize border border-gray-400 bg-white"
 						style={{ left: sliderX }}
 					/>
 				)}

@@ -31,7 +31,8 @@ export function ChatWidget() {
 							{ASSISTANT_NAME}
 						</div>
 						<button
-							onClick={() => setOpen(false)}
+							type="button"
+							onClick={() => setOpen((prev) => !prev)}
 							className="hover:opacity-80 transition"
 						>
 							<X className="h-4 w-4" />
@@ -71,6 +72,7 @@ export function ChatWidget() {
 
 			{/* Floating Button */}
 			<button
+				type="button"
 				onClick={() => setOpen((prev) => !prev)}
 				className="
 					relative flex items-center justify-center

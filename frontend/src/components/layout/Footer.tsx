@@ -1,4 +1,3 @@
-import React from "react";
 import { FaEnvelope, FaGithub } from "react-icons/fa";
 import {
 	APP_DESCRIPTION,
@@ -46,8 +45,11 @@ export default function Footer() {
 						<h4 className="font-semibold mb-3">Contributors</h4>
 
 						<ul className="space-y-3 text-muted-foreground">
-							{CONTRIBUTORS.map((person, index) => (
-								<li key={index} className="flex items-center justify-between">
+							{CONTRIBUTORS.map((person) => (
+								<li
+									key={person.name}
+									className="flex items-center justify-between"
+								>
 									{/* Name + Role */}
 									<div className="text-sm">
 										<span className="font-medium text-foreground">

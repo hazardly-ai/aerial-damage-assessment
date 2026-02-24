@@ -55,10 +55,14 @@ export default function PrePostCompare() {
 			{/* Upload Controls */}
 			<div className="flex flex-wrap gap-4">
 				<div>
-					<label className="block text-sm font-medium text-muted-foreground">
+					<label
+						htmlFor="pre-upload"
+						className="block text-sm font-medium text-muted-foreground"
+					>
 						Pre-disaster Image
 					</label>
 					<input
+						id="pre-upload"
 						type="file"
 						accept="image/*"
 						onChange={(e) =>
@@ -69,10 +73,14 @@ export default function PrePostCompare() {
 				</div>
 
 				<div>
-					<label className="block text-sm font-medium text-muted-foreground">
+					<label
+						htmlFor="post-upload"
+						className="block text-sm font-medium text-muted-foreground"
+					>
 						Post-disaster Image
 					</label>
 					<input
+						id="post-upload"
 						type="file"
 						accept="image/*"
 						onChange={(e) =>
