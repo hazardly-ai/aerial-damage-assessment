@@ -23,10 +23,8 @@ export default function MapView() {
 	useEffect(() => {
 		if (!containerRef.current) return;
 
-		// Clear container (important for HMR in Vite)
 		containerRef.current.innerHTML = "";
 
-		// Create map containers
 		const beforeDiv = document.createElement("div");
 		const afterDiv = document.createElement("div");
 
@@ -43,7 +41,6 @@ export default function MapView() {
 		containerRef.current.appendChild(beforeDiv);
 		containerRef.current.appendChild(afterDiv);
 
-		// Create satellite base maps
 		const beforeMap = new mapboxgl.Map({
 			container: beforeDiv,
 			style: "mapbox://styles/mapbox/satellite-v9",
@@ -58,8 +55,17 @@ export default function MapView() {
 			zoom: 17,
 		});
 
-		let mapsLoaded = 0;
+		// 🔹 Add zoom + compass controls to both maps
+		beforeMap.addControl(
+			new mapboxgl.NavigationControl({ showCompass: true, showZoom: true }),
+			"top-right",
+		);
+		afterMap.addControl(
+			new mapboxgl.NavigationControl({ showCompass: true, showZoom: true }),
+			"top-right",
+		);
 
+		let mapsLoaded = 0;
 		const checkLoaded = () => {
 			mapsLoaded++;
 			if (mapsLoaded === 2 && containerRef.current) {
@@ -71,7 +77,6 @@ export default function MapView() {
 			}
 		};
 
-		// LEFT SIDE → Satellite + Pre Image
 		beforeMap.on("load", () => {
 			beforeMap.addSource("pre-image", {
 				type: "image",
@@ -88,7 +93,6 @@ export default function MapView() {
 			checkLoaded();
 		});
 
-		// RIGHT SIDE → Satellite + Post Image
 		afterMap.on("load", () => {
 			afterMap.addSource("post-image", {
 				type: "image",
