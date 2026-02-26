@@ -14,3 +14,6 @@ httpRequests/
 
 # Dependencies
 node_modules/
+
+# vlm
+vlm/checkpoints/
