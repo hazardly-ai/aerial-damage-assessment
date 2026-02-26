@@ -9,12 +9,33 @@ import preImage from "@/assets/hurricane-harvey_00000018_pre_disaster.png";
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-const coordinates: [number, number][] = [
-	[-95.38617002293283, 29.757340952690797],
-	[-95.38151857293221, 29.757340952690797],
-	[-95.38151857293221, 29.75268950269017],
-	[-95.38617002293283, 29.75268950269017],
+/**
+ * Hardcoded GeoTransform from xview_geotransforms.json
+ * Format:
+ * [originX, pixelWidth, 0, originY, 0, pixelHeight]
+ */
+const geoTransform = [
+	-95.38617002293283, 4.5424316412367235e-6, 0, 29.757340952690797, 0,
+	-4.5424316412367235e-6,
 ];
+
+const IMAGE_SIZE = 1024;
+
+/**
+ * Compute geographic bounds from GeoTransform
+ * Returns coordinates in Mapbox order:
+ * [top-left, top-right, bottom-right, bottom-left]
+ */
+function computeBounds(): [number, number][] {
+	const [originX, pixelWidth, , originY, , pixelHeight] = geoTransform;
+
+	return [
+		[originX, originY], // top-left
+		[originX + pixelWidth * IMAGE_SIZE, originY], // top-right
+		[originX + pixelWidth * IMAGE_SIZE, originY + pixelHeight * IMAGE_SIZE], // bottom-right
+		[originX, originY + pixelHeight * IMAGE_SIZE], // bottom-left
+	];
+}
 
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -23,65 +44,47 @@ export default function MapView() {
 	useEffect(() => {
 		if (!containerRef.current) return;
 
+		// Clear container (important for React Strict Mode)
 		containerRef.current.innerHTML = "";
 
 		const beforeDiv = document.createElement("div");
 		const afterDiv = document.createElement("div");
 
-		beforeDiv.style.position = "absolute";
-		beforeDiv.style.top = "0";
-		beforeDiv.style.bottom = "0";
-		beforeDiv.style.width = "100%";
+		Object.assign(beforeDiv.style, {
+			position: "absolute",
+			inset: "0",
+		});
 
-		afterDiv.style.position = "absolute";
-		afterDiv.style.top = "0";
-		afterDiv.style.bottom = "0";
-		afterDiv.style.width = "100%";
+		Object.assign(afterDiv.style, {
+			position: "absolute",
+			inset: "0",
+		});
 
 		containerRef.current.appendChild(beforeDiv);
 		containerRef.current.appendChild(afterDiv);
 
+		const bounds = computeBounds();
+		const sw = bounds[3]; // bottom-left
+		const ne = bounds[1]; // top-right
+
 		const beforeMap = new mapboxgl.Map({
 			container: beforeDiv,
 			style: "mapbox://styles/mapbox/satellite-v9",
-			center: [-95.3838, 29.755],
-			zoom: 17,
+			renderWorldCopies: false,
 		});
 
 		const afterMap = new mapboxgl.Map({
 			container: afterDiv,
 			style: "mapbox://styles/mapbox/satellite-v9",
-			center: [-95.3838, 29.755],
-			zoom: 17,
+			renderWorldCopies: false,
 		});
 
-		// 🔹 Add zoom + compass controls to both maps
-		beforeMap.addControl(
-			new mapboxgl.NavigationControl({ showCompass: true, showZoom: true }),
-			"top-right",
-		);
-		afterMap.addControl(
-			new mapboxgl.NavigationControl({ showCompass: true, showZoom: true }),
-			"top-right",
-		);
-
-		let mapsLoaded = 0;
-		const checkLoaded = () => {
-			mapsLoaded++;
-			if (mapsLoaded === 2 && containerRef.current) {
-				compareRef.current = new Compare(
-					beforeMap,
-					afterMap,
-					containerRef.current,
-				);
-			}
-		};
-
-		beforeMap.on("load", () => {
+		const onMapsLoaded = () => {
+			// Pre-disaster image
 			beforeMap.addSource("pre-image", {
 				type: "image",
 				url: preImage,
-				coordinates: coordinates,
+				coordinates: bounds,
 			});
 
 			beforeMap.addLayer({
@@ -90,14 +93,11 @@ export default function MapView() {
 				source: "pre-image",
 			});
 
-			checkLoaded();
-		});
-
-		afterMap.on("load", () => {
+			// Post-disaster image
 			afterMap.addSource("post-image", {
 				type: "image",
 				url: postImage,
-				coordinates: coordinates,
+				coordinates: bounds,
 			});
 
 			afterMap.addLayer({
@@ -106,8 +106,26 @@ export default function MapView() {
 				source: "post-image",
 			});
 
-			checkLoaded();
-		});
+			// Enable swipe comparison
+			if (containerRef.current) {
+				compareRef.current = new Compare(
+					beforeMap,
+					afterMap,
+					containerRef.current,
+				);
+			}
+
+			// Fit camera to image bounds
+			beforeMap.fitBounds([sw, ne], {
+				padding: 0,
+				animate: false,
+			});
+		};
+
+		Promise.all([
+			new Promise<void>((resolve) => beforeMap.on("load", () => resolve())),
+			new Promise<void>((resolve) => afterMap.on("load", () => resolve())),
+		]).then(onMapsLoaded);
 
 		return () => {
 			compareRef.current?.remove();
