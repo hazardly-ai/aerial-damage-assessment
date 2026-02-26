@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import DisasterResponseAssistant from "./DisasterResponseAssistant";
 
 export default function App() {
   return (
@@ -33,10 +32,9 @@ export default function App() {
         </section>
         <div className="flex flex-wrap gap-3">
           <Button>Connect backend</Button>
-          <Button variant="outline"> &#8593; Upload imagery</Button>
+          <Button variant="outline">Upload imagery</Button>
         </div>
-        <DisasterResponseAssistant />
-      </div> 
+      </div>
     </div>
   );
 }
