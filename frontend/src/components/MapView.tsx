@@ -26,13 +26,21 @@ const IMAGE_SIZE = 1024;
  * Returns coordinates in Mapbox order:
  * [top-left, top-right, bottom-right, bottom-left]
  */
-function computeBounds(): [number, number][] {
+function computeBounds(): [
+	[number, number],
+	[number, number],
+	[number, number],
+	[number, number]
+] {
 	const [originX, pixelWidth, , originY, , pixelHeight] = geoTransform;
 
 	return [
 		[originX, originY], // top-left
 		[originX + pixelWidth * IMAGE_SIZE, originY], // top-right
-		[originX + pixelWidth * IMAGE_SIZE, originY + pixelHeight * IMAGE_SIZE], // bottom-right
+		[
+			originX + pixelWidth * IMAGE_SIZE,
+			originY + pixelHeight * IMAGE_SIZE,
+		], // bottom-right
 		[originX, originY + pixelHeight * IMAGE_SIZE], // bottom-left
 	];
 }
