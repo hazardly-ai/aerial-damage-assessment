@@ -1,8 +1,8 @@
 import Footer from "@/components/layout/Footer";
 import MapView from "@/components/MapView";
-import { ChatWidget } from "@/components/ui/ChatWidget";
 import ThemeToggle from "@/components/ui/ThemeToggle";
 import { TEAM_NAME } from "@/constants/app";
+import DisasterResponsesAssistant from "@/DisasterResponseAssistant.tsx";
 
 export default function App() {
 	return (
@@ -35,8 +35,8 @@ export default function App() {
 			</div>
 
 			{/* Chat Widget */}
-			<ChatWidget />
-
+			{/*<ChatWidget />*/}
+			<DisasterResponsesAssistant />
 			{/* Footer */}
 			<Footer />
 		</div>
