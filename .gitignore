@@ -14,3 +14,5 @@ httpRequests/
 
 # Dependencies
 node_modules/
+
+.vite/
