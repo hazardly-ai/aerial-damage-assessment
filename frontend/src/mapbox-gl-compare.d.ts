@@ -11,5 +11,6 @@ declare module "mapbox-gl-compare" {
 				mousemove?: boolean;
 			},
 		);
+		remove(): void;
 	}
 }
