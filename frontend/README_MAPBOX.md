@@ -11,10 +11,7 @@ The MapView component requires a MapBox access token to display maps.
 
 ## Setting up the Token
 
-1. Copy the `.env.example` file to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
+1. Copy the `.env.example` file content to `.env`:
 
 2. Replace the placeholder token with your actual MapBox token:
    ```

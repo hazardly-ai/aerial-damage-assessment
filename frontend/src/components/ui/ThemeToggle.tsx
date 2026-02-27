@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button.tsx";
 
 export default function ThemeToggle() {
 	const [theme, setTheme] = useState<"light" | "dark">("light");

@@ -1,8 +1,8 @@
 import Footer from "@/components/layout/Footer";
-import MapView from "@/components/MapView";
+import MapView from "@/components/features/MapView";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import DisasterResponsesAssistant from "@/components/features/DisasterResponseAssistant";
 import { TEAM_NAME } from "@/constants/app";
-import DisasterResponsesAssistant from "@/DisasterResponseAssistant.tsx";
 
 export default function App() {
 	return (
