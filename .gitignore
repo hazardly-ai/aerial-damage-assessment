@@ -16,3 +16,4 @@ httpRequests/
 node_modules/
 
 .vite/
+/vlm/checkpoints
