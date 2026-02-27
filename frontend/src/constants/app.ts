@@ -3,7 +3,8 @@ export const APP_NAME = "Aerial Damage Assessment";
 export const TEAM_NAME = "Hazardly AI";
 
 export const APP_DESCRIPTION =
-	"Interactive satellite imagery comparison for disaster assessment and impact visualization.";
+	"Inspect, quantify, and analyze disaster damage with a unified dashboard " +
+	"combining satellite imagery and AI damage classification.";
 
 export const DATASET_NAME = "XView2 Dataset";
 
