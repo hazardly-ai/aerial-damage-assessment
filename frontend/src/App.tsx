@@ -1,7 +1,7 @@
-import Footer from "@/components/layout/Footer";
-import MapView from "@/components/features/MapView";
-import ThemeToggle from "@/components/ui/ThemeToggle";
 import DisasterResponsesAssistant from "@/components/features/DisasterResponseAssistant";
+import MapView from "@/components/features/MapView";
+import Footer from "@/components/layout/Footer";
+import ThemeToggle from "@/components/ui/ThemeToggle";
 import { TEAM_NAME } from "@/constants/app";
 
 export default function App() {
