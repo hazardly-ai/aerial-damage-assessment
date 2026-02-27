@@ -8,10 +8,5 @@
 		"format": "biome format --write .",
 		"lint": "biome lint --write .",
 		"ci": "biome ci ."
-	},
-	"dependencies": {
-		"events": "^3.3.0",
-		"mapbox-gl-compare": "^0.4.2",
-		"react-icons": "^5.5.0"
 	}
 }
