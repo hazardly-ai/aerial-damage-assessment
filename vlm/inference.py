@@ -8,16 +8,32 @@ model_name = "ViT-L-14"  # 'RN50' or 'ViT-B-32' or 'ViT-L-14'
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Images
-pre_image_path = "../imagery/paired_crops/hurricane-harvey/hurricane-harvey_00000510_5b4baf2e_pre.png"
-post_image_path = "../imagery/paired_crops/hurricane-harvey/hurricane-harvey_00000510_5b4baf2e_post_minor-damage.png"
+pre_image_path = "../imagery/paired_crops/santa-rosa-wildfire/santa-rosa-wildfire_00000217_c8eab17d_pre.png"
+post_image_path = "../imagery/paired_crops/santa-rosa-wildfire/santa-rosa-wildfire_00000217_c8eab17d_post_destroyed.png"
 
-# Text queries
-class_prompts = [
-    "No visible change between before and after disaster. The building is undamaged.",
-    "Minor visible damage after the disaster. Small roof damage or cracks.",
-    "Major structural damage after the disaster. Partial roof or wall collapse.",
-    "The building is completely destroyed after the disaster."
-]
+# ---------------- TEXT PROMPTS (MULTIPLE PER CLASS) ----------------
+class_prompt_dict = {
+    0: [
+        "A satellite image of an intact residential building with no visible damage.",
+        "Aerial image of a house with a complete roof and no debris or flooding.",
+        "Undamaged building after a disaster with no structural failure."
+    ],
+    1: [
+        "Satellite image of a building with minor roof damage.",
+        "House with small cracks or slight structural damage but still standing.",
+        "Building with light damage and limited visible impact."
+    ],
+    2: [
+        "Satellite image of a building with major structural damage.",
+        "House with partial roof collapse or wall damage.",
+        "Structure heavily damaged with missing sections or large debris."
+    ],
+    3: [
+        "Satellite image of a completely destroyed building.",
+        "House fully collapsed or burned with severe structural failure.",
+        "Building reduced to rubble or no longer recognizable."
+    ]
+}
 
 labels = ["No Damage (0)", "Minor Damage (1)", "Major Damage (2)", "Destroyed (3)"]
 
@@ -49,15 +65,35 @@ model = model.to(device).eval()
 pre_image = preprocess(Image.open(pre_image_path)).unsqueeze(0).to(device)
 post_image = preprocess(Image.open(post_image_path)).unsqueeze(0).to(device)
 
-# ---------------- TOKENIZE TEXT ----------------
-text_tokens = tokenizer(class_prompts).to(device)
+# ---------------- ENCODE TEXT (AVERAGE PER CLASS) ----------------
+with torch.no_grad(), torch.cuda.amp.autocast(enabled=(device=="cuda")):
+
+    class_embeddings = []
+
+    for class_id in sorted(class_prompt_dict.keys()):
+        prompts = class_prompt_dict[class_id]
+
+        tokens = tokenizer(prompts).to(device)
+        text_features = model.encode_text(tokens)
+
+        # Normalize each prompt embedding
+        text_features /= text_features.norm(dim=-1, keepdim=True)
+
+        # Average prompts for this class
+        avg_feature = text_features.mean(dim=0)
+
+        # Normalize averaged embedding
+        avg_feature /= avg_feature.norm()
+
+        class_embeddings.append(avg_feature)
+
+    text_features = torch.stack(class_embeddings)
 
 # ---------------- INFERENCE ----------------
 with torch.no_grad(), torch.cuda.amp.autocast(enabled=(device=="cuda")):
 
     pre_features = model.encode_image(pre_image)
     post_features = model.encode_image(post_image)
-    text_features = model.encode_text(text_tokens)
 
     # Normalize
     pre_features /= pre_features.norm(dim=-1, keepdim=True)
