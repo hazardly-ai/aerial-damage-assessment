@@ -15,5 +15,5 @@ httpRequests/
 # Dependencies
 node_modules/
 
-# vlm
-vlm/checkpoints/
+.vite/
+/vlm/checkpoints
