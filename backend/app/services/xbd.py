@@ -3,7 +3,7 @@ import json
 from shapely import wkt
 from shapely.geometry import mapping
 
-from app.config import LABELS_DIR
+from ..config import LABELS_DIR
 
 
 def load_post_disaster_labels(disaster: str, image_pair_id: int) -> dict | None:

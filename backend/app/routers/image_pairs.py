@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
-from app.schemas.geojson import AnalysisResponse, GeojsonFeature, GeojsonGeometry, FeatureProperties
-from app.services.xbd import load_post_disaster_labels, wkt_to_geojson_geometry
+from ..schemas.geojson import AnalysisResponse, GeojsonFeature, GeojsonGeometry, FeatureProperties
+from ..services.xbd import load_post_disaster_labels, wkt_to_geojson_geometry
 
 router = APIRouter(prefix="/image-pair", tags=["image-pairs"])
 
