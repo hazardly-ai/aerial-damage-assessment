@@ -1,6 +1,9 @@
 # IDE
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
 
 # JetBrains
 shelf/
@@ -11,9 +14,32 @@ httpRequests/
 
 # Environment variables
 .env
+.env.*
 
 # Dependencies
 node_modules/
 
-.vite/
+# VLM
 /vlm/checkpoints
+
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Frontend build
+frontend/dist/
+.vite/
+
+# Data
+data/
+
+# OS
+.DS_Store
+Thumbs.db
