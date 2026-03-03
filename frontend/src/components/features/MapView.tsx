@@ -22,11 +22,7 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
  * This allows us to correctly georeference the raster images.
  */
 const geoTransform = [
-	-95.38617002293283,
-	4.5424316412367235e-6,
-	0,
-	29.757340952690797,
-	0,
+	-95.38617002293283, 4.5424316412367235e-6, 0, 29.757340952690797, 0,
 	-4.5424316412367235e-6,
 ];
 
@@ -135,10 +131,7 @@ export default function MapView() {
 			// ---------------------------------------
 			// This isolates WKT parsing from Mapbox logic.
 			// The map layer system only consumes GeoJSON.
-			const geojson =
-				convertWKTToFeatureCollection(
-					buildings.features.lng_lat,
-				);
+			const geojson = convertWKTToFeatureCollection(buildings.features.lng_lat);
 
 			// Add building overlays to BOTH maps
 			addBuildingLayer(beforeMap, geojson);
@@ -164,12 +157,8 @@ export default function MapView() {
 
 		// Wait for both maps to fully load
 		Promise.all([
-			new Promise<void>((resolve) =>
-				beforeMap.on("load", () => resolve()),
-			),
-			new Promise<void>((resolve) =>
-				afterMap.on("load", () => resolve()),
-			),
+			new Promise<void>((resolve) => beforeMap.on("load", () => resolve())),
+			new Promise<void>((resolve) => afterMap.on("load", () => resolve())),
 		]).then(onMapsLoaded);
 
 		// Cleanup on component unmount
