@@ -54,7 +54,6 @@ export interface ButtonProps
 // ForwardRef allows parent components to access the underlying DOM node
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 	({ className, variant, size, asChild = false, ...props }, ref) => {
-		
 		// If asChild is true, render whatever child element is passed in (e.g., Link)
 		// Otherwise, render a normal <button>
 		const Comp = asChild ? Slot : "button";

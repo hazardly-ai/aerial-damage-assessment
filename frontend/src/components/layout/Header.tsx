@@ -10,14 +10,11 @@ export default function Header() {
 		// Slight background blur + border to separate it from the page content
 		<div className="z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
 			<div className="mx-auto max-w-6xl px-6 py-8">
-				
 				{/* Flex layout to keep title on the left and theme toggle on the right */}
 				<div className="flex justify-between items-start gap-6">
-					
 					<header>
 						{/* Title + subtitle section */}
 						<div className="space-y-2">
-							
 							{/* Main app title with subtle gradient text effect */}
 							<h1 className="text-4xl sm:text-5xl font-bold tracking-tight leading-tight bg-gradient-to-r from-foreground to-foreground/50 bg-clip-text text-transparent font-sans">
 								{TEAM_NAME}
