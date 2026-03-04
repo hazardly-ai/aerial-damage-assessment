@@ -25,8 +25,8 @@ export function convertWKTToFeatureCollection(
 
 		const coordinates = geoTransform
 			? geometry.coordinates.map((ring) =>
-				ring.map((coord) => pixelToGeo(coord, geoTransform)),
-			)
+					ring.map((coord) => pixelToGeo(coord, geoTransform)),
+				)
 			: geometry.coordinates;
 
 		const rawId = building.properties?.uid;

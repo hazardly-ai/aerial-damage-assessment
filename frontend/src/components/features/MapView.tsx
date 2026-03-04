@@ -44,7 +44,12 @@ export default function MapView() {
 		// coordinate space as the building polygons.
 		const [minLng, minLat, maxLng, maxLat] = bbox(geojson);
 
-		const bounds: [[number, number], [number, number], [number, number], [number, number]] = [
+		const bounds: [
+			[number, number],
+			[number, number],
+			[number, number],
+			[number, number],
+		] = [
 			[minLng, maxLat], // top-left
 			[maxLng, maxLat], // top-right
 			[maxLng, minLat], // bottom-right
@@ -73,9 +78,7 @@ export default function MapView() {
 		 * We must wait for load before adding sources/layers.
 		 */
 		const onMapsLoaded = () => {
-			// ----------------------------
 			// Add Pre-Disaster Image Layer
-			// ----------------------------
 			beforeMap.addSource("pre-image", {
 				type: "image",
 				url: preImage,
@@ -88,9 +91,7 @@ export default function MapView() {
 				source: "pre-image",
 			});
 
-			// ----------------------------
 			// Add Post-Disaster Image Layer
-			// ----------------------------
 			afterMap.addSource("post-image", {
 				type: "image",
 				url: postImage,
@@ -107,9 +108,7 @@ export default function MapView() {
 			addBuildingLayer(beforeMap, geojson);
 			addBuildingLayer(afterMap, geojson);
 
-			// ---------------------------------------
 			// Enable Swipe Comparison
-			// ---------------------------------------
 			if (containerRef.current) {
 				compareRef.current = new Compare(
 					beforeMap,
