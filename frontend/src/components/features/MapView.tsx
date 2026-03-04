@@ -80,6 +80,8 @@ export default function MapView() {
 			style: "mapbox://styles/mapbox/satellite-v9",
 			renderWorldCopies: false,
 		});
+		// Add zoom and compass controls to the top-right
+		beforeMap.addControl(new mapboxgl.NavigationControl(), "top-right");
 
 		// Initialize the "after" map
 		const afterMap = new mapboxgl.Map({
@@ -87,6 +89,8 @@ export default function MapView() {
 			style: "mapbox://styles/mapbox/satellite-v9",
 			renderWorldCopies: false,
 		});
+		// Add zoom and compass controls to the top-right
+		afterMap.addControl(new mapboxgl.NavigationControl(), "top-right");
 
 		/**
 		 * This runs only after BOTH maps finish loading.
