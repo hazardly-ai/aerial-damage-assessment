@@ -48,9 +48,10 @@ export default function MapView() {
 				"destroyed",
 				"un-classified",
 			];
-			feature.properties.predicted_damage =
-				damageClasses[i % damageClasses.length]; // loop through classes
-			``;
+			if (feature.properties) {
+				feature.properties.predicted_damage =
+					damageClasses[i % damageClasses.length]; // loop through classes
+			}
 		});
 
 		// Derive image bounds from the actual polygon extents.
