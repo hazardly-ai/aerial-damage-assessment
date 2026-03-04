@@ -1,15 +1,19 @@
+/* Import custom Google Font used throughout the app */
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
 
+/* Tailwind base styles, components, and utility classes */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Smooth background + text color transitions when switching themes */
 html {
 	transition:
 		background-color 300ms ease,
 		color 300ms ease;
 }
 
+/* Apply smooth transitions to all elements for theme switching */
 *,
 *::before,
 *::after {
@@ -19,28 +23,47 @@ html {
 		border-color 300ms ease;
 }
 
+/* 
+   Light mode color system
+   These CSS variables are used throughout the app via Tailwind (hsl(var(--...)))
+*/
 :root {
 	--background: 210 40% 98%;
 	--foreground: 222 47% 11%;
+
 	--card: 0 0% 100%;
 	--card-foreground: 222 47% 11%;
+
 	--popover: 0 0% 100%;
 	--popover-foreground: 222 47% 11%;
+
 	--primary: 199 89% 48%;
 	--primary-foreground: 0 0% 100%;
+
 	--secondary: 210 40% 96%;
 	--secondary-foreground: 222 47% 11%;
+
 	--muted: 210 40% 96%;
 	--muted-foreground: 215 16% 47%;
+
 	--accent: 24 95% 53%;
 	--accent-foreground: 222 47% 11%;
+
 	--destructive: 0 84% 60%;
 	--destructive-foreground: 0 0% 100%;
+
 	--border: 214 32% 91%;
 	--input: 214 32% 91%;
 	--ring: 199 89% 48%;
+
+	/* Global border radius used for components */
 	--radius: 0.75rem;
 }
+
+/* 
+   Dark mode overrides
+   Activated when the "dark" class is added to <html>
+*/
 .dark {
 	--background: 220 10% 6%; /* near black */
 	--foreground: 210 20% 96%; /* soft white */
@@ -51,7 +74,7 @@ html {
 	--popover: 220 10% 9%;
 	--popover-foreground: 210 20% 96%;
 
-	--primary: 199 89% 55%; /* keep your blue accent */
+	--primary: 199 89% 55%; /* slightly brighter blue for dark mode */
 	--primary-foreground: 0 0% 100%;
 
 	--secondary: 220 8% 14%;
@@ -71,10 +94,15 @@ html {
 	--ring: 199 89% 55%;
 }
 
+/* Base body styling */
 body {
 	margin: 0;
 	min-height: 100vh;
+
+	/* Primary font stack */
 	font-family: "Space Grotesk", "Segoe UI", sans-serif;
+
+	/* Use theme variables for background and text color */
 	background-color: hsl(var(--background));
 	color: hsl(var(--foreground));
 }
