@@ -3,6 +3,7 @@ import Compare from "mapbox-gl-compare";
 import { useEffect, useRef } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
+import bbox from "@turf/bbox";
 
 import buildings from "@/assets/hurricane-harvey_00000018_post_disaster.json";
 import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png";
@@ -13,41 +14,6 @@ import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollec
 
 // Set Mapbox access token from environment variable
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
-
-/**
- * GeoTransform defines how the image maps to geographic coordinates.
- * Format:
- * [originX, pixelWidth, 0, originY, 0, pixelHeight]
- *
- * This allows us to correctly georeference the raster images.
- */
-const geoTransform = [
-	-95.38617002293283, 4.5424316412367235e-6, 0, 29.757340952690797, 0,
-	-4.5424316412367235e-6,
-];
-
-const IMAGE_SIZE = 1024;
-
-/**
- * Compute geographic bounds for the image overlay.
- * Returns coordinates in Mapbox-required order:
- * [top-left, top-right, bottom-right, bottom-left]
- */
-function computeBounds(): [
-	[number, number],
-	[number, number],
-	[number, number],
-	[number, number],
-] {
-	const [originX, pixelWidth, , originY, , pixelHeight] = geoTransform;
-
-	return [
-		[originX, originY], // top-left
-		[originX + pixelWidth * IMAGE_SIZE, originY], // top-right
-		[originX + pixelWidth * IMAGE_SIZE, originY + pixelHeight * IMAGE_SIZE], // bottom-right
-		[originX, originY + pixelHeight * IMAGE_SIZE], // bottom-left
-	];
-}
 
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -70,12 +36,23 @@ export default function MapView() {
 		containerRef.current.appendChild(beforeDiv);
 		containerRef.current.appendChild(afterDiv);
 
-		// Compute image geographic bounds
-		const bounds = computeBounds();
+		// Convert WKT → GeoJSON (coordinates are already in lng/lat)
+		const geojson = convertWKTToFeatureCollection(buildings.features.lng_lat);
 
-		// Extract southwest and northeast corners for fitBounds
-		const sw = bounds[3];
-		const ne = bounds[1];
+		// Derive image bounds from the actual polygon extents.
+		// This ensures the raster overlay is anchored to the same
+		// coordinate space as the building polygons.
+		const [minLng, minLat, maxLng, maxLat] = bbox(geojson);
+
+		const bounds: [[number, number], [number, number], [number, number], [number, number]] = [
+			[minLng, maxLat], // top-left
+			[maxLng, maxLat], // top-right
+			[maxLng, minLat], // bottom-right
+			[minLng, minLat], // bottom-left
+		];
+
+		const sw: [number, number] = [minLng, minLat];
+		const ne: [number, number] = [maxLng, maxLat];
 
 		// Initialize the "before" map
 		const beforeMap = new mapboxgl.Map({
@@ -125,13 +102,6 @@ export default function MapView() {
 				type: "raster",
 				source: "post-image",
 			});
-
-			// ---------------------------------------
-			// Convert Local WKT → GeoJSON (Temporary)
-			// ---------------------------------------
-			// This isolates WKT parsing from Mapbox logic.
-			// The map layer system only consumes GeoJSON.
-			const geojson = convertWKTToFeatureCollection(buildings.features.lng_lat);
 
 			// Add building overlays to BOTH maps
 			addBuildingLayer(beforeMap, geojson);
