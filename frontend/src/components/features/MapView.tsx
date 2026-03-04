@@ -3,6 +3,7 @@ import Compare from "mapbox-gl-compare";
 import { useEffect, useRef } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
+
 import bbox from "@turf/bbox";
 
 import buildings from "@/assets/hurricane-harvey_00000018_post_disaster.json";
@@ -12,7 +13,6 @@ import preImage from "@/assets/hurricane-harvey_00000018_pre_disaster.png";
 import { addBuildingLayer } from "@/utils/addBuildingLayer";
 import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollection";
 
-// Set Mapbox access token from environment variable
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
 export default function MapView() {
@@ -22,67 +22,56 @@ export default function MapView() {
 	useEffect(() => {
 		if (!containerRef.current) return;
 
-		// Clear container (important for React Strict Mode)
 		containerRef.current.innerHTML = "";
 
-		// Create two divs — one for each map (before/after)
 		const beforeDiv = document.createElement("div");
 		const afterDiv = document.createElement("div");
 
-		// Make both maps fill the container
 		Object.assign(beforeDiv.style, { position: "absolute", inset: "0" });
 		Object.assign(afterDiv.style, { position: "absolute", inset: "0" });
 
 		containerRef.current.appendChild(beforeDiv);
 		containerRef.current.appendChild(afterDiv);
 
-		// Convert WKT → GeoJSON (coordinates are already in lng/lat)
+		// Convert WKT → GeoJSON (temporary until API sends GeoJSON directly)
 		const geojson = convertWKTToFeatureCollection(buildings.features.lng_lat);
 
-		// Derive image bounds from the actual polygon extents.
-		// This ensures the raster overlay is anchored to the same
-		// coordinate space as the building polygons.
-		const [minLng, minLat, maxLng, maxLat] = bbox(geojson);
+		// Compute raster bounds dynamically from building geometry
+		const [minX, minY, maxX, maxY] = bbox(geojson);
 
-		const bounds: [
+		const imageBounds: [
 			[number, number],
 			[number, number],
 			[number, number],
 			[number, number],
 		] = [
-			[minLng, maxLat], // top-left
-			[maxLng, maxLat], // top-right
-			[maxLng, minLat], // bottom-right
-			[minLng, minLat], // bottom-left
+			[minX, maxY], // top-left
+			[maxX, maxY], // top-right
+			[maxX, minY], // bottom-right
+			[minX, minY], // bottom-left
 		];
 
-		const sw: [number, number] = [minLng, minLat];
-		const ne: [number, number] = [maxLng, maxLat];
+		const sw: [number, number] = [minX, minY];
+		const ne: [number, number] = [maxX, maxY];
 
-		// Initialize the "before" map
 		const beforeMap = new mapboxgl.Map({
 			container: beforeDiv,
 			style: "mapbox://styles/mapbox/satellite-v9",
 			renderWorldCopies: false,
 		});
 
-		// Initialize the "after" map
 		const afterMap = new mapboxgl.Map({
 			container: afterDiv,
 			style: "mapbox://styles/mapbox/satellite-v9",
 			renderWorldCopies: false,
 		});
 
-		/**
-		 * This runs only after BOTH maps finish loading.
-		 * We must wait for load before adding sources/layers.
-		 */
 		const onMapsLoaded = () => {
-			// Add Pre-Disaster Image Layer
+			// Pre image
 			beforeMap.addSource("pre-image", {
 				type: "image",
 				url: preImage,
-				coordinates: bounds,
+				coordinates: imageBounds,
 			});
 
 			beforeMap.addLayer({
@@ -91,11 +80,11 @@ export default function MapView() {
 				source: "pre-image",
 			});
 
-			// Add Post-Disaster Image Layer
+			// Post image
 			afterMap.addSource("post-image", {
 				type: "image",
 				url: postImage,
-				coordinates: bounds,
+				coordinates: imageBounds,
 			});
 
 			afterMap.addLayer({
@@ -104,11 +93,10 @@ export default function MapView() {
 				source: "post-image",
 			});
 
-			// Add building overlays to BOTH maps
+			// Add building overlays
 			addBuildingLayer(beforeMap, geojson);
 			addBuildingLayer(afterMap, geojson);
 
-			// Enable Swipe Comparison
 			if (containerRef.current) {
 				compareRef.current = new Compare(
 					beforeMap,
@@ -117,20 +105,17 @@ export default function MapView() {
 				);
 			}
 
-			// Fit map to image bounds
 			beforeMap.fitBounds([sw, ne], {
 				padding: 0,
 				animate: false,
 			});
 		};
 
-		// Wait for both maps to fully load
 		Promise.all([
 			new Promise<void>((resolve) => beforeMap.on("load", () => resolve())),
 			new Promise<void>((resolve) => afterMap.on("load", () => resolve())),
 		]).then(onMapsLoaded);
 
-		// Cleanup on component unmount
 		return () => {
 			compareRef.current?.remove();
 			beforeMap.remove();
