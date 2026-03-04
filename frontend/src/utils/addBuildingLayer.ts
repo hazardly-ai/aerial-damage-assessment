@@ -1,41 +1,33 @@
-import type { Map as MapboxMap } from "mapbox-gl";
+import type { FeatureCollection, Polygon } from "geojson";
+import type mapboxgl from "mapbox-gl";
+import type { GeoJSONSource } from "mapbox-gl";
 
-const SOURCE_ID = "buildings-source";
-const FILL_LAYER_ID = "buildings-fill";
-const OUTLINE_LAYER_ID = "buildings-outline";
+const SOURCE_ID = "buildings";
+const FILL_LAYER_ID = "building-fill";
+const LINE_LAYER_ID = "building-outline";
 
 export function addBuildingLayer(
-	map: MapboxMap,
-	geojson: GeoJSON.FeatureCollection,
+	map: mapboxgl.Map,
+	data: FeatureCollection<Polygon>,
 ) {
-	if (!map.getStyle()) return;
-
 	if (!map.getSource(SOURCE_ID)) {
 		map.addSource(SOURCE_ID, {
 			type: "geojson",
-			data: geojson,
+			data,
 		});
-	} else {
-		const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
 
-		source.setData(geojson);
-	}
-
-	if (!map.getLayer(FILL_LAYER_ID)) {
 		map.addLayer({
 			id: FILL_LAYER_ID,
 			type: "fill",
 			source: SOURCE_ID,
 			paint: {
 				"fill-color": "#ff4d4d",
-				"fill-opacity": 0.4,
+				"fill-opacity": 0.3,
 			},
 		});
-	}
 
-	if (!map.getLayer(OUTLINE_LAYER_ID)) {
 		map.addLayer({
-			id: OUTLINE_LAYER_ID,
+			id: LINE_LAYER_ID,
 			type: "line",
 			source: SOURCE_ID,
 			paint: {
@@ -43,5 +35,8 @@ export function addBuildingLayer(
 				"line-width": 2,
 			},
 		});
+	} else {
+		const source = map.getSource(SOURCE_ID) as GeoJSONSource;
+		source.setData(data);
 	}
 }
