@@ -127,6 +127,210 @@ export default function MapView() {
 			addBuildingLayer(beforeMap, geojson);
 			addBuildingLayer(afterMap, geojson);
 
+			//When the mouse is placed on a building polygon the cursor is chnaged to "pointer"
+			//Make the user feel that the building is clickable
+			beforeMap.on("mouseenter", "buildings-fill", (e) => {
+				beforeMap.getCanvas().style.cursor = "pointer";
+
+				const feature = e.features?.[0];
+				if(!feature)
+					return;
+
+				beforeMap.setPaintProperty("buildings-outline", "line-color", "#0df3f3cb");
+				beforeMap.setPaintProperty("buildings-outline", "line-width", 3);
+			});  
+
+			//Restores the cursor when the mouse is moved away from the building polygon
+			beforeMap.on("mouseleave", "buildings-fill", () => {
+				beforeMap.getCanvas().style.cursor = "";
+				beforeMap.setPaintProperty("buildings-outline", "line-color", "white");
+  				beforeMap.setPaintProperty("buildings-outline", "line-width", 1);
+			});
+
+			//Applying the same hover interaction to the after map as well
+			afterMap.on("mouseenter", "buildings-fill", (e) => {
+				afterMap.getCanvas().style.cursor = "pointer";
+
+				const feature = e.features?.[0];
+  				if (!feature) 
+					return;
+
+  				 afterMap.setPaintProperty("buildings-outline", "line-color", "#0df3f3cb");
+  				afterMap.setPaintProperty("buildings-outline", "line-width", 3);
+
+			});  
+
+			afterMap.on("mouseleave", "buildings-fill", () => {
+				afterMap.getCanvas().style.cursor = "";
+			
+				afterMap.setPaintProperty("buildings-outline", "line-color", "white");
+  				afterMap.setPaintProperty("buildings-outline", "line-width", 1);
+
+			}) ;
+
+        //WHen the building is clicked on the before map shoing some information about that building
+		beforeMap.on("click", "buildings-fill", (e) => {
+			//Mpabox returns a list of features and we take the first one
+			const feature = e.features?.[0];
+
+			//if for osme reason no feature is found the stopping there
+			if(!feature)
+				return;
+
+			//Getting the building id and predicted damage from properties
+			const uid = feature.properties?.uid;
+			const damage = feature.properties?.predicted_damage;
+
+			let damageColor = "#ccc";
+				if (damage === "no-damage") damageColor ="#2ecc71";
+				else if (damage === "minor-damage") damageColor = "#f1c40f";
+				else if (damage === "major-damage") damageColor = "#e67e22";
+				else if (damage === "destroyed") damageColor ="#e74c3c";
+				else damageColor = "#95a5a6";
+
+			//Creating a popup at the clickable area that displays the building info
+			new mapboxgl.Popup({offset:20})
+				.setLngLat(e.lngLat)
+  				.setHTML(`
+    				<div style="
+      				width:260px;
+					background:white;
+					border-radius:12px;
+					overflow:hidden;
+					font-family:Arial, sans-serif;
+					box-shadow:0 8px 22px rgba(0,0,0,0.35);
+					">
+    
+					<div style="
+						background:linear-gradient(90deg,#5f6dff,#9c6bff);
+						color:white;
+						padding:10px 36px 10px 14px;
+						font-size:15px;
+						font-weight:bold;
+					">
+					🏠 Building Damage Report
+					</div>
+
+					<div style="
+						padding:12px 14px;
+						font-size:13px;
+						font-weight:bold;
+						color:#444;
+					">
+
+						<div style="margin-bottom:14px;">
+						<div style="font-weight:bold; margin-bottom:4px;">Building ID:</div>
+						<div>${uid}</div>
+						</div>
+
+						<div>
+						<span style="font-weight:bold;">Predicted Damage:</span><br/>
+
+						<span style="
+							display:inline-block;
+							margin-top:4px;
+							padding:4px 10px;
+							border-radius:6px;
+							background:${damageColor};
+							color:white;
+							font-weight:bold;
+						">
+						${damage}
+						</span>
+
+						</div>
+
+						</div>
+
+						</div>
+  						`)
+  					.addTo(beforeMap);
+			 });
+
+		//Same interaction after clicking for teh after map
+		afterMap.on("click", "buildings-fill", (e) => {
+
+			 //Mpabox returns a list of features and we take the first one
+			  const feature = e.features?.[0];
+
+			//if for osme reason no feature is found the stopping there
+			if(!feature)
+				return;
+
+			//Getting the building id and predicted damage from properties
+			const uid = feature.properties?.uid;
+			const damage = feature.properties?.predicted_damage;
+
+			let damageColor = "#ccc";
+				if (damage === "no-damage") damageColor ="#2ecc71";
+				else if (damage === "minor-damage") damageColor = "#f1c40f";
+				else if (damage === "major-damage") damageColor = "#e67e22";
+				else if (damage === "destroyed") damageColor ="#e74c3c";
+				else damageColor = "#95a5a6";
+
+			new mapboxgl.Popup({offset:20})
+				.setLngLat(e.lngLat) 
+				.setHTML(`
+					<div style="
+					 	width:260px;
+						background:white;
+						border-radius:12px;
+						overflow:hidden;
+						font-family:Arial, sans-serif;
+						box-shadow:0 8px 22px rgba(0, 0, 0, 0.35);
+					">
+					
+					<div style="
+						background:linear-gradient(90deg, #5f6dff, #9c6bff);
+						color:white;
+						padding:10px 36px 10px 14px;
+						font-size:15px;
+						font-weight:bold;
+						
+					">
+					🏠 Building Damage Report
+					</div>
+
+					<div style="
+						padding:12px 14px;
+						font-size:13px;
+						font-weight:bold;
+						margin-bottom:8px;
+						color:#444;
+					">
+
+					<div style="margin-bottom:14px;">
+  						<div style="font-weight:bold; margin-bottom:4px;">Building ID:</div>
+  						<div>${uid}</div>
+					</div>
+
+					<div>
+					<span style="
+						font-weight:bold;">Predicted Damage:</span><br/>
+						<span style="
+  							display:inline-block;
+  							margin-top:4px;
+  							 padding:4px 10px;
+  							border-radius:6px;
+  							background:${damageColor};
+							color:white;
+  							font-weight:bold;
+						">
+						${damage}
+					</span>
+					</div>
+
+					</div>
+
+				</div>
+						
+				`)	
+				
+			.addTo(afterMap);
+		});
+
+
+
 			// Enable Swipe Comparison
 			if (containerRef.current) {
 				compareRef.current = new Compare(
