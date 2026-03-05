@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 import psycopg
 
-from app.db.supabase import get_conn
+from app.db import get_conn
 from app.schemas.geojson import GeoJSONGeometry
 from app.schemas.image_pairs import (
     ImagePairFeature,
@@ -22,11 +22,10 @@ router = APIRouter(prefix="/disasters", tags=["image-pairs"])
 )
 def get_image_pairs(
     disaster_id: int,
-    limit: int | None = None,
     conn: psycopg.Connection = Depends(get_conn),
 ):
     # Returns GeoJSON FeatureCollection
-    rows = fetch_image_pairs_by_disaster(conn, disaster_id, limit=limit)
+    rows = fetch_image_pairs_by_disaster(conn, disaster_id)
     features = [
         ImagePairFeature(
             geometry=GeoJSONGeometry(**row["geometry"]),
