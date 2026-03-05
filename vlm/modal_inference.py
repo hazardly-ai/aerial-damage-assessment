@@ -14,7 +14,7 @@ image = (
     )
 )
 
-volume = modal.Volume.from_name("disaster-images", create_if_missing=True)
+volume = modal.Volume.from_name("disaster-images", create_if_missing=False)
 
 @app.function(
     image=image,
@@ -32,6 +32,7 @@ def predict_buildings(folder):
     from huggingface_hub import hf_hub_download
     from supabase import create_client
 
+    # ---------- Supabase Setup ----------
     SUPABASE_URL = os.environ["SUPABASE_URL"]
     SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 
@@ -66,7 +67,6 @@ def predict_buildings(folder):
     }
 
     # ---------------- LOAD MODEL ----------------
-
     checkpoint = hf_hub_download(
         repo_id="chendelong/RemoteCLIP",
         filename=f"RemoteCLIP-{model_name}.pt"
@@ -77,59 +77,60 @@ def predict_buildings(folder):
 
     ckpt = torch.load(checkpoint, map_location="cpu")
     model.load_state_dict(ckpt)
-
     model = model.to(device).eval()
 
     # ---------------- TEXT EMBEDDINGS ----------------
-
     with torch.no_grad():
-
-        class_embeddings=[]
-
+        class_embeddings = []
         for class_id in sorted(class_prompt_dict.keys()):
-            prompts=class_prompt_dict[class_id]
-            tokens=tokenizer(prompts).to(device)
-            text_features=model.encode_text(tokens)
-            text_features/=text_features.norm(dim=-1,keepdim=True)
-            avg=text_features.mean(dim=0)
-            avg/=avg.norm()
+            prompts = class_prompt_dict[class_id]
+            tokens = tokenizer(prompts).to(device)
+            text_features = model.encode_text(tokens)
+            text_features /= text_features.norm(dim=-1, keepdim=True)
+            avg = text_features.mean(dim=0)
+            avg /= avg.norm()
             class_embeddings.append(avg)
-        text_features=torch.stack(class_embeddings)
+        text_features = torch.stack(class_embeddings)
 
-    # ---------------- FIND IMAGES ----------------
-
-    pre_images=glob.glob(f"{folder}/*_pre.png")
-    print("Buildings:",len(pre_images))
+    # ---------- PROCESS IMAGES ----------
+    pre_images = glob.glob(f"{folder}/*_pre.png")
+    print("Buildings:", len(pre_images))
 
     for pre_path in pre_images:
-        base=os.path.basename(pre_path).replace("_pre.png","")
-        post_candidates=glob.glob(f"{folder}/{base}_post*.png")
+        # Extract base filename
+        filename = os.path.basename(pre_path).replace("_pre.png","")
+        # Extract UUID (the last part after underscores)
+        uid = filename.split("_")[-1]
+
+        post_candidates = glob.glob(f"{folder}/{filename}_post*.png")
         if not post_candidates:
             continue
-        post_path=post_candidates[0]
 
-        pre_image=preprocess(Image.open(pre_path)).unsqueeze(0).to(device)
-        post_image=preprocess(Image.open(post_path)).unsqueeze(0).to(device)
+        post_path = post_candidates[0]
+
+        pre_image = preprocess(Image.open(pre_path)).unsqueeze(0).to(device)
+        post_image = preprocess(Image.open(post_path)).unsqueeze(0).to(device)
 
         with torch.no_grad():
-            pre_features=model.encode_image(pre_image)
-            post_features=model.encode_image(post_image)
-            pre_features/=pre_features.norm(dim=-1,keepdim=True)
-            post_features/=post_features.norm(dim=-1,keepdim=True)
+            pre_features = model.encode_image(pre_image)
+            post_features = model.encode_image(post_image)
+            pre_features /= pre_features.norm(dim=-1, keepdim=True)
+            post_features /= post_features.norm(dim=-1, keepdim=True)
 
-            change_features=post_features-pre_features
-            change_features/=change_features.norm(dim=-1,keepdim=True)
+            change_features = post_features - pre_features
+            change_features /= change_features.norm(dim=-1, keepdim=True)
 
-            probs=(100.0*change_features@text_features.T).softmax(dim=-1)
-            probs=probs.cpu().numpy()[0]
+            probs = (100.0 * change_features @ text_features.T).softmax(dim=-1)
+            probs = probs.cpu().numpy()[0]
 
-        pred_class=probs.argmax()
-        pred_label=labels[pred_class]
+        pred_class = probs.argmax()
+        pred_label = labels[pred_class]
 
-        print(base,pred_label)
+        print(uid, pred_label)
 
+        # ---------- UPDATE SUPABASE ----------
         supabase.table("buildings").update(
-            {"predicted_damage":pred_label}
-        ).eq("uid",base).execute()
+            {"predicted_damage": pred_label}
+        ).eq("uid", uid).execute()
 
     print("Finished")
