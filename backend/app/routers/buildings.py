@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 import psycopg
 
-from app.db import get_conn
+from app.db.supabase import get_conn
 from app.schemas.buildings import (
     BuildingFeature,
     BuildingFeatureBboxOnly,
@@ -31,10 +31,11 @@ router = APIRouter(tags=["buildings"])
 def get_buildings_for_image_pair(
     disaster_id: int,
     xbd_id: int,
+    limit: int | None = None,
     conn: psycopg.Connection = Depends(get_conn),
 ):
     # Returns FeatureCollection with geom_bbox
-    rows = fetch_buildings_by_image_pair(conn, disaster_id, xbd_id)
+    rows = fetch_buildings_by_image_pair(conn, disaster_id, xbd_id, limit=limit)
     features = [
         BuildingFeature(
             geometry=GeoJSONGeometry(**row["geometry"]),
