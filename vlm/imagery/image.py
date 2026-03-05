@@ -5,7 +5,7 @@ from shapely.wkt import loads as load_wkt
 
 # ========= CONFIG =========
 DISASTER = "hurricane-harvey"
-MAX_IMAGES = 10
+MAX_IMAGES = 1
 
 IMG_PRE = "original/prepost"
 IMG_POST = "original/prepost"
@@ -77,7 +77,7 @@ for file in sorted(os.listdir(LABEL_DIR)):
         pre_crop = pre_img.crop((minx, miny, maxx, maxy))
         post_crop = post_img.crop((minx, miny, maxx, maxy))
 
-        pair_id = f"{base}_{uid[:8]}"
+        pair_id = f"{base}_{uid}"
 
         pre_crop.save(os.path.join(OUT_DIR, f"{pair_id}_pre.png"))
         post_crop.save(os.path.join(OUT_DIR, f"{pair_id}_post_{damage}.png"))
