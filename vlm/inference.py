@@ -98,7 +98,6 @@ with torch.no_grad(), torch.cuda.amp.autocast(enabled=(device=="cuda")):
     # Normalize
     pre_features /= pre_features.norm(dim=-1, keepdim=True)
     post_features /= post_features.norm(dim=-1, keepdim=True)
-    text_features /= text_features.norm(dim=-1, keepdim=True)
 
     # Compute change embedding
     change_features = post_features - pre_features
