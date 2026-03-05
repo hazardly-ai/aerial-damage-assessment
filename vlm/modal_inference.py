@@ -22,8 +22,7 @@ volume = modal.Volume.from_name("disaster-images", create_if_missing=False)
     volumes={"/images": volume},
     timeout=60 * 60
 )
-def predict_buildings(folder):
-
+def predict_buildings(folder, batch_size: int = 100):
     import os
     import glob
     import torch
@@ -35,7 +34,6 @@ def predict_buildings(folder):
     # ---------- Supabase Setup ----------
     SUPABASE_URL = os.environ["SUPABASE_URL"]
     SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
-
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -74,7 +72,6 @@ def predict_buildings(folder):
 
     model, _, preprocess = open_clip.create_model_and_transforms(model_name)
     tokenizer = open_clip.get_tokenizer(model_name)
-
     ckpt = torch.load(checkpoint, map_location="cpu")
     model.load_state_dict(ckpt)
     model = model.to(device).eval()
@@ -94,12 +91,11 @@ def predict_buildings(folder):
 
     # ---------- PROCESS IMAGES ----------
     pre_images = glob.glob(f"{folder}/*_pre.png")
-    print("Buildings:", len(pre_images))
+    print("Total buildings:", len(pre_images))
 
-    for pre_path in pre_images:
-        # Extract base filename
-        filename = os.path.basename(pre_path).replace("_pre.png","")
-        # Extract UUID (the last part after underscores)
+    batch_updates = []
+    for i, pre_path in enumerate(pre_images, start=1):
+        filename = os.path.basename(pre_path).replace("_pre.png", "")
         uid = filename.split("_")[-1]
 
         post_candidates = glob.glob(f"{folder}/{filename}_post*.png")
@@ -126,11 +122,16 @@ def predict_buildings(folder):
         pred_class = probs.argmax()
         pred_label = labels[pred_class]
 
-        print(uid, pred_label)
+        batch_updates.append({"uid": uid, "predicted_damage": pred_label})
+        print(f"{uid}: {pred_label}")
 
-        # ---------- UPDATE SUPABASE ----------
-        supabase.table("buildings").update(
-            {"predicted_damage": pred_label}
-        ).eq("uid", uid).execute()
+        # ---------- BATCH INSERT ----------
+        if len(batch_updates) >= batch_size:
+            supabase.table("buildings").upsert(batch_updates).execute()
+            batch_updates = []
+
+    # Insert any remaining updates
+    if batch_updates:
+        supabase.table("buildings").upsert(batch_updates).execute()
 
     print("Finished")
