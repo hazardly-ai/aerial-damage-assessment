@@ -1,39 +1,55 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+import psycopg
 
-from ..schemas.geojson import AnalysisResponse, GeojsonFeature, GeojsonGeometry, FeatureProperties
-from ..services.xbd import load_post_disaster_labels, wkt_to_geojson_geometry
+from app.db import get_conn
+from app.schemas.geojson import GeoJSONGeometry
+from app.schemas.image_pairs import (
+    ImagePairFeature,
+    ImagePairFeatureCollection,
+    ImagePairProperties,
+)
+from app.services.image_pairs import (
+    fetch_image_pair,
+    fetch_image_pairs_by_disaster,
+)
 
-router = APIRouter(prefix="/image-pair", tags=["image-pairs"])
+router = APIRouter(prefix="/disasters", tags=["image-pairs"])
 
 
-@router.get("/{disaster}/{image_pair_id}/analysis", response_model=AnalysisResponse)
-def get_analysis(disaster: str, image_pair_id: int):
-    data = load_post_disaster_labels(disaster, image_pair_id)
-    if data is None:
-        raise HTTPException(status_code=404, detail="Label file not found")
-
-    features = []
-    for entry in data["features"]["lng_lat"]:
-        props = entry["properties"]
-        uid = props["uid"]
-        original_label = props.get("subtype", "un-classified")
-        vlm_label = original_label
-
-        geometry_dict = wkt_to_geojson_geometry(entry["wkt"])
-
-        features.append(
-            GeojsonFeature(
-                geometry=GeojsonGeometry(**geometry_dict),
-                properties=FeatureProperties(
-                    uid=uid,
-                    original_label=original_label,
-                    vlm_label=vlm_label,
-                ),
-            )
+@router.get(
+    "/{disaster_id}/image-pairs",
+    response_model=ImagePairFeatureCollection,
+)
+def get_image_pairs(
+    disaster_id: int,
+    conn: psycopg.Connection = Depends(get_conn),
+):
+    # Returns GeoJSON FeatureCollection
+    rows = fetch_image_pairs_by_disaster(conn, disaster_id)
+    features = [
+        ImagePairFeature(
+            geometry=GeoJSONGeometry(**row["geometry"]),
+            properties=ImagePairProperties(**row["properties"]),
         )
+        for row in rows
+    ]
+    return ImagePairFeatureCollection(features=features)
 
-    return AnalysisResponse(
-        image_pair_id=image_pair_id,
-        disaster=disaster,
-        features=features,
+
+@router.get(
+    "/{disaster_id}/image-pairs/{xbd_id}",
+    response_model=ImagePairFeature,
+)
+def get_image_pair(
+    disaster_id: int,
+    xbd_id: int,
+    conn: psycopg.Connection = Depends(get_conn),
+):
+    # Returns single GeoJSON Feature
+    row = fetch_image_pair(conn, disaster_id, xbd_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Image pair not found")
+    return ImagePairFeature(
+        geometry=GeoJSONGeometry(**row["geometry"]),
+        properties=ImagePairProperties(**row["properties"]),
     )
