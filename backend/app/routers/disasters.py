@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 import psycopg
 
-from app.db import get_conn
+from app.db.supabase import get_conn
 from app.schemas.disasters import DisasterResponse
 from app.services.disasters import fetch_all_disasters, fetch_disaster_by_id
 

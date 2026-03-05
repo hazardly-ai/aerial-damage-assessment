@@ -17,7 +17,7 @@ class BuildingProperties(BaseModel):
     predicted_damage: str | None = None
     is_correct: bool | None = None
     created_at: datetime | None = None
-    pixel_coords: dict[str, Any] | None = None
+    pixel_coords: list[Any] | None = None
     geom_bbox: GeoJSONGeometry | None = None
 
 
@@ -30,7 +30,7 @@ class BuildingPropertiesNoBox(BaseModel):
     predicted_damage: str | None = None
     is_correct: bool | None = None
     created_at: datetime | None = None
-    pixel_coords: dict[str, Any] | None = None
+    pixel_coords: list[Any] | None = None
 
 
 # Bbox only, no pixel_coords
