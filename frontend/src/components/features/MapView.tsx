@@ -4,43 +4,16 @@ import { useEffect, useRef } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 
+import bbox from "@turf/bbox";
+
+import buildings from "@/assets/hurricane-harvey_00000018_post_disaster.json";
 import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png";
 import preImage from "@/assets/hurricane-harvey_00000018_pre_disaster.png";
 
+import { addBuildingLayer } from "@/utils/addBuildingLayer";
+import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollection";
+
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
-
-/**
- * Hardcoded GeoTransform from xview_geotransforms.json
- * Format:
- * [originX, pixelWidth, 0, originY, 0, pixelHeight]
- */
-const geoTransform = [
-	-95.38617002293283, 4.5424316412367235e-6, 0, 29.757340952690797, 0,
-	-4.5424316412367235e-6,
-];
-
-const IMAGE_SIZE = 1024;
-
-/**
- * Compute geographic bounds from GeoTransform
- * Returns coordinates in Mapbox order:
- * [top-left, top-right, bottom-right, bottom-left]
- */
-function computeBounds(): [
-	[number, number],
-	[number, number],
-	[number, number],
-	[number, number],
-] {
-	const [originX, pixelWidth, , originY, , pixelHeight] = geoTransform;
-
-	return [
-		[originX, originY], // top-left
-		[originX + pixelWidth * IMAGE_SIZE, originY], // top-right
-		[originX + pixelWidth * IMAGE_SIZE, originY + pixelHeight * IMAGE_SIZE], // bottom-right
-		[originX, originY + pixelHeight * IMAGE_SIZE], // bottom-left
-	];
-}
 
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -49,28 +22,37 @@ export default function MapView() {
 	useEffect(() => {
 		if (!containerRef.current) return;
 
-		// Clear container (important for React Strict Mode)
 		containerRef.current.innerHTML = "";
 
 		const beforeDiv = document.createElement("div");
 		const afterDiv = document.createElement("div");
 
-		Object.assign(beforeDiv.style, {
-			position: "absolute",
-			inset: "0",
-		});
-
-		Object.assign(afterDiv.style, {
-			position: "absolute",
-			inset: "0",
-		});
+		Object.assign(beforeDiv.style, { position: "absolute", inset: "0" });
+		Object.assign(afterDiv.style, { position: "absolute", inset: "0" });
 
 		containerRef.current.appendChild(beforeDiv);
 		containerRef.current.appendChild(afterDiv);
 
-		const bounds = computeBounds();
-		const sw = bounds[3]; // bottom-left
-		const ne = bounds[1]; // top-right
+		// Convert WKT → GeoJSON (temporary until API sends GeoJSON directly)
+		const geojson = convertWKTToFeatureCollection(buildings.features.lng_lat);
+
+		// Compute raster bounds dynamically from building geometry
+		const [minX, minY, maxX, maxY] = bbox(geojson);
+
+		const imageBounds: [
+			[number, number],
+			[number, number],
+			[number, number],
+			[number, number],
+		] = [
+			[minX, maxY], // top-left
+			[maxX, maxY], // top-right
+			[maxX, minY], // bottom-right
+			[minX, minY], // bottom-left
+		];
+
+		const sw: [number, number] = [minX, minY];
+		const ne: [number, number] = [maxX, maxY];
 
 		const beforeMap = new mapboxgl.Map({
 			container: beforeDiv,
@@ -85,11 +67,11 @@ export default function MapView() {
 		});
 
 		const onMapsLoaded = () => {
-			// Pre-disaster image
+			// Pre image
 			beforeMap.addSource("pre-image", {
 				type: "image",
 				url: preImage,
-				coordinates: bounds,
+				coordinates: imageBounds,
 			});
 
 			beforeMap.addLayer({
@@ -98,11 +80,11 @@ export default function MapView() {
 				source: "pre-image",
 			});
 
-			// Post-disaster image
+			// Post image
 			afterMap.addSource("post-image", {
 				type: "image",
 				url: postImage,
-				coordinates: bounds,
+				coordinates: imageBounds,
 			});
 
 			afterMap.addLayer({
@@ -111,7 +93,10 @@ export default function MapView() {
 				source: "post-image",
 			});
 
-			// Enable swipe comparison
+			// Add building overlays
+			addBuildingLayer(beforeMap, geojson);
+			addBuildingLayer(afterMap, geojson);
+
 			if (containerRef.current) {
 				compareRef.current = new Compare(
 					beforeMap,
@@ -120,7 +105,6 @@ export default function MapView() {
 				);
 			}
 
-			// Fit camera to image bounds
 			beforeMap.fitBounds([sw, ne], {
 				padding: 0,
 				animate: false,
