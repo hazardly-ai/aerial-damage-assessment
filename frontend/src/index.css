@@ -107,9 +107,8 @@ body {
 	color: hsl(var(--foreground));
 }
 
-
 .mapboxgl-popup-content {
-  	background: transparent;
-  	padding: 0;
-  	box-shadow: none;
+	background: transparent;
+	padding: 0;
+	box-shadow: none;
 }
