@@ -91,23 +91,28 @@ export default function MapView() {
 		const sw: [number, number] = [minLng, minLat];
 		const ne: [number, number] = [maxLng, maxLat];
 
+		const createMap = (container: HTMLElement) => {
+			const map = new mapboxgl.Map({
+				container,
+				style: "mapbox://styles/mapbox/satellite-v9",
+				renderWorldCopies: false,
+			});
+
+			map.on("style.load", () => {
+				map.setPaintProperty("satellite", "raster-opacity", 0.4);
+			});
+
+			// Add zoom and compass controls to the top-right
+			map.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+			return map;
+		};
+
 		// Initialize the "before" map
-		const beforeMap = new mapboxgl.Map({
-			container: beforeDiv,
-			style: "mapbox://styles/mapbox/satellite-v9",
-			renderWorldCopies: false,
-		});
-		// Add zoom and compass controls to the top-right
-		beforeMap.addControl(new mapboxgl.NavigationControl(), "top-right");
+		const beforeMap = createMap(beforeDiv);
 
 		// Initialize the "after" map
-		const afterMap = new mapboxgl.Map({
-			container: afterDiv,
-			style: "mapbox://styles/mapbox/satellite-v9",
-			renderWorldCopies: false,
-		});
-		// Add zoom and compass controls to the top-right
-		afterMap.addControl(new mapboxgl.NavigationControl(), "top-right");
+		const afterMap = createMap(afterDiv);
 
 		/**
 		 * This runs only after BOTH maps finish loading.
