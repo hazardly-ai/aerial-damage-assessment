@@ -85,7 +85,17 @@ def main(disaster_filter: str = None):
         connect_timeout=15,
     ) as conn:
         with conn.cursor() as cur:
-            cur.execute("TRUNCATE buildings, image_pairs, disasters RESTART IDENTITY CASCADE")
+            if disaster_filter:
+                # Delete only the specific disaster data
+                cur.execute("DELETE FROM buildings WHERE image_pair_id IN "
+                           "(SELECT id FROM image_pairs WHERE disaster_id IN "
+                           "(SELECT id FROM disasters WHERE name = %s))", (disaster_filter,))
+                cur.execute("DELETE FROM image_pairs WHERE disaster_id IN "
+                           "(SELECT id FROM disasters WHERE name = %s)", (disaster_filter,))
+                cur.execute("DELETE FROM disasters WHERE name = %s", (disaster_filter,))
+            else:
+                # Full reset when no filter provided
+                cur.execute("TRUNCATE buildings, image_pairs, disasters RESTART IDENTITY CASCADE")
 
             disaster_ids = {}
             for name, dtype in sorted(disasters.items()):
