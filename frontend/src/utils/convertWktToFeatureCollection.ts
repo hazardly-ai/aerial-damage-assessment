@@ -1,42 +1,47 @@
-import type { Feature, FeatureCollection, Polygon } from "geojson";
+import type { Feature, FeatureCollection, Polygon, Position } from "geojson";
+import wellknown from "wellknown";
 
-interface WKTInput {
-	wkt: string;
-	properties?: Record<string, unknown>;
-}
+type GeoTransform = readonly [number, number, number, number, number, number];
 
-function parsePolygonWKT(wkt: string): number[][][] {
-	const match = wkt.match(/^POLYGON\s*\(\((.+)\)\)$/i);
-	if (!match) {
-		throw new Error("Invalid or unsupported WKT (Polygon only)");
-	}
-
-	const coordinates = match[1]
-		.split(",")
-		.map((pair) => pair.trim().split(/\s+/).map(Number));
-
-	return [coordinates];
+function pixelToGeo(coord: Position, geoTransform: GeoTransform): Position {
+	const [originX, pixelWidth, , originY, , pixelHeight] = geoTransform;
+	const [col, row] = coord;
+	return [originX + col * pixelWidth, originY + row * pixelHeight];
 }
 
 export function convertWKTToFeatureCollection(
-	input: WKTInput[],
-): FeatureCollection<Polygon> {
-	const features: Feature<Polygon>[] = input.map((item, index) => ({
-		type: "Feature",
+	buildings: Array<{
+		wkt: string;
+		properties?: Record<string, unknown>;
+	}>,
+	geoTransform?: GeoTransform,
+): FeatureCollection {
+	const features: Feature<Polygon>[] = [];
 
-		// Assign unique id
-		id: index,
+	for (const building of buildings) {
+		const geometry = wellknown.parse(building.wkt) as Polygon | null;
 
-		geometry: {
-			type: "Polygon",
-			coordinates: parsePolygonWKT(item.wkt),
-		},
+		if (!geometry || geometry.type !== "Polygon") continue;
 
-		properties: item.properties ?? {},
-	}));
+		const coordinates = geoTransform
+			? geometry.coordinates.map((ring) =>
+					ring.map((coord) => pixelToGeo(coord, geoTransform)),
+				)
+			: geometry.coordinates;
 
-	return {
-		type: "FeatureCollection",
-		features,
-	};
+		const rawId = building.properties?.uid;
+		const id =
+			typeof rawId === "string" || typeof rawId === "number"
+				? rawId
+				: undefined;
+
+		features.push({
+			type: "Feature",
+			id,
+			geometry: { type: "Polygon", coordinates },
+			properties: building.properties ?? {},
+		});
+	}
+
+	return { type: "FeatureCollection", features };
 }
