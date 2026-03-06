@@ -55,12 +55,15 @@ def pixel_wkt_to_coords(wkt_string: str) -> list:
     return mapping(geom)["coordinates"]
 
 
-def main():
+def main(disaster_filter: str = None):
     t0 = time.perf_counter()
 
     label_files = sorted(LABELS_DIR.glob("*_post_disaster.json"))
+    if disaster_filter:
+        label_files = [f for f in label_files if disaster_filter in f.name]
+    
     if not label_files:
-        sys.exit(f"No label files in {LABELS_DIR}")
+        sys.exit(f"No label files in {LABELS_DIR}" + (f" for disaster '{disaster_filter}'" if disaster_filter else ""))
 
     print(f"Parsing {len(label_files)} files...")
     with ThreadPoolExecutor() as pool:
@@ -69,7 +72,8 @@ def main():
     disasters: dict[str, str] = {}
     for data in parsed:
         m = data["metadata"]
-        disasters.setdefault(m["disaster"], m["disaster_type"])
+        if not disaster_filter or m["disaster"] == disaster_filter:
+            disasters.setdefault(m["disaster"], m["disaster_type"])
 
     print(f"Connecting to {DB_HOST}:{DB_PORT}...")
     with psycopg.connect(
@@ -95,6 +99,9 @@ def main():
             all_buildings = []
             for data, fpath in zip(parsed, label_files):
                 m = data["metadata"]
+                if disaster_filter and m["disaster"] != disaster_filter:
+                    continue
+                    
                 xbd_id = extract_xbd_id(fpath.stem)
 
                 cur.execute(
@@ -160,4 +167,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    disaster_filter = sys.argv[1] if len(sys.argv) > 1 else None
+    main(disaster_filter)

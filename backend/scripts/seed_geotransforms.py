@@ -29,7 +29,7 @@ GEOTRANSFORMS_PATH = Path(
 )
 
 
-def main():
+def main(disaster_filter: str = None):
     t0 = time.perf_counter()
 
     with open(GEOTRANSFORMS_PATH) as f:
@@ -41,11 +41,16 @@ def main():
         user=DB_USER, password=DB_PASSWORD, connect_timeout=15,
     ) as conn:
         with conn.cursor() as cur:
-            cur.execute("""
+            query = """
                 SELECT ip.id, d.name, ip.xbd_id
                 FROM image_pairs ip
                 JOIN disasters d ON d.id = ip.disaster_id
-            """)
+            """
+            if disaster_filter:
+                query += " WHERE d.name = %s"
+                cur.execute(query, (disaster_filter,))
+            else:
+                cur.execute(query)
             rows = cur.fetchall()
 
             updated = 0
@@ -72,4 +77,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    disaster_filter = sys.argv[1] if len(sys.argv) > 1 else None
+    main(disaster_filter)

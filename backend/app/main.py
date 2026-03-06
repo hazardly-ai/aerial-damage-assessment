@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import buildings, disasters, image_pairs
 
-app = FastAPI(title="Aerial Damage Assessment API")
+app = FastAPI(title="Hazardly API")
 
 app.add_middleware(
     CORSMiddleware,

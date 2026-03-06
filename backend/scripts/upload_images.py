@@ -52,12 +52,15 @@ def upload_image(client: httpx.Client, filepath: Path) -> tuple[str, bool]:
     return storage_path, resp.status_code in (200, 201)
 
 
-def main():
+def main(disaster_filter: str = None):
     t0 = time.perf_counter()
 
     image_files = sorted(IMAGES_DIR.glob("*.png"))
+    if disaster_filter:
+        image_files = [f for f in image_files if disaster_filter in f.name]
+    
     if not image_files:
-        sys.exit(f"No images in {IMAGES_DIR}")
+        sys.exit(f"No images in {IMAGES_DIR}" + (f" for disaster '{disaster_filter}'" if disaster_filter else ""))
 
     print(f"Uploading {len(image_files)} images to '{BUCKET}' bucket...")
 
@@ -99,11 +102,16 @@ def main():
         user=DB_USER, password=DB_PASSWORD, connect_timeout=15,
     ) as conn:
         with conn.cursor() as cur:
-            cur.execute("""
+            query = """
                 SELECT ip.id, d.name, ip.xbd_id
                 FROM image_pairs ip
                 JOIN disasters d ON d.id = ip.disaster_id
-            """)
+            """
+            if disaster_filter:
+                query += " WHERE d.name = %s"
+                cur.execute(query, (disaster_filter,))
+            else:
+                cur.execute(query)
             rows = cur.fetchall()
 
             for pair_id, disaster, xbd_id in rows:
@@ -122,4 +130,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    disaster_filter = sys.argv[1] if len(sys.argv) > 1 else None
+    main(disaster_filter)
