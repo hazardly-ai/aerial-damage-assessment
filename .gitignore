@@ -19,3 +19,4 @@ node_modules/
 /vlm/checkpoints
 /vlm/imagery/original
 /vlm/imagery/paired_crops
+*.pyc
