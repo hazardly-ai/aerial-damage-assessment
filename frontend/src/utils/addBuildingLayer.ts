@@ -1,4 +1,5 @@
-import type { Map as MapboxMap } from "mapbox-gl";
+import type { FeatureCollection } from "geojson";
+import type { GeoJSONSource, Map as MapboxMap } from "mapbox-gl";
 
 const SOURCE_ID = "buildings-source";
 const FILL_LAYER_ID = "buildings-fill";
@@ -13,10 +14,7 @@ const DAMAGE_COLOR_MAP: Record<string, string> = {
 	"un-classified": "gray",
 };
 
-export function addBuildingLayer(
-	map: MapboxMap,
-	geojson: GeoJSON.FeatureCollection,
-) {
+export function addBuildingLayer(map: MapboxMap, geojson: FeatureCollection) {
 	if (!map.getStyle()) return;
 
 	// Add or update source
@@ -26,7 +24,7 @@ export function addBuildingLayer(
 			data: geojson,
 		});
 	} else {
-		const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
+		const source = map.getSource(SOURCE_ID) as GeoJSONSource;
 		source.setData(geojson);
 	}
 
