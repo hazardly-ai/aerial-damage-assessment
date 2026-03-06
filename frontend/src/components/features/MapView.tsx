@@ -80,6 +80,9 @@ export default function MapView() {
 			style: "mapbox://styles/mapbox/satellite-v9",
 			renderWorldCopies: false,
 		});
+		beforeMap.on('style.load', () => {
+			beforeMap.setPaintProperty('satellite', 'raster-opacity', 0.4);
+		});
 		// Add zoom and compass controls to the top-right
 		beforeMap.addControl(new mapboxgl.NavigationControl(), "top-right");
 
@@ -88,6 +91,9 @@ export default function MapView() {
 			container: afterDiv,
 			style: "mapbox://styles/mapbox/satellite-v9",
 			renderWorldCopies: false,
+		});
+		afterMap.on('style.load', () => {
+			afterMap.setPaintProperty('satellite', 'raster-opacity', 0.4);
 		});
 		// Add zoom and compass controls to the top-right
 		afterMap.addControl(new mapboxgl.NavigationControl(), "top-right");

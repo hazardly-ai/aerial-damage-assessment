@@ -64,7 +64,7 @@ export function addBuildingLayer(
 			source: SOURCE_ID,
 			paint: {
 				"line-color": "#ffffff",
-				"line-width": 2,
+				"line-width": 1.5,
 			},
 		});
 	}
