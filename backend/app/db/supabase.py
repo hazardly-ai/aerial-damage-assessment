@@ -1,4 +1,5 @@
 import psycopg
+from fastapi import HTTPException
 from psycopg.rows import dict_row
 from supabase import Client, create_client
 
@@ -10,6 +11,8 @@ from app.config import (
     DB_USER,
     SUPABASE_SERVICE_KEY,
     SUPABASE_URL,
+    db_settings_configured,
+    missing_db_settings,
 )
 
 
@@ -18,8 +21,14 @@ def create_supabase_client() -> Client:
 
 
 def get_conn():
-    """FastAPI dependency that yields a psycopg connection to the Supabase
-    PostgreSQL database, then closes it after the request."""
+    """FastAPI dependency that yields a psycopg connection.
+
+    Raises a descriptive error when required DB environment variables are not set.
+    """
+    if not db_settings_configured():
+        missing = ", ".join(missing_db_settings())
+        raise HTTPException(status_code=503, detail=f"Database configuration is incomplete. Missing: {missing}")
+
     conn = psycopg.connect(
         host=DB_HOST,
         port=int(DB_PORT),
