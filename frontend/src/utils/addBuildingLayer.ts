@@ -70,17 +70,12 @@ export function addBuildingLayer(
 				type: "line",
 				source: SOURCE_ID,
 				paint: {
-					"line-color": [
-						"case",
-						["boolean", ["feature-state", "hover"], false],
-						"#202ead",
-						"#ffffff",
-					],
+					"line-color": "#ffffff",
 					"line-width": [
 						"case",
 						["boolean", ["feature-state", "hover"], false],
 						4,
-						1,
+						1.5,
 					],
 				},
 			},
