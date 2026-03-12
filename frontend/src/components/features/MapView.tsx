@@ -15,6 +15,23 @@ import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollec
 // Set Mapbox access token from environment variable
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
+function getDamageColor(damage?: string): string {
+	switch (damage) {
+		case "no-damage":
+			return "#2ecc71";
+		case "minor-damage":
+			return "#f1c40f";
+		case "major-damage":
+			return "#e67e22";
+		case "destroyed":
+			return "#e74c3c";
+		case "un-classified":
+			return "#95a5a6";
+		default:
+			return "#ccc";
+	}
+}
+
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
@@ -218,12 +235,7 @@ export default function MapView() {
 				const uid = feature.properties?.uid;
 				const damage = feature.properties?.predicted_damage;
 
-				let damageColor = "#ccc";
-				if (damage === "no-damage") damageColor = "#2ecc71";
-				else if (damage === "minor-damage") damageColor = "#f1c40f";
-				else if (damage === "major-damage") damageColor = "#e67e22";
-				else if (damage === "destroyed") damageColor = "#e74c3c";
-				else damageColor = "#95a5a6";
+				const damageColor = getDamageColor(damage);
 
 				//Creating a popup at the clickable area that displays the building info
 				new mapboxgl.Popup({ offset: 20 })
@@ -296,12 +308,7 @@ export default function MapView() {
 				const uid = feature.properties?.uid;
 				const damage = feature.properties?.predicted_damage;
 
-				let damageColor = "#ccc";
-				if (damage === "no-damage") damageColor = "#2ecc71";
-				else if (damage === "minor-damage") damageColor = "#f1c40f";
-				else if (damage === "major-damage") damageColor = "#e67e22";
-				else if (damage === "destroyed") damageColor = "#e74c3c";
-				else damageColor = "#95a5a6";
+				const damageColor = getDamageColor(damage);
 
 				new mapboxgl.Popup({ offset: 20 })
 					.setLngLat(e.lngLat)
