@@ -57,7 +57,9 @@ export default function MapView() {
 	// Popup rendered in React above both map containers — never clipped by the
 	// compare slider regardless of which side the user clicked.
 	const [popupData, setPopupData] = useState<PopupData | null>(null);
-	const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null);
+	const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
+		null,
+	);
 
 	// Ref so the map `move` handler always reads the latest lngLat without
 	// stale-closure issues.
@@ -90,7 +92,11 @@ export default function MapView() {
 		closePopup();
 		setBuildingsVisible((prev) => {
 			const next = !prev;
-			if (layersReadyRef.current && beforeMapRef.current && afterMapRef.current) {
+			if (
+				layersReadyRef.current &&
+				beforeMapRef.current &&
+				afterMapRef.current
+			) {
 				setBuildingVisibility(beforeMapRef.current, next);
 				setBuildingVisibility(afterMapRef.current, next);
 			}
@@ -177,14 +183,22 @@ export default function MapView() {
 				url: preImage,
 				coordinates: bounds,
 			});
-			beforeMap.addLayer({ id: "pre-layer", type: "raster", source: "pre-image" });
+			beforeMap.addLayer({
+				id: "pre-layer",
+				type: "raster",
+				source: "pre-image",
+			});
 
 			afterMap.addSource("post-image", {
 				type: "image",
 				url: postImage,
 				coordinates: bounds,
 			});
-			afterMap.addLayer({ id: "post-layer", type: "raster", source: "post-image" });
+			afterMap.addLayer({
+				id: "post-layer",
+				type: "raster",
+				source: "post-image",
+			});
 
 			addBuildingLayer(beforeMap, geojson);
 			addBuildingLayer(afterMap, geojson);
@@ -286,7 +300,11 @@ export default function MapView() {
 
 			// Enable Swipe Comparison
 			if (containerRef.current) {
-				compareRef.current = new Compare(beforeMap, afterMap, containerRef.current);
+				compareRef.current = new Compare(
+					beforeMap,
+					afterMap,
+					containerRef.current,
+				);
 
 				(
 					compareRef.current as Compare & {
@@ -330,7 +348,7 @@ export default function MapView() {
 			    z-index so it's never clipped by the compare slider. Positioned
 			    by projecting the clicked lngLat through afterMap (both maps share
 			    the same viewport, so pixel coords are identical).
-			    left/top must stay inline, they are dynamic pixel values. */}
+			    left/top must stay inline — they are dynamic pixel values. */}
 			{popupData && popupPos && (
 				<div
 					className="popup-overlay"
@@ -339,15 +357,13 @@ export default function MapView() {
 					<div className="popup-card">
 						<div className="popup-header">
 							<span>🏠 Building Damage Report</span>
-							<div
+							<button
+								type="button"
 								className="popup-close-btn"
 								onClick={closePopup}
-								onKeyDown={(e) => e.key === "Enter" && closePopup()}
-								role="button"
-								tabIndex={0}
 							>
 								×
-							</div>
+							</button>
 						</div>
 						<div className="popup-body">
 							<div className="popup-section">
@@ -375,7 +391,9 @@ export default function MapView() {
 				className="building-toggle"
 				data-active={buildingsVisible ? "true" : "false"}
 				onClick={handleToggle}
-				title={buildingsVisible ? "Hide building polygons" : "Show building polygons"}
+				title={
+					buildingsVisible ? "Hide building polygons" : "Show building polygons"
+				}
 			>
 				<span className="building-toggle-track">
 					<span className="building-toggle-knob" />

@@ -9,8 +9,8 @@
 /* Smooth background + text color transitions when switching themes */
 html {
 	transition:
-			background-color 300ms ease,
-			color 300ms ease;
+		background-color 300ms ease,
+		color 300ms ease;
 }
 
 /* Apply smooth transitions to all elements for theme switching */
@@ -18,9 +18,9 @@ html {
 *::before,
 *::after {
 	transition:
-			background-color 300ms ease,
-			color 300ms ease,
-			border-color 300ms ease;
+		background-color 300ms ease,
+		color 300ms ease,
+		border-color 300ms ease;
 }
 
 /*
@@ -170,9 +170,9 @@ body {
 	-webkit-backdrop-filter: blur(8px);
 	box-shadow: var(--toggle-shadow);
 	transition:
-			background 0.2s ease,
-			color 0.2s ease,
-			border-color 0.2s ease;
+		background 0.2s ease,
+		color 0.2s ease,
+		border-color 0.2s ease;
 }
 
 .building-toggle[data-active="true"] {
