@@ -371,6 +371,23 @@ export default function MapView() {
 					afterMap,
 					containerRef.current,
 				);
+
+				// Override the default _getX method to ensure the swipe handle stays within bounds, even if the container is resized or has padding.
+				// This fixes a long-term bug where the slider shifts/teleports when re-sizing the browser. -JH
+				(
+					compareRef.current as Compare & {
+						_mapB: mapboxgl.Map;
+						_getX: (e: MouseEvent | TouchEvent) => number;
+					}
+				)._getX = function (e) {
+					const touch = (e as TouchEvent).touches;
+					const ev = touch ? touch[0] : (e as MouseEvent);
+					const freshBounds = this._mapB.getContainer().getBoundingClientRect();
+					let x = ev.clientX - freshBounds.left;
+					if (x < 0) x = 0;
+					if (x > freshBounds.width) x = freshBounds.width;
+					return x;
+				};
 			}
 
 			// Fit map to image bounds
