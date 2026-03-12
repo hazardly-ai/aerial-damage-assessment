@@ -24,6 +24,7 @@ export function addBuildingLayer(
 		map.addSource(SOURCE_ID, {
 			type: "geojson",
 			data: geojson,
+			generateId: true,
 		});
 	} else {
 		const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
@@ -51,7 +52,12 @@ export function addBuildingLayer(
 					DAMAGE_COLOR_MAP.destroyed,
 					DAMAGE_COLOR_MAP["un-classified"], // default
 				],
-				"fill-opacity": 0.4, // semi-transparent
+				"fill-opacity": [
+					"case",
+					["boolean", ["feature-state", "hover"], false],
+					0.7,
+					0.4
+				],
 			},
 		});
 	}
@@ -63,9 +69,20 @@ export function addBuildingLayer(
 			type: "line",
 			source: SOURCE_ID,
 			paint: {
-				"line-color": "#ffffff",
-				"line-width": 2,
+				"line-color": [
+					"case",
+					["boolean", ["feature-state", "hover"], false],
+					"#202ead",
+					"#ffffff"
+				],
+				"line-width": [
+					"case",
+					["boolean", ["feature-state", "hover"], false],
+					4,
+					1
+	],
 			},
-		});
+		}, FILL_LAYER_ID
+	);
 	}
 }

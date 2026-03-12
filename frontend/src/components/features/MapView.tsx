@@ -127,47 +127,82 @@ export default function MapView() {
 			addBuildingLayer(beforeMap, geojson);
 			addBuildingLayer(afterMap, geojson);
 
-			//When the mouse is placed on a building polygon the cursor is chnaged to "pointer"
-			//Make the user feel that the building is clickable
-			beforeMap.on("mouseenter", "buildings-fill", (e) => {
+			
+			let hoveredBeforeId: number | null = null;
+
+			beforeMap.on("mousemove", "buildings-fill", (e) => {
+				const feature = e.features?.[0];
+				if (!feature) return;
+				
+				console.log(feature.id);
+				
 				beforeMap.getCanvas().style.cursor = "pointer";
 
-				const feature = e.features?.[0];
-				if(!feature)
-					return;
+				if (hoveredBeforeId !== null) {
+					beforeMap.setFeatureState(
+						{ source: "buildings-source", id: hoveredBeforeId },
+						{ hover: false }
+					);
+				}
 
-				beforeMap.setPaintProperty("buildings-outline", "line-color", "#0df3f3cb");
-				beforeMap.setPaintProperty("buildings-outline", "line-width", 3);
-			});  
+				hoveredBeforeId = feature.id as number;
 
-			//Restores the cursor when the mouse is moved away from the building polygon
-			beforeMap.on("mouseleave", "buildings-fill", () => {
-				beforeMap.getCanvas().style.cursor = "";
-				beforeMap.setPaintProperty("buildings-outline", "line-color", "white");
-  				beforeMap.setPaintProperty("buildings-outline", "line-width", 1);
+				beforeMap.setFeatureState(
+					{ source: "buildings-source", id: hoveredBeforeId },
+					{ hover: true }
+				);
 			});
 
-			//Applying the same hover interaction to the after map as well
-			afterMap.on("mouseenter", "buildings-fill", (e) => {
+			beforeMap.on("mouseleave", "buildings-fill", () => {
+				beforeMap.getCanvas().style.cursor = "";
+
+				if (hoveredBeforeId !== null) {
+					beforeMap.setFeatureState(
+					{ source: "buildings-source", id: hoveredBeforeId },
+					{ hover: false }
+				);
+				}
+
+				hoveredBeforeId = null;
+			});
+
+			
+			let hoveredAfterId: number | null = null;
+
+			afterMap.on("mousemove", "buildings-fill", (e) => {
+				const feature = e.features?.[0];
+				if (!feature) return;
+
 				afterMap.getCanvas().style.cursor = "pointer";
 
-				const feature = e.features?.[0];
-  				if (!feature) 
-					return;
+				if (hoveredAfterId !== null) {
+					afterMap.setFeatureState(
+						{ source: "buildings-source", id: hoveredAfterId },
+						{ hover: false }
+					);
+				}
 
-  				 afterMap.setPaintProperty("buildings-outline", "line-color", "#0df3f3cb");
-  				afterMap.setPaintProperty("buildings-outline", "line-width", 3);
+				hoveredAfterId = feature.id as number;
 
-			});  
+				afterMap.setFeatureState(
+					{ source: "buildings-source", id: hoveredAfterId },
+					{ hover: true }
+				);
+			});
 
 			afterMap.on("mouseleave", "buildings-fill", () => {
 				afterMap.getCanvas().style.cursor = "";
+
+				if (hoveredAfterId !== null) {
+					afterMap.setFeatureState(
+					{ source: "buildings-source", id: hoveredAfterId },
+					{ hover: false }
+					);
+				}
+
+				hoveredAfterId = null;
+			});
 			
-				afterMap.setPaintProperty("buildings-outline", "line-color", "white");
-  				afterMap.setPaintProperty("buildings-outline", "line-width", 1);
-
-			}) ;
-
         //WHen the building is clicked on the before map shoing some information about that building
 		beforeMap.on("click", "buildings-fill", (e) => {
 			//Mpabox returns a list of features and we take the first one
