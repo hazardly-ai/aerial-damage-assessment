@@ -32,6 +32,99 @@ function getDamageColor(damage?: string): string {
 	}
 }
 
+function createPopupHTML(uid: string, damage: string, damageColor: string) {
+	return `
+	<div style="
+		width:260px;
+		background:hsl(var(--card));
+		color:hsl(var(--card-foreground));
+		border-radius:12px;
+		overflow:hidden;
+		font-family:'Space Grotesk', 'Segoe UI', sans-serif;
+		box-shadow:0 10px 28px rgba(0,0,0,0.35);
+	">
+
+		<div style="
+			background:linear-gradient(90deg,#6366f1,#8b5cf6);
+			color:white;
+			padding:10px 14px;
+			font-size:14px;
+			font-weight:600;
+			display:flex;
+			align-items:center;
+			justify-content:space-between;
+		">
+			<span>🏠 Building Damage Report</span>
+
+			<div
+			  onclick="this.closest('.mapboxgl-popup').remove()"
+			  style="
+				width:28px;
+				height:28px;
+				display:flex;
+				align-items:center;
+				justify-content:center;
+				line-height:1;
+				font-size:18px;
+				background:rgba(0,0,0,0.25);
+				border-radius:8px;
+				cursor:pointer;
+				user-select:none;
+				flex-shrink:0;
+			  "
+			>×</div>
+		</div>
+
+		<div style="
+			padding:12px 14px;
+			font-size:13px;
+		">
+
+			<div style="margin-bottom:14px;">
+				<div style="
+					font-size:11px;
+					opacity:0.7;
+					margin-bottom:2px;
+				">
+					Building ID
+				</div>
+
+				<div style="
+					font-weight:600;
+					word-break:break-all;
+				">
+					${uid}
+				</div>
+			</div>
+
+			<div>
+				<div style="
+					font-size:11px;
+					opacity:0.7;
+					margin-bottom:4px;
+				">
+					Predicted Damage
+				</div>
+
+				<span style="
+					display:inline-block;
+					padding:4px 10px;
+					border-radius:6px;
+					background:${damageColor};
+					color:white;
+					font-weight:600;
+					font-size:12px;
+				">
+					${damage}
+				</span>
+			</div>
+
+		</div>
+
+	</div>
+	`;
+}
+
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
@@ -238,136 +331,24 @@ export default function MapView() {
 				const damageColor = getDamageColor(damage);
 
 				//Creating a popup at the clickable area that displays the building info
-				new mapboxgl.Popup({ offset: 20 })
+				new mapboxgl.Popup({ offset: 20, closeButton: false })
 					.setLngLat(e.lngLat)
-					.setHTML(`
-    				<div style="
-      				width:260px;
-					background:white;
-					border-radius:12px;
-					overflow:hidden;
-					font-family:Arial, sans-serif;
-					box-shadow:0 8px 22px rgba(0,0,0,0.35);
-					">
-    
-					<div style="
-						background:linear-gradient(90deg,#5f6dff,#9c6bff);
-						color:white;
-						padding:10px 36px 10px 14px;
-						font-size:15px;
-						font-weight:bold;
-					">
-					🏠 Building Damage Report
-					</div>
+					.setHTML(createPopupHTML(uid, damage, damageColor))
 
-					<div style="
-						padding:12px 14px;
-						font-size:13px;
-						font-weight:bold;
-						color:#444;
-					">
-
-						<div style="margin-bottom:14px;">
-						<div style="font-weight:bold; margin-bottom:4px;">Building ID:</div>
-						<div>${uid}</div>
-						</div>
-
-						<div>
-						<span style="font-weight:bold;">Predicted Damage:</span><br/>
-
-						<span style="
-							display:inline-block;
-							margin-top:4px;
-							padding:4px 10px;
-							border-radius:6px;
-							background:${damageColor};
-							color:white;
-							font-weight:bold;
-						">
-						${damage}
-						</span>
-
-						</div>
-
-						</div>
-
-						</div>
-  						`)
 					.addTo(beforeMap);
 			});
 
-			//Same interaction after clicking for teh after map
 			afterMap.on("click", "buildings-fill", (e) => {
-				//Mpabox returns a list of features and we take the first one
 				const feature = e.features?.[0];
-
-				//if for osme reason no feature is found the stopping there
 				if (!feature) return;
 
-				//Getting the building id and predicted damage from properties
 				const uid = feature.properties?.uid;
 				const damage = feature.properties?.predicted_damage;
-
 				const damageColor = getDamageColor(damage);
 
-				new mapboxgl.Popup({ offset: 20 })
+				new mapboxgl.Popup({ offset: 20, closeButton: false })
 					.setLngLat(e.lngLat)
-					.setHTML(`
-					<div style="
-					 	width:260px;
-						background:white;
-						border-radius:12px;
-						overflow:hidden;
-						font-family:Arial, sans-serif;
-						box-shadow:0 8px 22px rgba(0, 0, 0, 0.35);
-					">
-					
-					<div style="
-						background:linear-gradient(90deg, #5f6dff, #9c6bff);
-						color:white;
-						padding:10px 36px 10px 14px;
-						font-size:15px;
-						font-weight:bold;
-						
-					">
-					🏠 Building Damage Report
-					</div>
-
-					<div style="
-						padding:12px 14px;
-						font-size:13px;
-						font-weight:bold;
-						margin-bottom:8px;
-						color:#444;
-					">
-
-					<div style="margin-bottom:14px;">
-  						<div style="font-weight:bold; margin-bottom:4px;">Building ID:</div>
-  						<div>${uid}</div>
-					</div>
-
-					<div>
-					<span style="
-						font-weight:bold;">Predicted Damage:</span><br/>
-						<span style="
-  							display:inline-block;
-  							margin-top:4px;
-  							 padding:4px 10px;
-  							border-radius:6px;
-  							background:${damageColor};
-							color:white;
-  							font-weight:bold;
-						">
-						${damage}
-					</span>
-					</div>
-
-					</div>
-
-				</div>
-						
-				`)
-
+					.setHTML(createPopupHTML(uid, damage, damageColor))
 					.addTo(afterMap);
 			});
 
