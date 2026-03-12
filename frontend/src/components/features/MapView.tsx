@@ -195,6 +195,10 @@ export default function MapView() {
 				map.setPaintProperty("satellite", "raster-opacity", 0.4);
 			});
 
+			map.on("error", (e) => {
+				console.error("Mapbox error:", e);
+			});
+
 			// Add zoom and compass controls to the top-right
 			map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
