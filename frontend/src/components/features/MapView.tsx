@@ -225,12 +225,20 @@ export default function MapView() {
 						{ source: "buildings-source", id: hoveredBeforeId },
 						{ hover: false },
 					);
+					afterMap.setFeatureState(
+						{ source: "buildings-source", id: hoveredBeforeId },
+						{ hover: false },
+					); // ← sync
 				}
 				hoveredBeforeId = feature.id as number;
 				beforeMap.setFeatureState(
 					{ source: "buildings-source", id: hoveredBeforeId },
 					{ hover: true },
 				);
+				afterMap.setFeatureState(
+					{ source: "buildings-source", id: hoveredBeforeId },
+					{ hover: true },
+				); // ← sync
 			});
 
 			beforeMap.on("mouseleave", "buildings-fill", () => {
@@ -240,6 +248,10 @@ export default function MapView() {
 						{ source: "buildings-source", id: hoveredBeforeId },
 						{ hover: false },
 					);
+					afterMap.setFeatureState(
+						{ source: "buildings-source", id: hoveredBeforeId },
+						{ hover: false },
+					); // ← sync
 				}
 				hoveredBeforeId = null;
 			});
@@ -256,12 +268,35 @@ export default function MapView() {
 						{ source: "buildings-source", id: hoveredAfterId },
 						{ hover: false },
 					);
+					beforeMap.setFeatureState(
+						{ source: "buildings-source", id: hoveredAfterId },
+						{ hover: false },
+					); // ← sync
 				}
 				hoveredAfterId = feature.id as number;
 				afterMap.setFeatureState(
 					{ source: "buildings-source", id: hoveredAfterId },
 					{ hover: true },
 				);
+				beforeMap.setFeatureState(
+					{ source: "buildings-source", id: hoveredAfterId },
+					{ hover: true },
+				); // ← sync
+			});
+
+			afterMap.on("mouseleave", "buildings-fill", () => {
+				afterMap.getCanvas().style.cursor = "";
+				if (hoveredAfterId !== null) {
+					afterMap.setFeatureState(
+						{ source: "buildings-source", id: hoveredAfterId },
+						{ hover: false },
+					);
+					beforeMap.setFeatureState(
+						{ source: "buildings-source", id: hoveredAfterId },
+						{ hover: false },
+					); // ← sync
+				}
+				hoveredAfterId = null;
 			});
 
 			afterMap.on("mouseleave", "buildings-fill", () => {
