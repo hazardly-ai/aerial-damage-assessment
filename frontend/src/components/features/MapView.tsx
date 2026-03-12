@@ -1,6 +1,6 @@
 import mapboxgl from "mapbox-gl";
 import Compare from "mapbox-gl-compare";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 import bbox from "@turf/bbox";
@@ -84,7 +84,9 @@ export default function MapView() {
 	// Toggle handler — safe to call before layers are ready (no-op guard).
 	const handleToggle = useCallback(() => {
 		// Dismiss any open popups before toggling visibility.
-		activePopupsRef.current.forEach((p) => p.remove());
+		activePopupsRef.current.forEach((p) => {
+			p.remove();
+		});
 		activePopupsRef.current = [];
 
 		setBuildingsVisible((prev) => {
@@ -312,7 +314,10 @@ export default function MapView() {
 				const damage = feature.properties?.predicted_damage;
 				const damageColor = getDamageColor(damage);
 
-				const beforePopup = new mapboxgl.Popup({ offset: 20, closeButton: false })
+				const beforePopup = new mapboxgl.Popup({
+					offset: 20,
+					closeButton: false,
+				})
 					.setLngLat(e.lngLat)
 					.setHTML(createPopupHTML(uid, damage, damageColor))
 					.addTo(beforeMap);
@@ -333,7 +338,10 @@ export default function MapView() {
 				const damage = feature.properties?.predicted_damage;
 				const damageColor = getDamageColor(damage);
 
-				const afterPopup = new mapboxgl.Popup({ offset: 20, closeButton: false })
+				const afterPopup = new mapboxgl.Popup({
+					offset: 20,
+					closeButton: false,
+				})
 					.setLngLat(e.lngLat)
 					.setHTML(createPopupHTML(uid, damage, damageColor))
 					.addTo(afterMap);
@@ -401,20 +409,16 @@ export default function MapView() {
 	return (
 		<div className="map-wrapper">
 			{/* Map container */}
-			<div
-				ref={containerRef}
-				className="map-container"
-			/>
+			<div ref={containerRef} className="map-container" />
 
 			{/* Building polygon toggle */}
 			<button
+				type="button"
 				className="building-toggle"
 				data-active={buildingsVisible ? "true" : "false"}
 				onClick={handleToggle}
 				title={
-					buildingsVisible
-						? "Hide building polygons"
-						: "Show building polygons"
+					buildingsVisible ? "Hide building polygons" : "Show building polygons"
 				}
 			>
 				<span className="building-toggle-track">
