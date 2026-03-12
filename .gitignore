@@ -17,3 +17,5 @@ node_modules/
 
 .vite/
 /vlm/checkpoints
+/vlm/imagery
+*.pyc
