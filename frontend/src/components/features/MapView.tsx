@@ -34,95 +34,27 @@ function getDamageColor(damage?: string): string {
 
 function createPopupHTML(uid: string, damage: string, damageColor: string) {
 	return `
-	<div style="
-		width:260px;
-		background:hsl(var(--card));
-		color:hsl(var(--card-foreground));
-		border-radius:12px;
-		overflow:hidden;
-		font-family:'Space Grotesk', 'Segoe UI', sans-serif;
-		box-shadow:0 10px 28px rgba(0,0,0,0.35);
-	">
+    <div class="popup-card">
 
-		<div style="
-			background:linear-gradient(90deg,#6366f1,#8b5cf6);
-			color:white;
-			padding:10px 14px;
-			font-size:14px;
-			font-weight:600;
-			display:flex;
-			align-items:center;
-			justify-content:space-between;
-		">
-			<span>🏠 Building Damage Report</span>
+      <div class="popup-header">
+        <span>🏠 Building Damage Report</span>
+        <div onclick="this.closest('.mapboxgl-popup').remove()" class="popup-close-btn">×</div>
+      </div>
 
-			<div
-			  onclick="this.closest('.mapboxgl-popup').remove()"
-			  style="
-				width:28px;
-				height:28px;
-				display:flex;
-				align-items:center;
-				justify-content:center;
-				line-height:1;
-				font-size:18px;
-				background:rgba(0,0,0,0.25);
-				border-radius:8px;
-				cursor:pointer;
-				user-select:none;
-				flex-shrink:0;
-			  "
-			>×</div>
-		</div>
+      <div class="popup-body">
+        <div class="popup-section">
+          <div class="popup-label">Building ID</div>
+          <div class="popup-value">${uid}</div>
+        </div>
 
-		<div style="
-			padding:12px 14px;
-			font-size:13px;
-		">
+        <div class="popup-section">
+          <div class="popup-label">Predicted Damage</div>
+          <span class="popup-damage" style="background:${damageColor}">${damage}</span>
+        </div>
+      </div>
 
-			<div style="margin-bottom:14px;">
-				<div style="
-					font-size:11px;
-					opacity:0.7;
-					margin-bottom:2px;
-				">
-					Building ID
-				</div>
-
-				<div style="
-					font-weight:600;
-					word-break:break-all;
-				">
-					${uid}
-				</div>
-			</div>
-
-			<div>
-				<div style="
-					font-size:11px;
-					opacity:0.7;
-					margin-bottom:4px;
-				">
-					Predicted Damage
-				</div>
-
-				<span style="
-					display:inline-block;
-					padding:4px 10px;
-					border-radius:6px;
-					background:${damageColor};
-					color:white;
-					font-weight:600;
-					font-size:12px;
-				">
-					${damage}
-				</span>
-			</div>
-
-		</div>
-
-	</div>
-	`;
+    </div>
+  `;
 }
 
 export default function MapView() {
