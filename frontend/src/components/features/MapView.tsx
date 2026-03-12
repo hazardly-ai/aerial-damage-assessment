@@ -320,12 +320,12 @@ export default function MapView() {
 				hoveredAfterId = null;
 			});
 
-			//WHen the building is clicked on the before map shoing some information about that building
+			//WHen the building is clicked on the before map showing some information about that building
 			beforeMap.on("click", "buildings-fill", (e) => {
-				//Mpabox returns a list of features and we take the first one
+				//Mapbox returns a list of features and we take the first one
 				const feature = e.features?.[0];
 
-				//if for osme reason no feature is found the stopping there
+				//if for some reason no feature is found the stopping there
 				if (!feature) return;
 
 				//Getting the building id and predicted damage from properties
