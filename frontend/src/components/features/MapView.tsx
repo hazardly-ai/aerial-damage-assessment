@@ -1,6 +1,6 @@
 import mapboxgl from "mapbox-gl";
 import Compare from "mapbox-gl-compare";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 import bbox from "@turf/bbox";
@@ -57,9 +57,49 @@ function createPopupHTML(uid: string, damage: string, damageColor: string) {
   `;
 }
 
+/** Apply visibility to both building layers on a single map instance. */
+const setBuildingVisibility = (map: mapboxgl.Map, visible: boolean) => {
+	const visibility = visible ? "visible" : "none";
+	map.setLayoutProperty("buildings-fill", "visibility", visibility);
+	map.setLayoutProperty("buildings-outline", "visibility", visibility);
+};
+
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
+
+	// Keep stable refs to both map instances so the toggle can reach them
+	// after the useEffect has finished setting up.
+	const beforeMapRef = useRef<mapboxgl.Map | null>(null);
+	const afterMapRef = useRef<mapboxgl.Map | null>(null);
+
+	// Track whether layers have been added yet (both maps must be loaded first).
+	const layersReadyRef = useRef(false);
+
+	// Track all open popups so the toggle can dismiss them.
+	const activePopupsRef = useRef<mapboxgl.Popup[]>([]);
+
+	const [buildingsVisible, setBuildingsVisible] = useState(true);
+
+	// Toggle handler — safe to call before layers are ready (no-op guard).
+	const handleToggle = useCallback(() => {
+		// Dismiss any open popups before toggling visibility.
+		activePopupsRef.current.forEach((p) => p.remove());
+		activePopupsRef.current = [];
+
+		setBuildingsVisible((prev) => {
+			const next = !prev;
+			if (
+				layersReadyRef.current &&
+				beforeMapRef.current &&
+				afterMapRef.current
+			) {
+				setBuildingVisibility(beforeMapRef.current, next);
+				setBuildingVisibility(afterMapRef.current, next);
+			}
+			return next;
+		});
+	}, []);
 
 	useEffect(() => {
 		if (!containerRef.current) return;
@@ -92,7 +132,7 @@ export default function MapView() {
 			];
 			if (feature.properties) {
 				feature.properties.predicted_damage =
-					damageClasses[i % damageClasses.length]; // loop through classes
+					damageClasses[i % damageClasses.length];
 			}
 		});
 
@@ -139,9 +179,11 @@ export default function MapView() {
 
 		// Initialize the "before" map
 		const beforeMap = createMap(beforeDiv);
+		beforeMapRef.current = beforeMap;
 
 		// Initialize the "after" map
 		const afterMap = createMap(afterDiv);
+		afterMapRef.current = afterMap;
 
 		/**
 		 * This runs only after BOTH maps finish loading.
@@ -177,6 +219,15 @@ export default function MapView() {
 			// Add building overlays to BOTH maps
 			addBuildingLayer(beforeMap, geojson);
 			addBuildingLayer(afterMap, geojson);
+
+			// Mark layers as ready and sync with any toggle state that changed
+			// before load finished (e.g. user clicked very quickly).
+			layersReadyRef.current = true;
+			setBuildingsVisible((current) => {
+				setBuildingVisibility(beforeMap, current);
+				setBuildingVisibility(afterMap, current);
+				return current;
+			});
 
 			let hoveredBeforeId: number | null = null;
 
@@ -252,26 +303,26 @@ export default function MapView() {
 				hoveredAfterId = null;
 			});
 
-			//WHen the building is clicked on the before map showing some information about that building
+			// When the building is clicked on the before map, show information about that building
 			beforeMap.on("click", "buildings-fill", (e) => {
-				//Mapbox returns a list of features and we take the first one
 				const feature = e.features?.[0];
-
-				//if for some reason no feature is found the stopping there
 				if (!feature) return;
 
-				//Getting the building id and predicted damage from properties
 				const uid = feature.properties?.uid;
 				const damage = feature.properties?.predicted_damage;
-
 				const damageColor = getDamageColor(damage);
 
-				//Creating a popup at the clickable area that displays the building info
-				new mapboxgl.Popup({ offset: 20, closeButton: false })
+				const beforePopup = new mapboxgl.Popup({ offset: 20, closeButton: false })
 					.setLngLat(e.lngLat)
 					.setHTML(createPopupHTML(uid, damage, damageColor))
-
 					.addTo(beforeMap);
+
+				activePopupsRef.current.push(beforePopup);
+				beforePopup.on("close", () => {
+					activePopupsRef.current = activePopupsRef.current.filter(
+						(p) => p !== beforePopup,
+					);
+				});
 			});
 
 			afterMap.on("click", "buildings-fill", (e) => {
@@ -282,10 +333,17 @@ export default function MapView() {
 				const damage = feature.properties?.predicted_damage;
 				const damageColor = getDamageColor(damage);
 
-				new mapboxgl.Popup({ offset: 20, closeButton: false })
+				const afterPopup = new mapboxgl.Popup({ offset: 20, closeButton: false })
 					.setLngLat(e.lngLat)
 					.setHTML(createPopupHTML(uid, damage, damageColor))
 					.addTo(afterMap);
+
+				activePopupsRef.current.push(afterPopup);
+				afterPopup.on("close", () => {
+					activePopupsRef.current = activePopupsRef.current.filter(
+						(p) => p !== afterPopup,
+					);
+				});
 			});
 
 			// Enable Swipe Comparison
@@ -296,8 +354,10 @@ export default function MapView() {
 					containerRef.current,
 				);
 
-				// Override the default _getX method to ensure the swipe handle stays within bounds, even if the container is resized or has padding.
-				// This fixes a long-term bug where the slider shifts/teleports when re-sizing the browser. -JH
+				// Override the default _getX method to ensure the swipe handle stays
+				// within bounds, even if the container is resized or has padding.
+				// This fixes a long-term bug where the slider shifts/teleports when
+				// re-sizing the browser. -JH
 				(
 					compareRef.current as Compare & {
 						_mapB: mapboxgl.Map;
@@ -329,6 +389,9 @@ export default function MapView() {
 
 		// Cleanup on component unmount
 		return () => {
+			layersReadyRef.current = false;
+			beforeMapRef.current = null;
+			afterMapRef.current = null;
 			compareRef.current?.remove();
 			beforeMap.remove();
 			afterMap.remove();
@@ -336,15 +399,29 @@ export default function MapView() {
 	}, []);
 
 	return (
-		<div
-			ref={containerRef}
-			style={{
-				position: "relative",
-				width: "100%",
-				height: "600px",
-				borderRadius: "16px",
-				overflow: "hidden",
-			}}
-		/>
+		<div className="map-wrapper">
+			{/* Map container */}
+			<div
+				ref={containerRef}
+				className="map-container"
+			/>
+
+			{/* Building polygon toggle */}
+			<button
+				className="building-toggle"
+				data-active={buildingsVisible ? "true" : "false"}
+				onClick={handleToggle}
+				title={
+					buildingsVisible
+						? "Hide building polygons"
+						: "Show building polygons"
+				}
+			>
+				<span className="building-toggle-track">
+					<span className="building-toggle-knob" />
+				</span>
+				Show Building Polygons
+			</button>
+		</div>
 	);
 }

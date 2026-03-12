@@ -9,8 +9,8 @@
 /* Smooth background + text color transitions when switching themes */
 html {
 	transition:
-		background-color 300ms ease,
-		color 300ms ease;
+			background-color 300ms ease,
+			color 300ms ease;
 }
 
 /* Apply smooth transitions to all elements for theme switching */
@@ -18,12 +18,12 @@ html {
 *::before,
 *::after {
 	transition:
-		background-color 300ms ease,
-		color 300ms ease,
-		border-color 300ms ease;
+			background-color 300ms ease,
+			color 300ms ease,
+			border-color 300ms ease;
 }
 
-/* 
+/*
    Light mode color system
    These CSS variables are used throughout the app via Tailwind (hsl(var(--...)))
 */
@@ -58,9 +58,18 @@ html {
 
 	/* Global border radius used for components */
 	--radius: 0.75rem;
+
+	/* Building toggle — light mode */
+	--toggle-bg: rgba(255, 255, 255, 0.88);
+	--toggle-bg-off: rgba(255, 255, 255, 0.65);
+	--toggle-border: rgba(0, 0, 0, 0.12);
+	--toggle-color: hsl(222 47% 11%);
+	--toggle-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+	--toggle-track-off: rgba(0, 0, 0, 0.18);
+	--toggle-track-on: hsl(var(--primary));
 }
 
-/* 
+/*
    Dark mode overrides
    Activated when the "dark" class is added to <html>
 */
@@ -92,6 +101,15 @@ html {
 	--border: 220 8% 18%;
 	--input: 220 8% 18%;
 	--ring: 199 89% 55%;
+
+	/* Building toggle — dark mode */
+	--toggle-bg: rgba(15, 23, 42, 0.82);
+	--toggle-bg-off: rgba(15, 23, 42, 0.55);
+	--toggle-border: rgba(255, 255, 255, 0.18);
+	--toggle-color: hsl(210 20% 96%);
+	--toggle-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+	--toggle-track-off: rgba(255, 255, 255, 0.2);
+	--toggle-track-on: hsl(var(--primary));
 }
 
 /* Base body styling */
@@ -105,6 +123,103 @@ body {
 	/* Use theme variables for background and text color */
 	background-color: hsl(var(--background));
 	color: hsl(var(--foreground));
+}
+
+/* Map wrapper + container */
+
+.map-wrapper {
+	position: relative;
+	width: 100%;
+	height: 600px;
+}
+
+.map-container {
+	position: absolute;
+	inset: 0;
+	border-radius: 16px;
+	overflow: hidden;
+}
+
+
+/* Building polygon toggle button */
+
+.building-toggle {
+	position: absolute;
+	bottom: 16px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 10;
+
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 14px;
+
+	border-radius: 9999px;
+	border: 1px solid var(--toggle-border);
+	background: var(--toggle-bg-off);
+	color: var(--toggle-color);
+
+	font-family: "Space Grotesk", "Segoe UI", sans-serif;
+	font-size: 13px;
+	font-weight: 500;
+	letter-spacing: 0.01em;
+	cursor: pointer;
+	user-select: none;
+
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	box-shadow: var(--toggle-shadow);
+	transition:
+			background 0.2s ease,
+			color 0.2s ease,
+			border-color 0.2s ease;
+}
+
+.building-toggle[data-active="true"] {
+	background: var(--toggle-bg);
+}
+
+/* Track (the pill behind the knob) */
+.building-toggle-track {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	width: 32px;
+	height: 18px;
+	padding: 2px;
+	border-radius: 9999px;
+	background: var(--toggle-track-off);
+	transition: background 0.2s ease;
+}
+
+.building-toggle[data-active="true"] .building-toggle-track {
+	background: var(--toggle-track-on);
+}
+
+/* Knob */
+.building-toggle-knob {
+	display: block;
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background: #fff;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+	transform: translateX(0);
+	transition: transform 0.2s ease;
+}
+
+.building-toggle[data-active="true"] .building-toggle-knob {
+	transform: translateX(14px);
+}
+
+/* ---------------------------------------------------------------------------
+   Mapbox popup overrides
+--------------------------------------------------------------------------- */
+
+.mapboxgl-popup-tip {
+	border-top-color: hsl(var(--card)) !important;
+	border-bottom-color: hsl(var(--card)) !important;
 }
 
 .mapboxgl-popup-content {
@@ -162,7 +277,7 @@ body {
 	cursor: pointer;
 	user-select: none;
 	flex-shrink: 0;
-	transition: background 0.2s ease; /* smooth color change only */
+	transition: background 0.2s ease;
 }
 
 .popup-close-btn:hover {
