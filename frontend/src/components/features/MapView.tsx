@@ -228,7 +228,7 @@ export default function MapView() {
 					afterMap.setFeatureState(
 						{ source: "buildings-source", id: hoveredBeforeId },
 						{ hover: false },
-					); // ← sync
+					); // sync both maps
 				}
 				hoveredBeforeId = feature.id as number;
 				beforeMap.setFeatureState(
@@ -238,7 +238,7 @@ export default function MapView() {
 				afterMap.setFeatureState(
 					{ source: "buildings-source", id: hoveredBeforeId },
 					{ hover: true },
-				); // ← sync
+				); // sync both maps
 			});
 
 			beforeMap.on("mouseleave", "buildings-fill", () => {
@@ -251,7 +251,7 @@ export default function MapView() {
 					afterMap.setFeatureState(
 						{ source: "buildings-source", id: hoveredBeforeId },
 						{ hover: false },
-					); // ← sync
+					); // sync both maps
 				}
 				hoveredBeforeId = null;
 			});
@@ -271,7 +271,7 @@ export default function MapView() {
 					beforeMap.setFeatureState(
 						{ source: "buildings-source", id: hoveredAfterId },
 						{ hover: false },
-					); // ← sync
+					); // sync both maps
 				}
 				hoveredAfterId = feature.id as number;
 				afterMap.setFeatureState(
@@ -281,7 +281,7 @@ export default function MapView() {
 				beforeMap.setFeatureState(
 					{ source: "buildings-source", id: hoveredAfterId },
 					{ hover: true },
-				); // ← sync
+				); // sync both maps
 			});
 
 			afterMap.on("mouseleave", "buildings-fill", () => {
@@ -294,7 +294,7 @@ export default function MapView() {
 					beforeMap.setFeatureState(
 						{ source: "buildings-source", id: hoveredAfterId },
 						{ hover: false },
-					); // ← sync
+					); // sync both maps
 				}
 				hoveredAfterId = null;
 			});
