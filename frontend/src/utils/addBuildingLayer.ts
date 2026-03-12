@@ -56,7 +56,7 @@ export function addBuildingLayer(
 					"case",
 					["boolean", ["feature-state", "hover"], false],
 					0.7,
-					0.4
+					0.4,
 				],
 			},
 		});
@@ -64,25 +64,27 @@ export function addBuildingLayer(
 
 	// Add or update outline layer
 	if (!map.getLayer(OUTLINE_LAYER_ID)) {
-		map.addLayer({
-			id: OUTLINE_LAYER_ID,
-			type: "line",
-			source: SOURCE_ID,
-			paint: {
-				"line-color": [
-					"case",
-					["boolean", ["feature-state", "hover"], false],
-					"#202ead",
-					"#ffffff"
-				],
-				"line-width": [
-					"case",
-					["boolean", ["feature-state", "hover"], false],
-					4,
-					1
-	],
+		map.addLayer(
+			{
+				id: OUTLINE_LAYER_ID,
+				type: "line",
+				source: SOURCE_ID,
+				paint: {
+					"line-color": [
+						"case",
+						["boolean", ["feature-state", "hover"], false],
+						"#202ead",
+						"#ffffff",
+					],
+					"line-width": [
+						"case",
+						["boolean", ["feature-state", "hover"], false],
+						4,
+						1,
+					],
+				},
 			},
-		}, FILL_LAYER_ID
-	);
+			FILL_LAYER_ID,
+		);
 	}
 }
