@@ -16,7 +16,6 @@ def fetch_buildings_by_image_pair(
         'predicted_damage', b.predicted_damage::text,
         'is_correct',       b.is_correct,
         'created_at',       b.created_at,
-        'pixel_coords',     b.pixel_coords,
         'geom_bbox',        ST_AsGeoJSON(ST_Envelope(b.geom))::json
       ) AS properties
     FROM buildings b
@@ -46,7 +45,6 @@ def fetch_building_by_uid(conn: psycopg.Connection, uid: str) -> dict | None:
         'predicted_damage', b.predicted_damage::text,
         'is_correct',       b.is_correct,
         'created_at',       b.created_at,
-        'pixel_coords',     b.pixel_coords,
         'geom_bbox',        ST_AsGeoJSON(ST_Envelope(b.geom))::json
       ) AS properties
     FROM buildings b
@@ -70,8 +68,7 @@ def fetch_buildings_by_disaster(
         'actual_damage',    b.actual_damage::text,
         'predicted_damage', b.predicted_damage::text,
         'is_correct',       b.is_correct,
-        'created_at',       b.created_at,
-        'pixel_coords',     b.pixel_coords
+        'created_at',       b.created_at
       ) AS properties
     FROM buildings b
     JOIN image_pairs ip ON b.image_pair_id = ip.id

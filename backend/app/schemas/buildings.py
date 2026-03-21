@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app.schemas.geojson import GeoJSONGeometry
 
 
-# Includes pixel_coords and geom_bbox
+# Includes geom_bbox only
 class BuildingProperties(BaseModel):
     id: int
     uid: str
@@ -17,7 +17,6 @@ class BuildingProperties(BaseModel):
     predicted_damage: str | None = None
     is_correct: bool | None = None
     created_at: datetime | None = None
-    pixel_coords: list[Any] | None = None
     geom_bbox: GeoJSONGeometry | None = None
 
 
@@ -30,10 +29,9 @@ class BuildingPropertiesNoBox(BaseModel):
     predicted_damage: str | None = None
     is_correct: bool | None = None
     created_at: datetime | None = None
-    pixel_coords: list[Any] | None = None
 
 
-# Bbox only, no pixel_coords
+# Bbox only
 class BuildingPropertiesBboxOnly(BaseModel):
     id: int
     uid: str
