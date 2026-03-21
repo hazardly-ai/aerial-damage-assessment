@@ -20,19 +20,8 @@ class BuildingProperties(BaseModel):
     geom_bbox: GeoJSONGeometry | None = None
 
 
-# No geom_bbox
+# No geom_bbox in properties
 class BuildingPropertiesNoBox(BaseModel):
-    id: int
-    uid: str
-    image_pair_id: int
-    actual_damage: str
-    predicted_damage: str | None = None
-    is_correct: bool | None = None
-    created_at: datetime | None = None
-
-
-# Bbox only
-class BuildingPropertiesBboxOnly(BaseModel):
     id: int
     uid: str
     image_pair_id: int
@@ -57,7 +46,7 @@ class BuildingFeatureNoBox(BaseModel):
 class BuildingFeatureBboxOnly(BaseModel):
     type: Literal["Feature"] = "Feature"
     geometry: GeoJSONGeometry
-    properties: BuildingPropertiesBboxOnly
+    properties: BuildingPropertiesNoBox
 
 
 class BuildingFeatureCollection(BaseModel):

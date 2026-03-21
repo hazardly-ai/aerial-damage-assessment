@@ -10,7 +10,6 @@ from app.schemas.buildings import (
     BuildingFeatureCollectionNoBox,
     BuildingFeatureNoBox,
     BuildingProperties,
-    BuildingPropertiesBboxOnly,
     BuildingPropertiesNoBox,
 )
 from app.schemas.geojson import GeoJSONGeometry
@@ -97,7 +96,7 @@ def get_building_bboxes_for_disaster(
     features = [
         BuildingFeatureBboxOnly(
             geometry=GeoJSONGeometry(**row["geometry"]),
-            properties=BuildingPropertiesBboxOnly(**row["properties"]),
+            properties=BuildingPropertiesNoBox(**row["properties"]),
         )
         for row in rows
     ]
