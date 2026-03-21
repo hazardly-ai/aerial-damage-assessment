@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.routers import buildings, disasters, image_pairs
+from routers import buildings, disasters, image_pairs
 
 app = FastAPI(title="Hazardly API")
 

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 import psycopg
 
-from backend.app.db.supabase import get_conn
-from backend.app.schemas.buildings import (
+from db.supabase import get_conn
+from schemas.buildings import (
     BuildingFeature,
     BuildingFeatureBboxOnly,
     BuildingFeatureCollection,
@@ -13,8 +13,8 @@ from backend.app.schemas.buildings import (
     BuildingPropertiesBboxOnly,
     BuildingPropertiesNoBox,
 )
-from backend.app.schemas.geojson import GeoJSONGeometry
-from backend.app.services.buildings import (
+from schemas.geojson import GeoJSONGeometry
+from services.buildings import (
     fetch_building_bboxes_by_disaster,
     fetch_building_by_uid,
     fetch_buildings_by_disaster,
