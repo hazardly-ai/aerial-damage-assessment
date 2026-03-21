@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 import psycopg
 
-from db.supabase import get_conn
-from schemas.geojson import GeoJSONGeometry
-from schemas.image_pairs import (
+from backend.app.db.supabase import get_conn
+from backend.app.schemas.geojson import GeoJSONGeometry
+from backend.app.schemas.image_pairs import (
     ImagePairFeature,
     ImagePairFeatureCollection,
     ImagePairProperties,
 )
-from services.image_pairs import (
+from backend.app.services.image_pairs import (
     fetch_image_pair,
     fetch_image_pairs_by_disaster,
 )
