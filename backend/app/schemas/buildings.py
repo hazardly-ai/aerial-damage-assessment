@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from app.schemas.geojson import GeoJSONGeometry
+from schemas.geojson import GeoJSONGeometry
 
 
 # Includes pixel_coords and geom_bbox

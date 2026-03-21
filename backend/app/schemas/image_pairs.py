@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from app.schemas.geojson import GeoJSONFeature, GeoJSONGeometry
+from schemas.geojson import GeoJSONFeature, GeoJSONGeometry
 
 
 class ImagePairProperties(BaseModel):
