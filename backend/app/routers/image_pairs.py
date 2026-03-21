@@ -19,7 +19,7 @@ router = APIRouter(prefix="/disasters", tags=["image-pairs"])
 def _map_image_pair_feature(row: dict) -> ImagePairFeature:
     geometry = row["geometry"]
     return ImagePairFeature(
-        geometry=GeoJSONGeometry(**geometry) if geometry else None,
+        geometry=GeoJSONGeometry(**geometry),
         properties=ImagePairProperties(**row["properties"]),
     )
 
