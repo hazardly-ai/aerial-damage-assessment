@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from psycopg.rows import dict_row
 from supabase import Client, create_client
 
-from config import (
+from app.config import (
     DB_HOST,
     DB_NAME,
     DB_PASSWORD,
