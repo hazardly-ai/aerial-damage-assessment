@@ -23,7 +23,7 @@ from shapely.geometry import mapping
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent.parent
-BACKEND_DIR = SCRIPT_DIR.parent
+BACKEND_DIR = SCRIPT_DIR.parent.parent
 
 env = dotenv_values(BACKEND_DIR / ".env")
 

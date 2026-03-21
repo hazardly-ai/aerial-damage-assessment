@@ -16,6 +16,14 @@ from app.services.image_pairs import (
 router = APIRouter(prefix="/disasters", tags=["image-pairs"])
 
 
+def _map_image_pair_feature(row: dict) -> ImagePairFeature:
+    geometry = row["geometry"]
+    return ImagePairFeature(
+        geometry=GeoJSONGeometry(**geometry) if geometry else None,
+        properties=ImagePairProperties(**row["properties"]),
+    )
+
+
 @router.get(
     "/{disaster_id}/image-pairs",
     response_model=ImagePairFeatureCollection,
@@ -27,13 +35,7 @@ def get_image_pairs(
 ):
     # Returns GeoJSON FeatureCollection
     rows = fetch_image_pairs_by_disaster(conn, disaster_id, limit=limit)
-    features = [
-        ImagePairFeature(
-            geometry=GeoJSONGeometry(**row["geometry"]),
-            properties=ImagePairProperties(**row["properties"]),
-        )
-        for row in rows
-    ]
+    features = [_map_image_pair_feature(row) for row in rows]
     return ImagePairFeatureCollection(features=features)
 
 
@@ -50,7 +52,4 @@ def get_image_pair(
     row = fetch_image_pair(conn, disaster_id, xbd_id)
     if not row:
         raise HTTPException(status_code=404, detail="Image pair not found")
-    return ImagePairFeature(
-        geometry=GeoJSONGeometry(**row["geometry"]),
-        properties=ImagePairProperties(**row["properties"]),
-    )
+    return _map_image_pair_feature(row)

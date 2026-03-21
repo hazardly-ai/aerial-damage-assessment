@@ -34,7 +34,7 @@ class ImagePairProperties(BaseModel):
 
 class ImagePairFeature(BaseModel):
     type: Literal["Feature"] = "Feature"
-    geometry: GeoJSONGeometry
+    geometry: GeoJSONGeometry | None = None
     properties: ImagePairProperties
 
 
