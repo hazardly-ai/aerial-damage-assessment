@@ -47,10 +47,10 @@ function attachBuildingHover(
 	map: mapboxgl.Map,
 	sourceId: string,
 	fillLayerId: string,
-) {
+): () => void {
 	let hoveredId: number | null = null;
 
-	map.on("mousemove", fillLayerId, (e) => {
+	const handleMouseMove = (e: mapboxgl.MapMouseEvent) => {
 		const feature = e.features?.[0];
 		if (!feature) return;
 
@@ -65,9 +65,9 @@ function attachBuildingHover(
 
 		hoveredId = feature.id as number;
 		map.setFeatureState({ source: sourceId, id: hoveredId }, { hover: true });
-	});
+	};
 
-	map.on("mouseleave", fillLayerId, () => {
+	const handleMouseLeave = () => {
 		map.getCanvas().style.cursor = "";
 
 		if (hoveredId !== null) {
@@ -78,15 +78,24 @@ function attachBuildingHover(
 		}
 
 		hoveredId = null;
-	});
+	};
+
+	map.on("mousemove", fillLayerId, handleMouseMove);
+	map.on("mouseleave", fillLayerId, handleMouseLeave);
+
+	// Return cleanup function
+	return () => {
+		map.off("mousemove", fillLayerId, handleMouseMove);
+		map.off("mouseleave", fillLayerId, handleMouseLeave);
+	};
 }
 
 function attachBuildingClick(
 	map: mapboxgl.Map,
 	fillLayerId: string,
 	popupHolder: { current: mapboxgl.Popup | null },
-) {
-	map.on("click", fillLayerId, (e) => {
+): () => void {
+	const handleClick = (e: mapboxgl.MapMouseEvent) => {
 		const feature = e.features?.[0];
 		if (!feature) return;
 
@@ -119,7 +128,14 @@ function attachBuildingClick(
 		popup.on("close", () => {
 			root.unmount();
 		});
-	});
+	};
+
+	map.on("click", fillLayerId, handleClick);
+
+	// Return cleanup function
+	return () => {
+		map.off("click", fillLayerId, handleClick);
+	};
 }
 
 export default function MapView() {
@@ -128,6 +144,8 @@ export default function MapView() {
 
 	useEffect(() => {
 		if (!containerRef.current) return;
+
+		let buildingCleanups: (() => void)[] = [];
 
 		// Clear container (important for React Strict Mode)
 		containerRef.current.innerHTML = "";
@@ -243,22 +261,23 @@ export default function MapView() {
 			addBuildingLayer(beforeMap, geojson);
 			addBuildingLayer(afterMap, geojson);
 
-			attachBuildingHover(
-				beforeMap,
-				BUILDINGS_SOURCE_ID,
-				BUILDINGS_FILL_LAYER_ID,
-			);
-			attachBuildingHover(
-				afterMap,
-				BUILDINGS_SOURCE_ID,
-				BUILDINGS_FILL_LAYER_ID,
-			);
-
 			const beforePopup: { current: mapboxgl.Popup | null } = { current: null };
 			const afterPopup: { current: mapboxgl.Popup | null } = { current: null };
 
-			attachBuildingClick(beforeMap, BUILDINGS_FILL_LAYER_ID, beforePopup);
-			attachBuildingClick(afterMap, BUILDINGS_FILL_LAYER_ID, afterPopup);
+			buildingCleanups = [
+				attachBuildingHover(
+					beforeMap,
+					BUILDINGS_SOURCE_ID,
+					BUILDINGS_FILL_LAYER_ID,
+				),
+				attachBuildingHover(
+					afterMap,
+					BUILDINGS_SOURCE_ID,
+					BUILDINGS_FILL_LAYER_ID,
+				),
+				attachBuildingClick(beforeMap, BUILDINGS_FILL_LAYER_ID, beforePopup),
+				attachBuildingClick(afterMap, BUILDINGS_FILL_LAYER_ID, afterPopup),
+			];
 
 			// Enable Swipe Comparison
 			if (containerRef.current) {
@@ -301,6 +320,10 @@ export default function MapView() {
 
 		// Cleanup on component unmount
 		return () => {
+			for (const cleanup of buildingCleanups) {
+				cleanup();
+			}
+
 			compareRef.current?.remove();
 			beforeMap.remove();
 			afterMap.remove();
