@@ -15,100 +15,6 @@ import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollec
 // Set Mapbox access token from environment variable
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-const MAP_HEIGHT = "600px";
-const POPUP_OFFSET = 20;
-const POPUP_WIDTH = 260;
-
-interface BuildingProperties {
-	uid?: string | number;
-	predicted_damage?: string;
-}
-
-interface MapFeature extends mapboxgl.GeoJSONFeature {
-	properties: BuildingProperties | null;
-}
-
-function createPopupContent(uid?: string | number, damage?: string): string {
-	const damageColor = getDamageColor(damage);
-	return `
-		<div style="
-			width:${POPUP_WIDTH}px;
-			background:white;
-			border-radius:12px;
-			overflow:hidden;
-			font-family:Arial, sans-serif;
-			box-shadow:0 8px 22px rgba(0,0,0,0.35);
-		">
-			<div style="
-				background:linear-gradient(90deg,#5f6dff,#9c6bff);
-				color:white;
-				padding:10px 36px 10px 14px;
-				font-size:15px;
-				font-weight:bold;
-			">
-				🏠 Building Damage Report
-			</div>
-			<div style="
-				padding:12px 14px;
-				font-size:13px;
-				font-weight:bold;
-				color:#444;
-			">
-				<div style="margin-bottom:14px;">
-					<div style="font-weight:bold; margin-bottom:4px;">Building ID:</div>
-					<div>${uid ?? "N/A"}</div>
-				</div>
-				<div>
-					<span style="font-weight:bold;">Predicted Damage:</span><br/>
-					<span style="
-						display:inline-block;
-						margin-top:4px;
-						padding:4px 10px;
-						border-radius:6px;
-						background:${damageColor};
-						color:white;
-						font-weight:bold;
-					">
-						${damage ?? "Unknown"}
-					</span>
-				</div>
-			</div>
-		</div>
-	`;
-}
-
-function setupMapInteractions(map: mapboxgl.Map) {
-	// Mouse hover interactions
-	map.on("mouseenter", "buildings-fill", () => {
-		map.getCanvas().style.cursor = "pointer";
-		map.setPaintProperty("buildings-outline", "line-color", "#0df3f3cb");
-		map.setPaintProperty("buildings-outline", "line-width", 3);
-	});
-
-	map.on("mouseleave", "buildings-fill", () => {
-		map.getCanvas().style.cursor = "";
-		map.setPaintProperty("buildings-outline", "line-color", "white");
-		map.setPaintProperty("buildings-outline", "line-width", 1);
-	});
-
-	// Click interaction
-	map.on(
-		"click",
-		"buildings-fill",
-		(e: mapboxgl.MapMouseEvent & { features?: MapFeature[] }) => {
-			const feature = e.features?.[0];
-			if (!feature) return;
-
-			const { uid, predicted_damage } = feature.properties || {};
-
-			new mapboxgl.Popup({ offset: POPUP_OFFSET })
-				.setLngLat(e.lngLat)
-				.setHTML(createPopupContent(uid, predicted_damage))
-				.addTo(map);
-		},
-	);
-}
-
 function getDamageColor(damage?: string): string {
 	switch (damage) {
 		case "no-damage":
@@ -124,6 +30,31 @@ function getDamageColor(damage?: string): string {
 		default:
 			return "#ccc";
 	}
+}
+
+function createPopupHTML(uid: string, damage: string, damageColor: string) {
+	return `
+    <div class="popup-card">
+
+      <div class="popup-header">
+        <span>🏠 Building Damage Report</span>
+        <div onclick="this.closest('.mapboxgl-popup').remove()" class="popup-close-btn">×</div>
+      </div>
+
+      <div class="popup-body">
+        <div class="popup-section">
+          <div class="popup-label">Building ID</div>
+          <div class="popup-value">${uid}</div>
+        </div>
+
+        <div class="popup-section">
+          <div class="popup-label">Predicted Damage</div>
+          <span class="popup-damage" style="background:${damageColor}">${damage}</span>
+        </div>
+      </div>
+
+    </div>
+  `;
 }
 
 export default function MapView() {
@@ -196,6 +127,10 @@ export default function MapView() {
 				map.setPaintProperty("satellite", "raster-opacity", 0.4);
 			});
 
+			map.on("error", (e) => {
+				console.error("Mapbox error:", e);
+			});
+
 			// Add zoom and compass controls to the top-right
 			map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
@@ -243,9 +178,115 @@ export default function MapView() {
 			addBuildingLayer(beforeMap, geojson);
 			addBuildingLayer(afterMap, geojson);
 
-			// Setup interactions for both maps
-			setupMapInteractions(beforeMap);
-			setupMapInteractions(afterMap);
+			let hoveredBeforeId: number | null = null;
+
+			beforeMap.on("mousemove", "buildings-fill", (e) => {
+				const feature = e.features?.[0];
+				if (!feature) return;
+
+				console.log(feature.id);
+
+				beforeMap.getCanvas().style.cursor = "pointer";
+
+				if (hoveredBeforeId !== null) {
+					beforeMap.setFeatureState(
+						{ source: "buildings-source", id: hoveredBeforeId },
+						{ hover: false },
+					);
+				}
+
+				hoveredBeforeId = feature.id as number;
+
+				beforeMap.setFeatureState(
+					{ source: "buildings-source", id: hoveredBeforeId },
+					{ hover: true },
+				);
+			});
+
+			beforeMap.on("mouseleave", "buildings-fill", () => {
+				beforeMap.getCanvas().style.cursor = "";
+
+				if (hoveredBeforeId !== null) {
+					beforeMap.setFeatureState(
+						{ source: "buildings-source", id: hoveredBeforeId },
+						{ hover: false },
+					);
+				}
+
+				hoveredBeforeId = null;
+			});
+
+			let hoveredAfterId: number | null = null;
+
+			afterMap.on("mousemove", "buildings-fill", (e) => {
+				const feature = e.features?.[0];
+				if (!feature) return;
+
+				afterMap.getCanvas().style.cursor = "pointer";
+
+				if (hoveredAfterId !== null) {
+					afterMap.setFeatureState(
+						{ source: "buildings-source", id: hoveredAfterId },
+						{ hover: false },
+					);
+				}
+
+				hoveredAfterId = feature.id as number;
+
+				afterMap.setFeatureState(
+					{ source: "buildings-source", id: hoveredAfterId },
+					{ hover: true },
+				);
+			});
+
+			afterMap.on("mouseleave", "buildings-fill", () => {
+				afterMap.getCanvas().style.cursor = "";
+
+				if (hoveredAfterId !== null) {
+					afterMap.setFeatureState(
+						{ source: "buildings-source", id: hoveredAfterId },
+						{ hover: false },
+					);
+				}
+
+				hoveredAfterId = null;
+			});
+
+			//WHen the building is clicked on the before map showing some information about that building
+			beforeMap.on("click", "buildings-fill", (e) => {
+				//Mapbox returns a list of features and we take the first one
+				const feature = e.features?.[0];
+
+				//if for some reason no feature is found the stopping there
+				if (!feature) return;
+
+				//Getting the building id and predicted damage from properties
+				const uid = feature.properties?.uid;
+				const damage = feature.properties?.predicted_damage;
+
+				const damageColor = getDamageColor(damage);
+
+				//Creating a popup at the clickable area that displays the building info
+				new mapboxgl.Popup({ offset: 20, closeButton: false })
+					.setLngLat(e.lngLat)
+					.setHTML(createPopupHTML(uid, damage, damageColor))
+
+					.addTo(beforeMap);
+			});
+
+			afterMap.on("click", "buildings-fill", (e) => {
+				const feature = e.features?.[0];
+				if (!feature) return;
+
+				const uid = feature.properties?.uid;
+				const damage = feature.properties?.predicted_damage;
+				const damageColor = getDamageColor(damage);
+
+				new mapboxgl.Popup({ offset: 20, closeButton: false })
+					.setLngLat(e.lngLat)
+					.setHTML(createPopupHTML(uid, damage, damageColor))
+					.addTo(afterMap);
+			});
 
 			// Enable Swipe Comparison
 			if (containerRef.current) {
@@ -300,7 +341,7 @@ export default function MapView() {
 			style={{
 				position: "relative",
 				width: "100%",
-				height: MAP_HEIGHT,
+				height: "600px",
 				borderRadius: "16px",
 				overflow: "hidden",
 			}}

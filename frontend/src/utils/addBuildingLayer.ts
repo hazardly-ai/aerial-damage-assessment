@@ -1,5 +1,4 @@
-import type { FeatureCollection } from "geojson";
-import type { GeoJSONSource, Map as MapboxMap } from "mapbox-gl";
+import type { Map as MapboxMap } from "mapbox-gl";
 
 const SOURCE_ID = "buildings-source";
 const FILL_LAYER_ID = "buildings-fill";
@@ -14,7 +13,10 @@ const DAMAGE_COLOR_MAP: Record<string, string> = {
 	"un-classified": "gray",
 };
 
-export function addBuildingLayer(map: MapboxMap, geojson: FeatureCollection) {
+export function addBuildingLayer(
+	map: MapboxMap,
+	geojson: GeoJSON.FeatureCollection,
+) {
 	if (!map.getStyle()) return;
 
 	// Add or update source
@@ -22,9 +24,10 @@ export function addBuildingLayer(map: MapboxMap, geojson: FeatureCollection) {
 		map.addSource(SOURCE_ID, {
 			type: "geojson",
 			data: geojson,
+			generateId: true,
 		});
 	} else {
-		const source = map.getSource(SOURCE_ID) as GeoJSONSource;
+		const source = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource;
 		source.setData(geojson);
 	}
 
@@ -49,21 +52,34 @@ export function addBuildingLayer(map: MapboxMap, geojson: FeatureCollection) {
 					DAMAGE_COLOR_MAP.destroyed,
 					DAMAGE_COLOR_MAP["un-classified"], // default
 				],
-				"fill-opacity": 0.4, // semi-transparent
+				"fill-opacity": [
+					"case",
+					["boolean", ["feature-state", "hover"], false],
+					0.7,
+					0.4,
+				],
 			},
 		});
 	}
 
 	// Add or update outline layer
 	if (!map.getLayer(OUTLINE_LAYER_ID)) {
-		map.addLayer({
-			id: OUTLINE_LAYER_ID,
-			type: "line",
-			source: SOURCE_ID,
-			paint: {
-				"line-color": "#ffffff",
-				"line-width": 1.5,
+		map.addLayer(
+			{
+				id: OUTLINE_LAYER_ID,
+				type: "line",
+				source: SOURCE_ID,
+				paint: {
+					"line-color": "#ffffff",
+					"line-width": [
+						"case",
+						["boolean", ["feature-state", "hover"], false],
+						4,
+						1.5,
+					],
+				},
 			},
-		});
+			FILL_LAYER_ID,
+		);
 	}
 }
