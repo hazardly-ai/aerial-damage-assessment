@@ -1,6 +1,7 @@
 import mapboxgl from "mapbox-gl";
 import Compare from "mapbox-gl-compare";
 import { useEffect, useRef } from "react";
+import { createRoot } from "react-dom/client";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 import bbox from "@turf/bbox";
@@ -9,52 +10,116 @@ import buildings from "@/assets/hurricane-harvey_00000018_post_disaster.json";
 import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png";
 import preImage from "@/assets/hurricane-harvey_00000018_pre_disaster.png";
 
-import { addBuildingLayer } from "@/utils/addBuildingLayer";
+import {
+	addBuildingLayer,
+	BUILDINGS_FILL_LAYER_ID,
+	BUILDINGS_SOURCE_ID,
+	getBuildingDamageColor,
+} from "@/utils/addBuildingLayer";
 import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollection";
+import { BuildingPopup } from "./BuildingPopup";
 
 // Set Mapbox access token from environment variable
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-function getDamageColor(damage?: string): string {
-	switch (damage) {
-		case "no-damage":
-			return "#2ecc71";
-		case "minor-damage":
-			return "#f1c40f";
-		case "major-damage":
-			return "#e67e22";
-		case "destroyed":
-			return "#e74c3c";
-		case "un-classified":
-			return "#95a5a6";
-		default:
-			return "#ccc";
-	}
+function createBuildingPopupElement(
+	uid: string | number,
+	damage: string | undefined,
+	damageColor: string,
+	onClose: () => void,
+): { element: HTMLElement; root: ReturnType<typeof createRoot> } {
+	const container = document.createElement("div");
+	const root = createRoot(container);
+
+	root.render(
+		<BuildingPopup
+			uid={uid}
+			damage={damage}
+			damageColor={damageColor}
+			onClose={onClose}
+		/>,
+	);
+
+	return { element: container, root };
 }
 
-function createPopupHTML(uid: string, damage: string, damageColor: string) {
-	return `
-    <div class="popup-card">
+function attachBuildingHover(
+	map: mapboxgl.Map,
+	sourceId: string,
+	fillLayerId: string,
+) {
+	let hoveredId: number | null = null;
 
-      <div class="popup-header">
-        <span>🏠 Building Damage Report</span>
-        <div onclick="this.closest('.mapboxgl-popup').remove()" class="popup-close-btn">×</div>
-      </div>
+	map.on("mousemove", fillLayerId, (e) => {
+		const feature = e.features?.[0];
+		if (!feature) return;
 
-      <div class="popup-body">
-        <div class="popup-section">
-          <div class="popup-label">Building ID</div>
-          <div class="popup-value">${uid}</div>
-        </div>
+		map.getCanvas().style.cursor = "pointer";
 
-        <div class="popup-section">
-          <div class="popup-label">Predicted Damage</div>
-          <span class="popup-damage" style="background:${damageColor}">${damage}</span>
-        </div>
-      </div>
+		if (hoveredId !== null) {
+			map.setFeatureState(
+				{ source: sourceId, id: hoveredId },
+				{ hover: false },
+			);
+		}
 
-    </div>
-  `;
+		hoveredId = feature.id as number;
+		map.setFeatureState({ source: sourceId, id: hoveredId }, { hover: true });
+	});
+
+	map.on("mouseleave", fillLayerId, () => {
+		map.getCanvas().style.cursor = "";
+
+		if (hoveredId !== null) {
+			map.setFeatureState(
+				{ source: sourceId, id: hoveredId },
+				{ hover: false },
+			);
+		}
+
+		hoveredId = null;
+	});
+}
+
+function attachBuildingClick(
+	map: mapboxgl.Map,
+	fillLayerId: string,
+	popupHolder: { current: mapboxgl.Popup | null },
+) {
+	map.on("click", fillLayerId, (e) => {
+		const feature = e.features?.[0];
+		if (!feature) return;
+
+		const uid = feature.properties?.uid;
+		const damage = feature.properties?.predicted_damage;
+		const damageColor = getBuildingDamageColor(
+			typeof damage === "string" ? damage : undefined,
+		);
+
+		popupHolder.current?.remove();
+		popupHolder.current = null;
+
+		const popup = new mapboxgl.Popup({ offset: 20, closeButton: false });
+		const close = () => {
+			popup.remove();
+			popupHolder.current = null;
+		};
+
+		const { element: popupElement, root } = createBuildingPopupElement(
+			uid,
+			damage,
+			damageColor,
+			close,
+		);
+		popup.setDOMContent(popupElement);
+		popup.setLngLat(e.lngLat).addTo(map);
+		popupHolder.current = popup;
+
+		// Clean up React root when popup is removed
+		popup.on("close", () => {
+			root.unmount();
+		});
+	});
 }
 
 export default function MapView() {
@@ -178,115 +243,22 @@ export default function MapView() {
 			addBuildingLayer(beforeMap, geojson);
 			addBuildingLayer(afterMap, geojson);
 
-			let hoveredBeforeId: number | null = null;
+			attachBuildingHover(
+				beforeMap,
+				BUILDINGS_SOURCE_ID,
+				BUILDINGS_FILL_LAYER_ID,
+			);
+			attachBuildingHover(
+				afterMap,
+				BUILDINGS_SOURCE_ID,
+				BUILDINGS_FILL_LAYER_ID,
+			);
 
-			beforeMap.on("mousemove", "buildings-fill", (e) => {
-				const feature = e.features?.[0];
-				if (!feature) return;
+			const beforePopup: { current: mapboxgl.Popup | null } = { current: null };
+			const afterPopup: { current: mapboxgl.Popup | null } = { current: null };
 
-				console.log(feature.id);
-
-				beforeMap.getCanvas().style.cursor = "pointer";
-
-				if (hoveredBeforeId !== null) {
-					beforeMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredBeforeId },
-						{ hover: false },
-					);
-				}
-
-				hoveredBeforeId = feature.id as number;
-
-				beforeMap.setFeatureState(
-					{ source: "buildings-source", id: hoveredBeforeId },
-					{ hover: true },
-				);
-			});
-
-			beforeMap.on("mouseleave", "buildings-fill", () => {
-				beforeMap.getCanvas().style.cursor = "";
-
-				if (hoveredBeforeId !== null) {
-					beforeMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredBeforeId },
-						{ hover: false },
-					);
-				}
-
-				hoveredBeforeId = null;
-			});
-
-			let hoveredAfterId: number | null = null;
-
-			afterMap.on("mousemove", "buildings-fill", (e) => {
-				const feature = e.features?.[0];
-				if (!feature) return;
-
-				afterMap.getCanvas().style.cursor = "pointer";
-
-				if (hoveredAfterId !== null) {
-					afterMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredAfterId },
-						{ hover: false },
-					);
-				}
-
-				hoveredAfterId = feature.id as number;
-
-				afterMap.setFeatureState(
-					{ source: "buildings-source", id: hoveredAfterId },
-					{ hover: true },
-				);
-			});
-
-			afterMap.on("mouseleave", "buildings-fill", () => {
-				afterMap.getCanvas().style.cursor = "";
-
-				if (hoveredAfterId !== null) {
-					afterMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredAfterId },
-						{ hover: false },
-					);
-				}
-
-				hoveredAfterId = null;
-			});
-
-			//WHen the building is clicked on the before map showing some information about that building
-			beforeMap.on("click", "buildings-fill", (e) => {
-				//Mapbox returns a list of features and we take the first one
-				const feature = e.features?.[0];
-
-				//if for some reason no feature is found the stopping there
-				if (!feature) return;
-
-				//Getting the building id and predicted damage from properties
-				const uid = feature.properties?.uid;
-				const damage = feature.properties?.predicted_damage;
-
-				const damageColor = getDamageColor(damage);
-
-				//Creating a popup at the clickable area that displays the building info
-				new mapboxgl.Popup({ offset: 20, closeButton: false })
-					.setLngLat(e.lngLat)
-					.setHTML(createPopupHTML(uid, damage, damageColor))
-
-					.addTo(beforeMap);
-			});
-
-			afterMap.on("click", "buildings-fill", (e) => {
-				const feature = e.features?.[0];
-				if (!feature) return;
-
-				const uid = feature.properties?.uid;
-				const damage = feature.properties?.predicted_damage;
-				const damageColor = getDamageColor(damage);
-
-				new mapboxgl.Popup({ offset: 20, closeButton: false })
-					.setLngLat(e.lngLat)
-					.setHTML(createPopupHTML(uid, damage, damageColor))
-					.addTo(afterMap);
-			});
+			attachBuildingClick(beforeMap, BUILDINGS_FILL_LAYER_ID, beforePopup);
+			attachBuildingClick(afterMap, BUILDINGS_FILL_LAYER_ID, afterPopup);
 
 			// Enable Swipe Comparison
 			if (containerRef.current) {
