@@ -108,7 +108,7 @@ function attachBuildingClick(
 		popupHolder.current?.remove();
 		popupHolder.current = null;
 
-		const popup = new mapboxgl.Popup({ offset: 20, closeButton: false });
+		const popup = new mapboxgl.Popup({ offset: 10, closeButton: false });
 		const close = () => {
 			popup.remove();
 			popupHolder.current = null;
