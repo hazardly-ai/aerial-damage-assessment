@@ -2,6 +2,9 @@
 .idea/
 .vscode/
 
+# macOS
+.DS_Store
+
 # JetBrains
 shelf/
 workspace.xml
@@ -15,7 +18,12 @@ httpRequests/
 # Dependencies
 node_modules/
 
+# Build tools
 .vite/
+
+# Python
+*.pyc
+
+# Project specific
 /vlm/checkpoints
 /vlm/imagery
-*.pyc
