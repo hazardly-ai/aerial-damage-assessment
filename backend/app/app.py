@@ -18,6 +18,20 @@ app.include_router(image_pairs.router)
 app.include_router(buildings.router)
 
 
+@app.get("/")
+def home_page() -> dict:
+    return {
+        "title": "Hazardly AI",
+        "description": "AI-Powered Disaster Assessment API Service",
+        "version": "1.0.0",
+        "health": "/health",
+        "documentation": {
+            "swagger": "/docs",
+            "openapi": "/openapi.json"
+        },
+    }
+
+
 @app.get("/health")
 def health_check() -> dict:
     return {"status": "ok"}
