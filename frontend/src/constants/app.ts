@@ -19,6 +19,7 @@ export const DATASET_URL = "https://xview2.org/dataset";
 // Organization GitHub link
 export const GITHUB_URL = "https://github.com/hazardly-ai";
 
+// Mapping of damage classifications to their corresponding hex color codes
 export const DAMAGE_COLOR_HEX: Record<string, string> = {
 	"no-damage": "#2ecc71",
 	"minor-damage": "#f1c40f",
