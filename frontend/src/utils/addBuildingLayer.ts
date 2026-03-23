@@ -1,16 +1,9 @@
 import type { GeoJSONSource, Map as MapboxMap } from "mapbox-gl";
+import { DAMAGE_COLOR_HEX } from "@/constants/app";
 
 export const BUILDINGS_SOURCE_ID = "buildings-source";
 export const BUILDINGS_FILL_LAYER_ID = "buildings-fill";
 export const BUILDINGS_OUTLINE_LAYER_ID = "buildings-outline";
-
-const DAMAGE_COLOR_HEX: Record<string, string> = {
-	"no-damage": "#2ecc71",
-	"minor-damage": "#f1c40f",
-	"major-damage": "#e67e22",
-	destroyed: "#e74c3c",
-	"un-classified": "#95a5a6",
-};
 
 const DAMAGE_DEFAULT_HEX = "#ccc";
 

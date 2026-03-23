@@ -9,7 +9,10 @@ import buildings from "@/assets/hurricane-harvey_00000018_post_disaster.json";
 import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png";
 import preImage from "@/assets/hurricane-harvey_00000018_pre_disaster.png";
 import { BuildingPopup } from "@/components/features/BuildingPopup";
-import { addBuildingLayer } from "@/utils/addBuildingLayer";
+import {
+	addBuildingLayer,
+	getBuildingDamageColor,
+} from "@/utils/addBuildingLayer";
 import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollection";
 
 interface PopupData {
@@ -17,23 +20,6 @@ interface PopupData {
 	damage: string;
 	damageColor: string;
 	lngLat: mapboxgl.LngLat;
-}
-
-function getDamageColor(damage?: string): string {
-	switch (damage) {
-		case "no-damage":
-			return "#2ecc71";
-		case "minor-damage":
-			return "#f1c40f";
-		case "major-damage":
-			return "#e67e22";
-		case "destroyed":
-			return "#e74c3c";
-		case "un-classified":
-			return "#95a5a6";
-		default:
-			return "#ccc";
-	}
 }
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
@@ -314,7 +300,7 @@ export default function MapView() {
 
 				const uid = feature.properties?.uid;
 				const damage = feature.properties?.predicted_damage;
-				const damageColor = getDamageColor(damage);
+				const damageColor = getBuildingDamageColor(damage);
 
 				openPopup({ uid, damage, damageColor, lngLat: e.lngLat });
 			};

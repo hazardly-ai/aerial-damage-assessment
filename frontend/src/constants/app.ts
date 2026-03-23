@@ -19,6 +19,14 @@ export const DATASET_URL = "https://xview2.org/dataset";
 // Organization GitHub link
 export const GITHUB_URL = "https://github.com/hazardly-ai";
 
+export const DAMAGE_COLOR_HEX: Record<string, string> = {
+	"no-damage": "#2ecc71",
+	"minor-damage": "#f1c40f",
+	"major-damage": "#e67e22",
+	destroyed: "#e74c3c",
+	"un-classified": "#95a5a6",
+};
+
 // Contributor type definition
 // Ensures every contributor object has consistent fields
 export type Contributor = {
