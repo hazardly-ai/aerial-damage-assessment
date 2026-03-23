@@ -8,10 +8,9 @@ import bbox from "@turf/bbox";
 import buildings from "@/assets/hurricane-harvey_00000018_post_disaster.json";
 import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png";
 import preImage from "@/assets/hurricane-harvey_00000018_pre_disaster.png";
-
+import { BuildingPopup } from "@/components/features/BuildingPopup";
 import { addBuildingLayer } from "@/utils/addBuildingLayer";
 import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollection";
-import { BuildingPopup } from "@/components/features/BuildingPopup";
 
 interface PopupData {
 	uid: string;
