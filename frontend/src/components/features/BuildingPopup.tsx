@@ -6,11 +6,11 @@ interface BuildingPopupProps {
 }
 
 export function BuildingPopup({
-	uid,
-	damage,
-	damageColor,
-	onClose,
-}: BuildingPopupProps) {
+								  uid,
+								  damage,
+								  damageColor,
+								  onClose,
+							  }: BuildingPopupProps) {
 	return (
 		<div className="popup-card">
 			<div className="popup-header">
@@ -41,6 +41,7 @@ export function BuildingPopup({
 					</span>
 				</div>
 			</div>
+			<div className="popup-card popup-arrow" />
 		</div>
 	);
 }

@@ -11,8 +11,7 @@ import preImage from "@/assets/hurricane-harvey_00000018_pre_disaster.png";
 
 import { addBuildingLayer } from "@/utils/addBuildingLayer";
 import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollection";
-
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
+import { BuildingPopup } from "@/components/features/BuildingPopup";
 
 interface PopupData {
 	uid: string;
@@ -37,6 +36,8 @@ function getDamageColor(damage?: string): string {
 			return "#ccc";
 	}
 }
+
+mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
 /** Apply visibility to both building layers on a single map instance. */
 const setBuildingVisibility = (map: mapboxgl.Map, visible: boolean) => {
@@ -299,17 +300,6 @@ export default function MapView() {
 				hoveredAfterId = null;
 			});
 
-			afterMap.on("mouseleave", "buildings-fill", () => {
-				afterMap.getCanvas().style.cursor = "";
-				if (hoveredAfterId !== null) {
-					afterMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredAfterId },
-						{ hover: false },
-					);
-				}
-				hoveredAfterId = null;
-			});
-
 			// --- Click handlers ---
 			// Both maps use the same handler. The popup is rendered by React in an
 			// overlay div above both map containers, so it's never clipped by the
@@ -379,45 +369,17 @@ export default function MapView() {
 		<div className="map-wrapper">
 			<div ref={containerRef} className="map-container" />
 
-			{/* React-rendered popup overlay. Sits above both map containers via
-			    z-index so it's never clipped by the compare slider. Positioned
-			    by projecting the clicked lngLat through afterMap (both maps share
-			    the same viewport, so pixel coords are identical).
-			    left/top must stay inline — they are dynamic pixel values. */}
 			{popupData && popupPos && (
 				<div
 					className="popup-overlay"
 					style={{ left: popupPos.x, top: popupPos.y }}
 				>
-					<div className="popup-card">
-						<div className="popup-header">
-							<span>🏠 Building Damage Report</span>
-							<button
-								type="button"
-								className="popup-close-btn"
-								onClick={closePopup}
-							>
-								×
-							</button>
-						</div>
-						<div className="popup-body">
-							<div className="popup-section">
-								<div className="popup-label">Building ID</div>
-								<div className="popup-value">{popupData.uid}</div>
-							</div>
-							<div className="popup-section">
-								<div className="popup-label">Predicted Damage</div>
-								<span
-									className="popup-damage"
-									style={{ background: popupData.damageColor }}
-								>
-									{popupData.damage}
-								</span>
-							</div>
-						</div>
-					</div>
-					{/* Arrow tip — inherits popup-card background via shared class */}
-					<div className="popup-card popup-arrow" />
+					<BuildingPopup
+						uid={popupData.uid}
+						damage={popupData.damage}
+						damageColor={popupData.damageColor}
+						onClose={closePopup}
+					/>
 				</div>
 			)}
 
