@@ -1,6 +1,7 @@
 import mapboxgl from "mapbox-gl";
 import Compare from "mapbox-gl-compare";
 import { useEffect, useRef } from "react";
+import { createRoot } from "react-dom/client";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 import bbox from "@turf/bbox";
@@ -9,11 +10,133 @@ import buildings from "@/assets/hurricane-harvey_00000018_post_disaster.json";
 import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png";
 import preImage from "@/assets/hurricane-harvey_00000018_pre_disaster.png";
 
-import { addBuildingLayer } from "@/utils/addBuildingLayer";
+import {
+	addBuildingLayer,
+	BUILDINGS_FILL_LAYER_ID,
+	BUILDINGS_SOURCE_ID,
+	getBuildingDamageColor,
+} from "@/utils/addBuildingLayer";
 import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollection";
+import { BuildingPopup } from "./BuildingPopup";
 
 // Set Mapbox access token from environment variable
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
+
+function createBuildingPopupElement(
+	uid: string | number,
+	damage: string | undefined,
+	damageColor: string,
+	onClose: () => void,
+): { element: HTMLElement; root: ReturnType<typeof createRoot> } {
+	const container = document.createElement("div");
+	const root = createRoot(container);
+
+	root.render(
+		<BuildingPopup
+			uid={uid}
+			damage={damage}
+			damageColor={damageColor}
+			onClose={onClose}
+		/>,
+	);
+
+	return { element: container, root };
+}
+
+function attachBuildingHover(
+	map: mapboxgl.Map,
+	sourceId: string,
+	fillLayerId: string,
+): () => void {
+	let hoveredId: number | null = null;
+
+	const handleMouseMove = (e: mapboxgl.MapMouseEvent) => {
+		const feature = e.features?.[0];
+		if (!feature) return;
+
+		map.getCanvas().style.cursor = "pointer";
+
+		if (hoveredId !== null) {
+			map.setFeatureState(
+				{ source: sourceId, id: hoveredId },
+				{ hover: false },
+			);
+		}
+
+		hoveredId = feature.id as number;
+		map.setFeatureState({ source: sourceId, id: hoveredId }, { hover: true });
+	};
+
+	const handleMouseLeave = () => {
+		map.getCanvas().style.cursor = "";
+
+		if (hoveredId !== null) {
+			map.setFeatureState(
+				{ source: sourceId, id: hoveredId },
+				{ hover: false },
+			);
+		}
+
+		hoveredId = null;
+	};
+
+	map.on("mousemove", fillLayerId, handleMouseMove);
+	map.on("mouseleave", fillLayerId, handleMouseLeave);
+
+	// Return cleanup function
+	return () => {
+		map.off("mousemove", fillLayerId, handleMouseMove);
+		map.off("mouseleave", fillLayerId, handleMouseLeave);
+	};
+}
+
+function attachBuildingClick(
+	map: mapboxgl.Map,
+	fillLayerId: string,
+	popupHolder: { current: mapboxgl.Popup | null },
+): () => void {
+	const handleClick = (e: mapboxgl.MapMouseEvent) => {
+		const feature = e.features?.[0];
+		if (!feature) return;
+
+		const uid = feature.properties?.uid;
+		const damage = feature.properties?.predicted_damage;
+		const damageColor = getBuildingDamageColor(
+			typeof damage === "string" ? damage : undefined,
+		);
+
+		popupHolder.current?.remove();
+		popupHolder.current = null;
+
+		const popup = new mapboxgl.Popup({ offset: 10, closeButton: false });
+		const close = () => {
+			popup.remove();
+			popupHolder.current = null;
+		};
+
+		const { element: popupElement, root } = createBuildingPopupElement(
+			uid,
+			damage,
+			damageColor,
+			close,
+		);
+		popup.setDOMContent(popupElement);
+		popup.setLngLat(e.lngLat).addTo(map);
+		popupHolder.current = popup;
+
+		// Clean up React root when popup is removed
+		popup.on("close", () => {
+			root.unmount();
+		});
+	};
+
+	map.on("click", fillLayerId, handleClick);
+
+	// Return cleanup function
+	return () => {
+		map.off("click", fillLayerId, handleClick);
+	};
+}
 
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -21,6 +144,8 @@ export default function MapView() {
 
 	useEffect(() => {
 		if (!containerRef.current) return;
+
+		let buildingCleanups: (() => void)[] = [];
 
 		// Clear container (important for React Strict Mode)
 		containerRef.current.innerHTML = "";
@@ -85,6 +210,10 @@ export default function MapView() {
 				map.setPaintProperty("satellite", "raster-opacity", 0.4);
 			});
 
+			map.on("error", (e) => {
+				console.error("Mapbox error:", e);
+			});
+
 			// Add zoom and compass controls to the top-right
 			map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
@@ -132,6 +261,24 @@ export default function MapView() {
 			addBuildingLayer(beforeMap, geojson);
 			addBuildingLayer(afterMap, geojson);
 
+			const beforePopup: { current: mapboxgl.Popup | null } = { current: null };
+			const afterPopup: { current: mapboxgl.Popup | null } = { current: null };
+
+			buildingCleanups = [
+				attachBuildingHover(
+					beforeMap,
+					BUILDINGS_SOURCE_ID,
+					BUILDINGS_FILL_LAYER_ID,
+				),
+				attachBuildingHover(
+					afterMap,
+					BUILDINGS_SOURCE_ID,
+					BUILDINGS_FILL_LAYER_ID,
+				),
+				attachBuildingClick(beforeMap, BUILDINGS_FILL_LAYER_ID, beforePopup),
+				attachBuildingClick(afterMap, BUILDINGS_FILL_LAYER_ID, afterPopup),
+			];
+
 			// Enable Swipe Comparison
 			if (containerRef.current) {
 				compareRef.current = new Compare(
@@ -139,6 +286,23 @@ export default function MapView() {
 					afterMap,
 					containerRef.current,
 				);
+
+				// Override the default _getX method to ensure the swipe handle stays within bounds, even if the container is resized or has padding.
+				// This fixes a long-term bug where the slider shifts/teleports when re-sizing the browser. -JH
+				(
+					compareRef.current as Compare & {
+						_mapB: mapboxgl.Map;
+						_getX: (e: MouseEvent | TouchEvent) => number;
+					}
+				)._getX = function (e) {
+					const touch = (e as TouchEvent).touches;
+					const ev = touch ? touch[0] : (e as MouseEvent);
+					const freshBounds = this._mapB.getContainer().getBoundingClientRect();
+					let x = ev.clientX - freshBounds.left;
+					if (x < 0) x = 0;
+					if (x > freshBounds.width) x = freshBounds.width;
+					return x;
+				};
 			}
 
 			// Fit map to image bounds
@@ -156,6 +320,10 @@ export default function MapView() {
 
 		// Cleanup on component unmount
 		return () => {
+			for (const cleanup of buildingCleanups) {
+				cleanup();
+			}
+
 			compareRef.current?.remove();
 			beforeMap.remove();
 			afterMap.remove();
