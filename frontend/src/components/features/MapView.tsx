@@ -11,6 +11,9 @@ import preImage from "@/assets/hurricane-harvey_00000018_pre_disaster.png";
 import { BuildingPopup } from "@/components/features/BuildingPopup";
 import {
 	addBuildingLayer,
+	BUILDINGS_FILL_LAYER_ID,
+	BUILDINGS_OUTLINE_LAYER_ID,
+	BUILDINGS_SOURCE_ID,
 	getBuildingDamageColor,
 } from "@/utils/addBuildingLayer";
 import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollection";
@@ -27,8 +30,8 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 /** Apply visibility to both building layers on a single map instance. */
 const setBuildingVisibility = (map: mapboxgl.Map, visible: boolean) => {
 	const visibility = visible ? "visible" : "none";
-	map.setLayoutProperty("buildings-fill", "visibility", visibility);
-	map.setLayoutProperty("buildings-outline", "visibility", visibility);
+	map.setLayoutProperty(BUILDINGS_FILL_LAYER_ID, "visibility", visibility);
+	map.setLayoutProperty(BUILDINGS_OUTLINE_LAYER_ID, "visibility", visibility);
 };
 
 export default function MapView() {
@@ -202,40 +205,40 @@ export default function MapView() {
 			// --- Hover: before map ---
 			let hoveredBeforeId: number | null = null;
 
-			beforeMap.on("mousemove", "buildings-fill", (e) => {
+			beforeMap.on("mousemove", BUILDINGS_FILL_LAYER_ID, (e) => {
 				const feature = e.features?.[0];
 				if (!feature) return;
 				beforeMap.getCanvas().style.cursor = "pointer";
 				if (hoveredBeforeId !== null) {
 					beforeMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredBeforeId },
+						{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
 						{ hover: false },
 					);
 					afterMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredBeforeId },
+						{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
 						{ hover: false },
 					); // sync both maps
 				}
 				hoveredBeforeId = feature.id as number;
 				beforeMap.setFeatureState(
-					{ source: "buildings-source", id: hoveredBeforeId },
+					{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
 					{ hover: true },
 				);
 				afterMap.setFeatureState(
-					{ source: "buildings-source", id: hoveredBeforeId },
+					{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
 					{ hover: true },
 				); // sync both maps
 			});
 
-			beforeMap.on("mouseleave", "buildings-fill", () => {
+			beforeMap.on("mouseleave", BUILDINGS_FILL_LAYER_ID, () => {
 				beforeMap.getCanvas().style.cursor = "";
 				if (hoveredBeforeId !== null) {
 					beforeMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredBeforeId },
+						{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
 						{ hover: false },
 					);
 					afterMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredBeforeId },
+						{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
 						{ hover: false },
 					); // sync both maps
 				}
@@ -245,40 +248,40 @@ export default function MapView() {
 			// --- Hover: after map ---
 			let hoveredAfterId: number | null = null;
 
-			afterMap.on("mousemove", "buildings-fill", (e) => {
+			afterMap.on("mousemove", BUILDINGS_FILL_LAYER_ID, (e) => {
 				const feature = e.features?.[0];
 				if (!feature) return;
 				afterMap.getCanvas().style.cursor = "pointer";
 				if (hoveredAfterId !== null) {
 					afterMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredAfterId },
+						{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
 						{ hover: false },
 					);
 					beforeMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredAfterId },
+						{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
 						{ hover: false },
 					); // sync both maps
 				}
 				hoveredAfterId = feature.id as number;
 				afterMap.setFeatureState(
-					{ source: "buildings-source", id: hoveredAfterId },
+					{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
 					{ hover: true },
 				);
 				beforeMap.setFeatureState(
-					{ source: "buildings-source", id: hoveredAfterId },
+					{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
 					{ hover: true },
 				); // sync both maps
 			});
 
-			afterMap.on("mouseleave", "buildings-fill", () => {
+			afterMap.on("mouseleave", BUILDINGS_FILL_LAYER_ID, () => {
 				afterMap.getCanvas().style.cursor = "";
 				if (hoveredAfterId !== null) {
 					afterMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredAfterId },
+						{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
 						{ hover: false },
 					);
 					beforeMap.setFeatureState(
-						{ source: "buildings-source", id: hoveredAfterId },
+						{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
 						{ hover: false },
 					); // sync both maps
 				}
@@ -305,8 +308,8 @@ export default function MapView() {
 				openPopup({ uid, damage, damageColor, lngLat: e.lngLat });
 			};
 
-			beforeMap.on("click", "buildings-fill", handleBuildingClick);
-			afterMap.on("click", "buildings-fill", handleBuildingClick);
+			beforeMap.on("click", BUILDINGS_FILL_LAYER_ID, handleBuildingClick);
+			afterMap.on("click", BUILDINGS_FILL_LAYER_ID, handleBuildingClick);
 
 			// Enable Swipe Comparison
 			if (containerRef.current) {

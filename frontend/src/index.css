@@ -241,6 +241,7 @@ body {
 	width: 14px;
 	height: 14px;
 	padding: 0;
+	background: hsl(var(--card));
 	border-radius: 2px;
 	box-shadow: none;
 	transform: translateX(-50%) rotate(45deg);

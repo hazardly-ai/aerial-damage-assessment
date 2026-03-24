@@ -41,7 +41,7 @@ export function BuildingPopup({
 					</span>
 				</div>
 			</div>
-			<div className="popup-card popup-arrow" />
+			<div className="popup-arrow" />
 		</div>
 	);
 }
