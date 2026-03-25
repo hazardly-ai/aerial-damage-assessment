@@ -40,9 +40,7 @@ const asString = (value: unknown): string | undefined => {
 };
 
 const asPopupUid = (value: unknown): string | undefined => {
-	if (typeof value === "string" && value.length > 0) return value;
-	if (typeof value === "number") return value.toString();
-	return undefined;
+	return typeof value === "string" && value.length > 0 ? value : undefined;
 };
 
 export default function MapView() {
@@ -279,6 +277,8 @@ export default function MapView() {
 				if (!feature) return;
 
 				const uid = asPopupUid(feature.properties?.uid);
+				if (!uid) return;
+
 				const damage = asString(feature.properties?.predicted_damage);
 				const damageColor = getBuildingDamageColor(damage);
 
@@ -321,6 +321,7 @@ export default function MapView() {
 		]).then(onMapsLoaded);
 
 		return () => {
+			afterMap.off("move", updatePopupPos);
 			layersReadyRef.current = false;
 			beforeMapRef.current = null;
 			afterMapRef.current = null;
