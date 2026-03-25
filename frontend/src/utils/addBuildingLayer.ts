@@ -7,6 +7,8 @@ export const BUILDINGS_FILL_LAYER_ID = "buildings-fill";
 export const BUILDINGS_OUTLINE_LAYER_ID = "buildings-outline";
 
 const DAMAGE_DEFAULT_HEX = "#ccc";
+const OUTLINE_COLOR_DEFAULT = "#ffffff";
+const OUTLINE_COLOR_SELECTED = "#ffdf00";
 
 export function getBuildingDamageColor(damage?: string): string {
 	if (damage == null || damage === "") return DAMAGE_DEFAULT_HEX;
@@ -50,7 +52,11 @@ export function addBuildingLayer(map: MapboxMap, geojson: FeatureCollection) {
 				],
 				"fill-opacity": [
 					"case",
-					["boolean", ["feature-state", "hover"], false],
+					[
+						"any",
+						["boolean", ["feature-state", "hover"], false],
+						["boolean", ["feature-state", "selected"], false],
+					],
 					0.7,
 					0.4,
 				],
@@ -65,11 +71,20 @@ export function addBuildingLayer(map: MapboxMap, geojson: FeatureCollection) {
 			type: "line",
 			source: BUILDINGS_SOURCE_ID,
 			paint: {
-				"line-color": "#ffffff",
+				"line-color": [
+					"case",
+					["boolean", ["feature-state", "selected"], false],
+					OUTLINE_COLOR_SELECTED,
+					OUTLINE_COLOR_DEFAULT,
+				],
 				"line-width": [
 					"case",
-					["boolean", ["feature-state", "hover"], false],
-					4,
+					[
+						"any",
+						["boolean", ["feature-state", "hover"], false],
+						["boolean", ["feature-state", "selected"], false],
+					],
+					3.5,
 					1.5,
 				],
 			},

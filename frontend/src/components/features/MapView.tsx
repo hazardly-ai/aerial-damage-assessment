@@ -62,6 +62,7 @@ export default function MapView() {
 	// Ref so the map `move` handler always reads the latest lngLat without
 	// stale-closure issues.
 	const popupDataRef = useRef<PopupData | null>(null);
+	const selectedBuildingIdRef = useRef<string | number | null>(null);
 
 	/** Reproject the stored lngLat to current pixel coords via afterMap. */
 	const updatePopupPos = useCallback(() => {
@@ -72,6 +73,20 @@ export default function MapView() {
 	}, []);
 
 	const closePopup = useCallback(() => {
+		const id = selectedBuildingIdRef.current;
+		const before = beforeMapRef.current;
+		const after = afterMapRef.current;
+		if (id !== null && before && after) {
+			before.setFeatureState(
+				{ source: BUILDINGS_SOURCE_ID, id },
+				{ selected: false },
+			);
+			after.setFeatureState(
+				{ source: BUILDINGS_SOURCE_ID, id },
+				{ selected: false },
+			);
+		}
+		selectedBuildingIdRef.current = null;
 		popupDataRef.current = null;
 		setPopupData(null);
 		setPopupPos(null);
@@ -274,10 +289,37 @@ export default function MapView() {
 				},
 			) => {
 				const feature = e.features?.[0];
-				if (!feature) return;
+				if (
+					!feature ||
+					(typeof feature.id !== "string" && typeof feature.id !== "number")
+				) {
+					return;
+				}
 
 				const uid = asPopupUid(feature.properties?.uid);
 				if (!uid) return;
+
+				const featureId = feature.id;
+				const prevSelected = selectedBuildingIdRef.current;
+				if (prevSelected !== null && prevSelected !== featureId) {
+					beforeMap.setFeatureState(
+						{ source: BUILDINGS_SOURCE_ID, id: prevSelected },
+						{ selected: false },
+					);
+					afterMap.setFeatureState(
+						{ source: BUILDINGS_SOURCE_ID, id: prevSelected },
+						{ selected: false },
+					);
+				}
+				selectedBuildingIdRef.current = featureId;
+				beforeMap.setFeatureState(
+					{ source: BUILDINGS_SOURCE_ID, id: featureId },
+					{ selected: true },
+				);
+				afterMap.setFeatureState(
+					{ source: BUILDINGS_SOURCE_ID, id: featureId },
+					{ selected: true },
+				);
 
 				const damage = asString(feature.properties?.predicted_damage);
 				const damageColor = getBuildingDamageColor(damage);
@@ -321,6 +363,7 @@ export default function MapView() {
 		]).then(onMapsLoaded);
 
 		return () => {
+			selectedBuildingIdRef.current = null;
 			afterMap.off("move", updatePopupPos);
 			layersReadyRef.current = false;
 			beforeMapRef.current = null;
