@@ -7,11 +7,11 @@ from shapely.wkt import loads as load_wkt
 DISASTER = "hurricane-harvey"
 MAX_IMAGES = 1
 
-IMG_PRE = "original/prepost"
-IMG_POST = "original/prepost"
-LABEL_DIR = "original/labels"
+IMG_PRE = "imagery/original/prepost"
+IMG_POST = "imagery/original/prepost"
+LABEL_DIR = "imagery/original/labels"
 
-OUT_DIR = f"paired_crops/{DISASTER}"
+OUT_DIR = f"imagery/paired_crops/{DISASTER}"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 # ========= HELPERS =========
