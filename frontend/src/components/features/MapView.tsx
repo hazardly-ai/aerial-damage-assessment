@@ -21,7 +21,7 @@ import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollec
 
 interface PopupData {
 	uid: string;
-	damage: string;
+	damage?: string;
 	damageColor: string;
 	lngLat: mapboxgl.LngLat;
 }
@@ -33,6 +33,16 @@ const setBuildingVisibility = (map: mapboxgl.Map, visible: boolean) => {
 	const visibility = visible ? "visible" : "none";
 	map.setLayoutProperty(BUILDINGS_FILL_LAYER_ID, "visibility", visibility);
 	map.setLayoutProperty(BUILDINGS_OUTLINE_LAYER_ID, "visibility", visibility);
+};
+
+const asString = (value: unknown): string | undefined => {
+	return typeof value === "string" && value.length > 0 ? value : undefined;
+};
+
+const asPopupUid = (value: unknown): string | undefined => {
+	if (typeof value === "string" && value.length > 0) return value;
+	if (typeof value === "number") return value.toString();
+	return undefined;
 };
 
 export default function MapView() {
@@ -203,91 +213,57 @@ export default function MapView() {
 			// Keep popup anchored to its building as the user pans/zooms.
 			afterMap.on("move", updatePopupPos);
 
-			// --- Hover: before map ---
-			let hoveredBeforeId: number | null = null;
+			// Sync hover state across both maps to ensure visual consistency
+			// when user hovers over building polygons on either map instance
+			let hoveredId: string | number | null = null;
 
-			beforeMap.on("mousemove", BUILDINGS_FILL_LAYER_ID, (e) => {
-				const feature = e.features?.[0];
-				if (!feature) return;
-				beforeMap.getCanvas().style.cursor = "pointer";
-				if (hoveredBeforeId !== null) {
-					beforeMap.setFeatureState(
-						{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
-						{ hover: false },
-					);
-					afterMap.setFeatureState(
-						{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
-						{ hover: false },
-					); // sync both maps
-				}
-				hoveredBeforeId = feature.id as number;
+			const setHoverStateOnBothMaps = (id: string | number, hover: boolean) => {
 				beforeMap.setFeatureState(
-					{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
-					{ hover: true },
+					{ source: BUILDINGS_SOURCE_ID, id },
+					{ hover },
 				);
 				afterMap.setFeatureState(
-					{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
-					{ hover: true },
-				); // sync both maps
-			});
-
-			beforeMap.on("mouseleave", BUILDINGS_FILL_LAYER_ID, () => {
-				beforeMap.getCanvas().style.cursor = "";
-				if (hoveredBeforeId !== null) {
-					beforeMap.setFeatureState(
-						{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
-						{ hover: false },
-					);
-					afterMap.setFeatureState(
-						{ source: BUILDINGS_SOURCE_ID, id: hoveredBeforeId },
-						{ hover: false },
-					); // sync both maps
-				}
-				hoveredBeforeId = null;
-			});
-
-			// --- Hover: after map ---
-			let hoveredAfterId: number | null = null;
-
-			afterMap.on("mousemove", BUILDINGS_FILL_LAYER_ID, (e) => {
-				const feature = e.features?.[0];
-				if (!feature) return;
-				afterMap.getCanvas().style.cursor = "pointer";
-				if (hoveredAfterId !== null) {
-					afterMap.setFeatureState(
-						{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
-						{ hover: false },
-					);
-					beforeMap.setFeatureState(
-						{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
-						{ hover: false },
-					); // sync both maps
-				}
-				hoveredAfterId = feature.id as number;
-				afterMap.setFeatureState(
-					{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
-					{ hover: true },
+					{ source: BUILDINGS_SOURCE_ID, id },
+					{ hover },
 				);
-				beforeMap.setFeatureState(
-					{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
-					{ hover: true },
-				); // sync both maps
-			});
+			};
 
-			afterMap.on("mouseleave", BUILDINGS_FILL_LAYER_ID, () => {
-				afterMap.getCanvas().style.cursor = "";
-				if (hoveredAfterId !== null) {
-					afterMap.setFeatureState(
-						{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
-						{ hover: false },
-					);
-					beforeMap.setFeatureState(
-						{ source: BUILDINGS_SOURCE_ID, id: hoveredAfterId },
-						{ hover: false },
-					); // sync both maps
-				}
-				hoveredAfterId = null;
-			});
+			const clearHover = () => {
+				if (hoveredId === null) return;
+				setHoverStateOnBothMaps(hoveredId, false);
+				hoveredId = null;
+			};
+
+			const bindSyncedHoverHandlers = (activeMap: mapboxgl.Map) => {
+				activeMap.on("mousemove", BUILDINGS_FILL_LAYER_ID, (e) => {
+					const feature = e.features?.[0];
+					if (
+						!feature ||
+						(typeof feature.id !== "string" && typeof feature.id !== "number")
+					) {
+						return;
+					}
+					activeMap.getCanvas().style.cursor = "pointer";
+
+					const nextHoveredId = feature.id;
+					if (hoveredId === nextHoveredId) return;
+
+					if (hoveredId !== null) {
+						setHoverStateOnBothMaps(hoveredId, false);
+					}
+
+					hoveredId = nextHoveredId;
+					setHoverStateOnBothMaps(nextHoveredId, true);
+				});
+
+				activeMap.on("mouseleave", BUILDINGS_FILL_LAYER_ID, () => {
+					activeMap.getCanvas().style.cursor = "";
+					clearHover();
+				});
+			};
+
+			bindSyncedHoverHandlers(beforeMap);
+			bindSyncedHoverHandlers(afterMap);
 
 			// --- Click handlers ---
 			// Both maps use the same handler. The popup is rendered by React in an
@@ -302,8 +278,8 @@ export default function MapView() {
 				const feature = e.features?.[0];
 				if (!feature) return;
 
-				const uid = feature.properties?.uid;
-				const damage = feature.properties?.predicted_damage;
+				const uid = asPopupUid(feature.properties?.uid);
+				const damage = asString(feature.properties?.predicted_damage);
 				const damageColor = getBuildingDamageColor(damage);
 
 				openPopup({ uid, damage, damageColor, lngLat: e.lngLat });
