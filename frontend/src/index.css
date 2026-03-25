@@ -324,3 +324,43 @@ body {
 	font-weight: 600;
 	font-size: 12px;
 }
+
+.popup-value-container {
+	display: block;
+}
+
+.popup-value {
+	font-weight: 600;
+	word-break: break-all;
+	display: inline;
+}
+
+.copy-btn {
+	background: none;
+	border: none;
+	padding: 0;
+	margin: 0;
+	margin-left: 6px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: hsl(var(--muted-foreground));
+	transition: color 0.2s;
+	line-height: 1;
+	vertical-align: middle;
+}
+
+.copy-btn:hover {
+	color: hsl(var(--foreground));
+}
+
+.copy-icon {
+	width: 1em;
+	height: 1em;
+	transition: color 0.2s;
+}
+
+.copy-icon.copied {
+	color: hsl(142 71% 45%);
+}
