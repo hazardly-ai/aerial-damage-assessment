@@ -15,10 +15,14 @@ export function BuildingPopup({
 }: BuildingPopupProps) {
 	const [copied, setCopied] = React.useState(false);
 
-	const handleCopyUID = () => {
-		navigator.clipboard.writeText(uid);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 2000);
+	const handleCopyUID = async () => {
+		try {
+			await navigator.clipboard.writeText(uid);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 2000);
+		} catch (err) {
+			console.error("Failed to copy to clipboard:", err);
+		}
 	};
 
 	return (
