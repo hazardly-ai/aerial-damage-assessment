@@ -20,3 +20,4 @@ node_modules/
 /vlm/imagery/original
 /vlm/imagery/paired_crops
 *.pyc
+/.cursor
