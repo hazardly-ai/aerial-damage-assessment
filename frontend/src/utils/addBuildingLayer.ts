@@ -1,6 +1,6 @@
+import type { FeatureCollection } from "geojson";
 import type { GeoJSONSource, Map as MapboxMap } from "mapbox-gl";
 import { DAMAGE_COLOR_HEX } from "@/constants/app";
-import type { FeatureCollection } from "geojson";
 
 export const BUILDINGS_SOURCE_ID = "buildings-source";
 export const BUILDINGS_FILL_LAYER_ID = "buildings-fill";
