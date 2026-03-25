@@ -39,10 +39,6 @@ const asString = (value: unknown): string | undefined => {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 };
 
-const asPopupUid = (value: unknown): string | undefined => {
-	return typeof value === "string" && value.length > 0 ? value : undefined;
-};
-
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
@@ -296,7 +292,7 @@ export default function MapView() {
 					return;
 				}
 
-				const uid = asPopupUid(feature.properties?.uid);
+				const uid = asString(feature.properties?.uid);
 				if (!uid) return;
 
 				const featureId = feature.id;

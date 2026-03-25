@@ -313,9 +313,8 @@ body {
 .popup-value {
 	font-weight: 600;
 	word-break: break-all;
+	display: inline;
 }
-
-/* Damage badge */
 .popup-damage {
 	display: inline-block;
 	padding: 4px 10px;
@@ -327,12 +326,6 @@ body {
 
 .popup-value-container {
 	display: block;
-}
-
-.popup-value {
-	font-weight: 600;
-	word-break: break-all;
-	display: inline;
 }
 
 .copy-btn {

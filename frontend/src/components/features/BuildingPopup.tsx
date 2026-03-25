@@ -14,16 +14,24 @@ export function BuildingPopup({
 	onClose,
 }: BuildingPopupProps) {
 	const [copied, setCopied] = React.useState(false);
+	const copyTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	const handleCopyUID = async () => {
+	React.useEffect(() => {
+		return () => {
+			if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+		};
+	}, []);
+
+	const handleCopyUID = React.useCallback(async () => {
 		try {
 			await navigator.clipboard.writeText(uid);
 			setCopied(true);
-			setTimeout(() => setCopied(false), 2000);
+			if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+			copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
 		} catch (err) {
 			console.error("Failed to copy to clipboard:", err);
 		}
-	};
+	}, [uid]);
 
 	return (
 		<div className="popup-card">
