@@ -1,6 +1,10 @@
 # IDE
 .idea/
 .vscode/
+.cursor/
+
+# macOS
+.DS_Store
 
 # JetBrains
 shelf/
@@ -15,9 +19,12 @@ httpRequests/
 # Dependencies
 node_modules/
 
+# Build tools
 .vite/
-/vlm/checkpoints
-/vlm/imagery/original
-/vlm/imagery/paired_crops
+
+# Python
 *.pyc
-/.cursor
+
+# Project specific
+/vlm/checkpoints
+/vlm/imagery

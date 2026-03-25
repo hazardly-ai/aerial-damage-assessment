@@ -1,17 +1,26 @@
+// Core application name (used in titles, metadata, etc.)
 export const APP_NAME = "Aerial Damage Assessment";
 
+// Team / organization branding
 export const TEAM_NAME = "Hazardly AI";
 
+// Short description of the application’s purpose
+// Used for landing pages, metadata, or documentation
 export const APP_DESCRIPTION =
 	"Inspect, quantify, and analyze disaster damage with a unified dashboard " +
 	"combining satellite imagery and AI damage classification.";
 
+// Dataset powering the application
 export const DATASET_NAME = "XView2 Dataset";
 
+// Official dataset source link
 export const DATASET_URL = "https://xview2.org/dataset";
 
+// Organization GitHub link
 export const GITHUB_URL = "https://github.com/hazardly-ai";
 
+// Contributor type definition
+// Ensures every contributor object has consistent fields
 export type Contributor = {
 	name: string;
 	role: string;
@@ -19,6 +28,8 @@ export type Contributor = {
 	github: string;
 };
 
+// List of team members and their roles
+// Centralized here so it can be reused across pages (About, Footer, etc.)
 export const CONTRIBUTORS: Contributor[] = [
 	{
 		name: "Nishil Jaiswal",
