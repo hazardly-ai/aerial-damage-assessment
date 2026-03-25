@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 import bbox from "@turf/bbox";
+import type { Feature } from "geojson";
 
 import buildings from "@/assets/hurricane-harvey_00000018_post_disaster.json";
 import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png";
@@ -295,7 +296,7 @@ export default function MapView() {
 			// both maps are synced to the same viewport.
 			const handleBuildingClick = (
 				e: mapboxgl.MapMouseEvent & {
-					features?: mapboxgl.MapboxGeoJSONFeature[];
+					features?: Feature[];
 				},
 			) => {
 				const feature = e.features?.[0];
