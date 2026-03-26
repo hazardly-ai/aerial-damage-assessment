@@ -1,6 +1,7 @@
 import argparse
 import glob
 import os
+from contextlib import nullcontext
 from dotenv import load_dotenv
 
 import open_clip
@@ -10,7 +11,11 @@ from PIL import Image
 from supabase import create_client
 
 
-def predict_buildings(folder: str, batch_size: int = 100) -> None:
+def predict_buildings(
+    folder: str,
+    batch_size: int = 100,
+    infer_batch_size: int = 32,
+) -> None:
     # Load environment variables from .env file
     load_dotenv()
     
@@ -94,58 +99,81 @@ def predict_buildings(folder: str, batch_size: int = 100) -> None:
     pre_images = sorted(glob.glob(os.path.join(folder, "*_pre.png")))
     print("Total buildings:", len(pre_images))
 
-    updated_count = 0
-    missing_uid_count = 0
-    processed_count = 0
+    # Build valid (uid, pre, post) pairs once to avoid per-image glob overhead.
+    pairs = []
     for pre_path in pre_images:
         filename = os.path.basename(pre_path).replace("_pre.png", "")
         uid = filename.split("_")[-1]
-
         post_candidates = sorted(glob.glob(os.path.join(folder, f"{filename}_post*.png")))
         if not post_candidates:
             continue
+        pairs.append((uid, pre_path, post_candidates[0]))
 
-        post_path = post_candidates[0]
+    print(f"Paired buildings found: {len(pairs)}")
 
-        pre_image = preprocess(Image.open(pre_path)).unsqueeze(0).to(device)
-        post_image = preprocess(Image.open(post_path)).unsqueeze(0).to(device)
+    updated_count = 0
+    missing_uid_count = 0
+    processed_count = 0
+    amp_ctx = (
+        torch.amp.autocast("cuda", dtype=torch.float16)
+        if device == "cuda"
+        else nullcontext()
+    )
+
+    for start in range(0, len(pairs), infer_batch_size):
+        batch = pairs[start:start + infer_batch_size]
+        uids = [uid for uid, _, _ in batch]
+
+        pre_tensors = []
+        post_tensors = []
+        for _, pre_path, post_path in batch:
+            pre_tensors.append(preprocess(Image.open(pre_path).convert("RGB")))
+            post_tensors.append(preprocess(Image.open(post_path).convert("RGB")))
+
+        pre_images_batch = torch.stack(pre_tensors, dim=0).to(device)
+        post_images_batch = torch.stack(post_tensors, dim=0).to(device)
 
         with torch.no_grad():
-            pre_features = model.encode_image(pre_image)
-            post_features = model.encode_image(post_image)
-            pre_features /= pre_features.norm(dim=-1, keepdim=True)
-            post_features /= post_features.norm(dim=-1, keepdim=True)
+            with amp_ctx:
+                pre_features = model.encode_image(pre_images_batch)
+                post_features = model.encode_image(post_images_batch)
+                pre_features /= pre_features.norm(dim=-1, keepdim=True)
+                post_features /= post_features.norm(dim=-1, keepdim=True)
 
-            change_features = post_features - pre_features
-            change_features /= change_features.norm(dim=-1, keepdim=True)
+                change_features = post_features - pre_features
+                change_features /= change_features.norm(dim=-1, keepdim=True)
 
-            probs = (100.0 * change_features @ text_features.T).softmax(dim=-1)
-            probs = probs.cpu().numpy()[0]
+                probs_batch = (100.0 * change_features @ text_features.T).softmax(dim=-1)
 
-        pred_class = probs.argmax()
-        pred_label = labels[pred_class]
+        pred_indices = probs_batch.argmax(dim=-1).cpu().tolist()
+        pred_labels = [labels[idx] for idx in pred_indices]
 
-        # ---------- UPDATE ONLY (NO INSERTS) ----------
-        response = (
-            supabase.table("buildings")
-            .update({"predicted_damage": pred_label})
-            .eq("uid", uid)
-            .execute()
-        )
-
-        if response.data:
-            updated_count += 1
-            print(f"{uid}: {pred_label}")
-        else:
-            missing_uid_count += 1
-            print(f"{uid}: skipped (uid not found in buildings table)")
-
-        processed_count += 1
-        if processed_count % batch_size == 0:
-            print(
-                f"Progress: {processed_count}/{len(pre_images)} processed | "
-                f"updated={updated_count} skipped={missing_uid_count}"
+        for uid, pred_label in zip(uids, pred_labels):
+            # ---------- UPDATE ONLY (NO INSERTS) ----------
+            response = (
+                supabase.table("buildings")
+                .update({"predicted_damage": pred_label})
+                .eq("uid", uid)
+                .execute()
             )
+
+            if response.data:
+                updated_count += 1
+                print(f"{uid}: {pred_label}")
+            else:
+                missing_uid_count += 1
+                print(f"{uid}: skipped (uid not found in buildings table)")
+
+            processed_count += 1
+            if processed_count % batch_size == 0:
+                print(
+                    f"Progress: {processed_count}/{len(pairs)} processed | "
+                    f"updated={updated_count} skipped={missing_uid_count}"
+                )
+                print(
+                    f"Database update progress: {updated_count} rows updated, "
+                    f"{missing_uid_count} skipped"
+                )
 
     print(
         f"Finished: processed={processed_count}, "
@@ -158,10 +186,25 @@ def main() -> None:
         description="Run local RemoteCLIP damage inference and update existing Supabase building rows by uid."
     )
     parser.add_argument("folder", help="Folder containing *_pre.png and *_post*.png building crops.")
-    parser.add_argument("--batch-size", type=int, default=100, help="How many records to upsert per batch.")
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=100,
+        help="Progress logging interval for processed records.",
+    )
+    parser.add_argument(
+        "--infer-batch-size",
+        type=int,
+        default=32,
+        help="How many pre/post crop pairs to run in one model forward pass.",
+    )
     args = parser.parse_args()
 
-    predict_buildings(args.folder, batch_size=args.batch_size)
+    predict_buildings(
+        args.folder,
+        batch_size=args.batch_size,
+        infer_batch_size=args.infer_batch_size,
+    )
 
 
 if __name__ == "__main__":
