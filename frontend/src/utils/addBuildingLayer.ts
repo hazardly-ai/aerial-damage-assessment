@@ -1,28 +1,21 @@
+import type { FeatureCollection } from "geojson";
 import type { GeoJSONSource, Map as MapboxMap } from "mapbox-gl";
+import { DAMAGE_COLOR_HEX } from "@/constants/app";
 
 export const BUILDINGS_SOURCE_ID = "buildings-source";
 export const BUILDINGS_FILL_LAYER_ID = "buildings-fill";
 export const BUILDINGS_OUTLINE_LAYER_ID = "buildings-outline";
 
-const DAMAGE_COLOR_HEX: Record<string, string> = {
-	"no-damage": "#2ecc71",
-	"minor-damage": "#f1c40f",
-	"major-damage": "#e67e22",
-	destroyed: "#e74c3c",
-	"un-classified": "#95a5a6",
-};
-
 const DAMAGE_DEFAULT_HEX = "#ccc";
+const OUTLINE_COLOR_DEFAULT = "#ffffff";
+const OUTLINE_COLOR_SELECTED = "#ffdf00";
 
 export function getBuildingDamageColor(damage?: string): string {
 	if (damage == null || damage === "") return DAMAGE_DEFAULT_HEX;
 	return DAMAGE_COLOR_HEX[damage] ?? DAMAGE_DEFAULT_HEX;
 }
 
-export function addBuildingLayer(
-	map: MapboxMap,
-	geojson: GeoJSON.FeatureCollection,
-) {
+export function addBuildingLayer(map: MapboxMap, geojson: FeatureCollection) {
 	if (!map.getStyle()) return;
 
 	if (!map.getSource(BUILDINGS_SOURCE_ID)) {
@@ -59,7 +52,11 @@ export function addBuildingLayer(
 				],
 				"fill-opacity": [
 					"case",
-					["boolean", ["feature-state", "hover"], false],
+					[
+						"any",
+						["boolean", ["feature-state", "hover"], false],
+						["boolean", ["feature-state", "selected"], false],
+					],
 					0.7,
 					0.4,
 				],
@@ -74,11 +71,20 @@ export function addBuildingLayer(
 			type: "line",
 			source: BUILDINGS_SOURCE_ID,
 			paint: {
-				"line-color": "#ffffff",
+				"line-color": [
+					"case",
+					["boolean", ["feature-state", "selected"], false],
+					OUTLINE_COLOR_SELECTED,
+					OUTLINE_COLOR_DEFAULT,
+				],
 				"line-width": [
 					"case",
-					["boolean", ["feature-state", "hover"], false],
-					4,
+					[
+						"any",
+						["boolean", ["feature-state", "hover"], false],
+						["boolean", ["feature-state", "selected"], false],
+					],
+					3.5,
 					1.5,
 				],
 			},

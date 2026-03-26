@@ -1,6 +1,3 @@
-/* Import custom Google Font used throughout the app */
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap");
-
 /* Tailwind base styles, components, and utility classes */
 @tailwind base;
 @tailwind components;
@@ -23,7 +20,7 @@ html {
 		border-color 300ms ease;
 }
 
-/* 
+/*
    Light mode color system
    These CSS variables are used throughout the app via Tailwind (hsl(var(--...)))
 */
@@ -58,9 +55,21 @@ html {
 
 	/* Global border radius used for components */
 	--radius: 0.75rem;
+
+	/* Map compare + popup clip region */
+	--map-radius: 16px;
+
+	/* Building toggle — light mode */
+	--toggle-bg: rgba(255, 255, 255, 0.88);
+	--toggle-bg-off: rgba(255, 255, 255, 0.65);
+	--toggle-border: rgba(0, 0, 0, 0.12);
+	--toggle-color: hsl(222 47% 11%);
+	--toggle-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+	--toggle-track-off: rgba(0, 0, 0, 0.18);
+	--toggle-track-on: hsl(var(--primary));
 }
 
-/* 
+/*
    Dark mode overrides
    Activated when the "dark" class is added to <html>
 */
@@ -92,6 +101,15 @@ html {
 	--border: 220 8% 18%;
 	--input: 220 8% 18%;
 	--ring: 199 89% 55%;
+
+	/* Building toggle — dark mode */
+	--toggle-bg: rgba(15, 23, 42, 0.82);
+	--toggle-bg-off: rgba(15, 23, 42, 0.55);
+	--toggle-border: rgba(255, 255, 255, 0.18);
+	--toggle-color: hsl(210 20% 96%);
+	--toggle-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+	--toggle-track-off: rgba(255, 255, 255, 0.2);
+	--toggle-track-on: hsl(var(--primary));
 }
 
 /* Base body styling */
@@ -107,17 +125,102 @@ body {
 	color: hsl(var(--foreground));
 }
 
-.mapboxgl-popup-content {
-	background: transparent;
-	padding: 0;
-	border: none;
-	box-shadow: none;
+/* Map wrapper + container */
+
+.map-wrapper {
 	position: relative;
+	width: 100%;
+	height: 600px;
+	overflow: hidden;
+	border-radius: var(--map-radius);
 }
 
-/* Position the close button relative to the header */
-.mapboxgl-popup-content > div:first-child {
-	position: relative;
+.map-container {
+	position: absolute;
+	inset: 0;
+	border-radius: var(--map-radius);
+	overflow: hidden;
+}
+
+/* Building polygon toggle button */
+
+.building-toggle {
+	position: absolute;
+	bottom: 16px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 10;
+
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 14px;
+
+	border-radius: 9999px;
+	border: 1px solid var(--toggle-border);
+	background: var(--toggle-bg-off);
+	color: var(--toggle-color);
+
+	font-size: 13px;
+	font-weight: 500;
+	letter-spacing: 0.01em;
+	cursor: pointer;
+	user-select: none;
+
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	box-shadow: var(--toggle-shadow);
+	transition:
+		background 0.2s ease,
+		color 0.2s ease,
+		border-color 0.2s ease;
+}
+
+.building-toggle[data-active="true"] {
+	background: var(--toggle-bg);
+}
+
+/* Track (the pill behind the knob) */
+.building-toggle-track {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	width: 32px;
+	height: 18px;
+	padding: 2px;
+	border-radius: 9999px;
+	background: var(--toggle-track-off);
+	transition: background 0.2s ease;
+}
+
+.building-toggle[data-active="true"] .building-toggle-track {
+	background: var(--toggle-track-on);
+}
+
+/* Knob */
+.building-toggle-knob {
+	display: block;
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background: #fff;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+	transform: translateX(0);
+	transition: transform 0.2s ease;
+}
+
+.building-toggle[data-active="true"] .building-toggle-knob {
+	transform: translateX(14px);
+}
+
+/* Popup overlay — rendered as a React div above both map containers so it is
+   never clipped by the mapbox-gl-compare slider. left/top are set inline as
+   they are dynamic pixel values derived from map.project(lngLat). */
+.popup-overlay {
+	position: absolute;
+	transform: translate(-50%, calc(-100% - 12px));
+	z-index: 11;
+	pointer-events: auto;
 }
 
 /* Popup card container */
@@ -127,8 +230,22 @@ body {
 	color: hsl(var(--card-foreground));
 	border-radius: 12px;
 	overflow: hidden;
-	font-family: "Space Grotesk", "Segoe UI", sans-serif;
 	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+/* Arrow tip pointing to the property */
+.popup-arrow {
+	position: absolute;
+	bottom: -7px;
+	left: 50%;
+	width: 14px;
+	height: 14px;
+	padding: 0;
+	background: hsl(var(--card));
+	border-radius: 2px;
+	box-shadow: none;
+	transform: translateX(-50%) rotate(45deg);
+	clip-path: polygon(100% 0, 100% 100%, 0 100%);
 }
 
 /* Header with gradient */
@@ -162,7 +279,7 @@ body {
 	cursor: pointer;
 	user-select: none;
 	flex-shrink: 0;
-	transition: background 0.2s ease; /* smooth color change only */
+	transition: background 0.2s ease;
 }
 
 .popup-close-btn:hover {
@@ -196,9 +313,8 @@ body {
 .popup-value {
 	font-weight: 600;
 	word-break: break-all;
+	display: inline;
 }
-
-/* Damage badge */
 .popup-damage {
 	display: inline-block;
 	padding: 4px 10px;
@@ -206,4 +322,38 @@ body {
 	color: white;
 	font-weight: 600;
 	font-size: 12px;
+}
+
+.popup-value-container {
+	display: block;
+}
+
+.copy-btn {
+	background: none;
+	border: none;
+	padding: 0;
+	margin: 0;
+	margin-left: 6px;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: hsl(var(--muted-foreground));
+	transition: color 0.2s;
+	line-height: 1;
+	vertical-align: middle;
+}
+
+.copy-btn:hover {
+	color: hsl(var(--foreground));
+}
+
+.copy-icon {
+	width: 1em;
+	height: 1em;
+	transition: color 0.2s;
+}
+
+.copy-icon.copied {
+	color: hsl(142 71% 45%);
 }
