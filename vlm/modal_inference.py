@@ -39,7 +39,7 @@ def predict_buildings(folder, batch_size: int = 100):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model_name = "ViT-L-14"
 
-    labels = ["no-damage","minor-damage","major-damage","destroyed"]
+    labels = ["no-damage", "minor-damage", "major-damage", "destroyed"]
 
     class_prompt_dict = {
         0: [
@@ -90,15 +90,15 @@ def predict_buildings(folder, batch_size: int = 100):
         text_features = torch.stack(class_embeddings)
 
     # ---------- PROCESS IMAGES ----------
-    pre_images = glob.glob(f"{folder}/*_pre.png")
+    pre_images = sorted(glob.glob(os.path.join(folder, "*_pre.png")))
     print("Total buildings:", len(pre_images))
 
     batch_updates = []
-    for i, pre_path in enumerate(pre_images, start=1):
+    for pre_path in pre_images:
         filename = os.path.basename(pre_path).replace("_pre.png", "")
         uid = filename.split("_")[-1]
 
-        post_candidates = glob.glob(f"{folder}/{filename}_post*.png")
+        post_candidates = sorted(glob.glob(os.path.join(folder, f"{filename}_post*.png")))
         if not post_candidates:
             continue
 
@@ -125,7 +125,7 @@ def predict_buildings(folder, batch_size: int = 100):
         batch_updates.append({"uid": uid, "predicted_damage": pred_label})
         print(f"{uid}: {pred_label}")
 
-        # ---------- BATCH INSERT ----------
+        # ---------- BATCH UPSERT ----------
         if len(batch_updates) >= batch_size:
             supabase.table("buildings").upsert(batch_updates).execute()
             batch_updates = []
