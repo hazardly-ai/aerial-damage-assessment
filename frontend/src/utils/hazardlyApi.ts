@@ -1,7 +1,6 @@
 /**
  * hazardlyApi.ts
- * ──────────────
- * Typed API client for the Hazardly backend.
+ * API client utility for the Hazardly backend.
  * All functions throw on non-OK responses so callers can catch and surface errors.
  */
 
@@ -11,7 +10,7 @@ const BASE_URL = "https://hazardly-api.vercel.app";
 const IMAGE_BASE_URL =
 	"https://zbnrjjmqbnqunkjbmsdk.supabase.co/storage/v1/object/public/satellite-images";
 
-// ─── Response shape types ────────────────────────────────────────────────────
+// Response shape types
 
 export interface DisasterFeature {
 	type: "Feature";
@@ -75,7 +74,7 @@ export interface BuildingsResponse {
 	features: BuildingFeature[];
 }
 
-// ─── Computed bounds helper ──────────────────────────────────────────────────
+// Computed bounds helper
 
 export interface ImageBounds {
 	/** [minLng, minLat, maxLng, maxLat] */
