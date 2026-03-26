@@ -374,6 +374,52 @@ export default function MapView() {
 		<div className="map-wrapper">
 			<div ref={containerRef} className="map-container" />
 
+			{/* Loading overlay */}
+			{status === "loading" && (
+				<div className="map-status-overlay map-status-overlay--loading">
+					<span className="map-status-spinner" aria-hidden="true" />
+					<p>Loading scene data…</p>
+				</div>
+			)}
+
+			{/* Error overlay */}
+			{status === "error" && errorMessage && (
+				<div
+					className="map-status-overlay map-status-overlay--error"
+					role="alert"
+				>
+					<p>
+						<strong>Failed to load scene.</strong>
+					</p>
+					<p>{errorMessage}</p>
+					<button
+						type="button"
+						onClick={() => {
+							setStatus("loading");
+							setErrorMessage(null);
+							fetchSceneData(DISASTER_ID, XBD_ID)
+								.then(({ imagePair, buildings, bounds }) =>
+									initMaps(
+										resolveImageUrl(imagePair.properties.pre_image_path),
+										resolveImageUrl(imagePair.properties.post_image_path),
+										bounds,
+										buildings,
+									),
+								)
+								.catch((err: unknown) => {
+									const msg =
+										err instanceof Error ? err.message : "Unknown error.";
+									setErrorMessage(msg);
+									setStatus("error");
+								});
+						}}
+					>
+						Retry
+					</button>
+				</div>
+			)}
+
+			{/* Building popup */}
 			{popupData && popupPos && (
 				<div
 					className="popup-overlay"
