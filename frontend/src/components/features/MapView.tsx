@@ -6,6 +6,9 @@ import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 import type { Feature } from "geojson";
 
 import { BuildingPopup } from "@/components/features/BuildingPopup";
+import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
+import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
+import type { MapStatus } from "@/types/map.ts";
 import {
 	addBuildingLayer,
 	BUILDINGS_FILL_LAYER_ID,
@@ -40,8 +43,6 @@ interface PopupData {
 	lngLat: mapboxgl.LngLat;
 }
 
-type MapStatus = "idle" | "loading" | "error" | "ready";
-
 // Helpers
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
@@ -55,7 +56,7 @@ const setBuildingVisibility = (map: mapboxgl.Map, visible: boolean) => {
 const asString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.length > 0 ? value : undefined;
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// Component
 
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -74,11 +75,7 @@ export default function MapView() {
 		null,
 	);
 
-	// Controls whether the loading overlay is in the DOM. Lags behind `status`
-	// by the fade duration so the CSS transition can complete before unmounting.
-	const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
-	// Drives the data-fading attribute — triggers the CSS opacity transition.
-	const [overlayFading, setOverlayFading] = useState(false);
+	const loadingOverlay = useLoadingOverlay(status);
 
 	const popupDataRef = useRef<PopupData | null>(null);
 	const selectedBuildingIdRef = useRef<string | number | null>(null);
@@ -134,23 +131,6 @@ export default function MapView() {
 			return next;
 		});
 	}, [closePopup]);
-
-	// Show overlay immediately on loading, fade it out then unmount on ready.
-	useEffect(() => {
-		if (status === "loading") {
-			setOverlayFading(false);
-			setShowLoadingOverlay(true);
-			return;
-		}
-		if (status === "ready") {
-			setOverlayFading(true);
-			const t = setTimeout(() => {
-				setShowLoadingOverlay(false);
-				setOverlayFading(false);
-			}, 400);
-			return () => clearTimeout(t);
-		}
-	}, [status]);
 
 	useEffect(() => {
 		if (!containerRef.current) return;
@@ -400,24 +380,14 @@ export default function MapView() {
 		};
 	}, [openPopup, updatePopupPos, retryCount]);
 
-	// ── Render ─────────────────────────────────────────────────────────────────
+	// Render
 
 	return (
 		<div className="map-wrapper">
 			{/* Map containers — always mounted so refs are stable */}
 			<div ref={containerRef} className="map-container" />
 
-			{/* Loading overlay — stays mounted during fade-out via showLoadingOverlay */}
-			{showLoadingOverlay && (
-				<div
-					className="map-status-overlay map-status-overlay--loading"
-					data-fading={overlayFading ? "true" : undefined}
-					aria-live="polite"
-				>
-					<span className="map-status-spinner" aria-hidden="true" />
-					<p>Loading map data…</p>
-				</div>
-			)}
+			<MapLoadingOverlay {...loadingOverlay} />
 
 			{/* Error overlay */}
 			{status === "error" && errorMessage && (
