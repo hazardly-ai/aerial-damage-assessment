@@ -173,7 +173,7 @@ export const fetchBuildings = (
  * original local-asset code) rather than the geo origin fields, which avoids
  * ambiguity around pixel-center vs pixel-edge conventions.
  */
-export async function fetchSceneData(disasterId: number, xbdId: number) {
+export async function fetchMapData(disasterId: number, xbdId: number) {
 	const [imagePair, buildings] = await Promise.all([
 		fetchImagePair(disasterId, xbdId),
 		fetchBuildings(disasterId, xbdId),

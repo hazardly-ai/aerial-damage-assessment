@@ -357,3 +357,52 @@ body {
 .copy-icon.copied {
 	color: hsl(142 71% 45%);
 }
+
+/* Map status overlays — shared base */
+.map-status-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 10;
+	border-radius: var(--map-radius);
+}
+
+/* Loading overlay */
+.map-status-overlay--loading {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 14px;
+	background: hsl(var(--background) / 0.88);
+	backdrop-filter: blur(4px);
+	-webkit-backdrop-filter: blur(4px);
+	opacity: 1;
+	transition: opacity 0.4s ease;
+}
+
+.map-status-overlay--loading[data-fading="true"] {
+	opacity: 0;
+	pointer-events: none;
+}
+
+.map-status-spinner {
+	display: block;
+	width: 28px;
+	height: 28px;
+	border: 2px solid hsl(var(--border));
+	border-top-color: hsl(var(--muted-foreground));
+	border-radius: 50%;
+	animation: map-spin 0.75s linear infinite;
+}
+
+@keyframes map-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.map-status-overlay--loading p {
+	margin: 0;
+	font-size: 13px;
+	color: hsl(var(--muted-foreground));
+}

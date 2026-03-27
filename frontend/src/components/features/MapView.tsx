@@ -13,7 +13,7 @@ import {
 	BUILDINGS_SOURCE_ID,
 	getBuildingDamageColor,
 } from "@/utils/addBuildingLayer";
-import { fetchSceneData, resolveImageUrl } from "@/utils/hazardlyApi";
+import { fetchMapData, resolveImageUrl } from "@/utils/hazardlyApi";
 
 // Constants
 //
@@ -40,7 +40,7 @@ interface PopupData {
 	lngLat: mapboxgl.LngLat;
 }
 
-type SceneStatus = "idle" | "loading" | "error" | "ready";
+type MapStatus = "idle" | "loading" | "error" | "ready";
 
 // Helpers
 
@@ -66,13 +66,19 @@ export default function MapView() {
 
 	const [retryCount, setRetryCount] = useState(0);
 	const [buildingsVisible, setBuildingsVisible] = useState(true);
-	const [status, setStatus] = useState<SceneStatus>("idle");
+	const [status, setStatus] = useState<MapStatus>("idle");
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
 	const [popupData, setPopupData] = useState<PopupData | null>(null);
 	const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
 		null,
 	);
+
+	// Controls whether the loading overlay is in the DOM. Lags behind `status`
+	// by the fade duration so the CSS transition can complete before unmounting.
+	const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+	// Drives the data-fading attribute — triggers the CSS opacity transition.
+	const [overlayFading, setOverlayFading] = useState(false);
 
 	const popupDataRef = useRef<PopupData | null>(null);
 	const selectedBuildingIdRef = useRef<string | number | null>(null);
@@ -129,6 +135,23 @@ export default function MapView() {
 		});
 	}, [closePopup]);
 
+	// Show overlay immediately on loading, fade it out then unmount on ready.
+	useEffect(() => {
+		if (status === "loading") {
+			setOverlayFading(false);
+			setShowLoadingOverlay(true);
+			return;
+		}
+		if (status === "ready") {
+			setOverlayFading(true);
+			const t = setTimeout(() => {
+				setShowLoadingOverlay(false);
+				setOverlayFading(false);
+			}, 400);
+			return () => clearTimeout(t);
+		}
+	}, [status]);
+
 	useEffect(() => {
 		if (!containerRef.current) return;
 
@@ -142,7 +165,7 @@ export default function MapView() {
 		setStatus("loading");
 		setErrorMessage(null);
 
-		fetchSceneData(DISASTER_ID, XBD_ID)
+		fetchMapData(DISASTER_ID, XBD_ID)
 			.then(({ imagePair, buildings, bounds }) => {
 				if (cancelled || !containerRef.current) return;
 
@@ -322,7 +345,7 @@ export default function MapView() {
 					_before.on("click", BUILDINGS_FILL_LAYER_ID, handleBuildingClick);
 					_after.on("click", BUILDINGS_FILL_LAYER_ID, handleBuildingClick);
 
-					// ── Compare slider ────────────────────────────────────────
+					// Compare slider
 					if (containerRef.current) {
 						compareRef.current = new Compare(
 							_before,
@@ -360,7 +383,7 @@ export default function MapView() {
 				const msg =
 					err instanceof Error
 						? err.message
-						: "Unknown error fetching scene data.";
+						: "Unknown error fetching map data.";
 				setErrorMessage(msg);
 				setStatus("error");
 			});
@@ -384,11 +407,15 @@ export default function MapView() {
 			{/* Map containers — always mounted so refs are stable */}
 			<div ref={containerRef} className="map-container" />
 
-			{/* Loading overlay */}
-			{status === "loading" && (
-				<div className="map-status-overlay map-status-overlay--loading">
+			{/* Loading overlay — stays mounted during fade-out via showLoadingOverlay */}
+			{showLoadingOverlay && (
+				<div
+					className="map-status-overlay map-status-overlay--loading"
+					data-fading={overlayFading ? "true" : undefined}
+					aria-live="polite"
+				>
 					<span className="map-status-spinner" aria-hidden="true" />
-					<p>Loading scene data…</p>
+					<p>Loading map data…</p>
 				</div>
 			)}
 
@@ -399,7 +426,7 @@ export default function MapView() {
 					role="alert"
 				>
 					<p>
-						<strong>Failed to load scene.</strong>
+						<strong>Failed to load map.</strong>
 					</p>
 					<p>{errorMessage}</p>
 					<button
