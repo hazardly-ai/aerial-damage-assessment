@@ -65,7 +65,8 @@ export default function AppSidebar({
 									key={filter.key}
 									onClick={() => onSelectFilter(filter.key)}
 									className={
-										activeSection === "buildings" && activeDamageFilter === filter.key
+										activeSection === "buildings" &&
+										activeDamageFilter === filter.key
 											? "block w-full border-b border-border border-l-2 border-l-primary bg-accent text-accent-foreground text-left px-3 py-2 text-sm font-medium"
 											: "block w-full border-b border-border bg-background text-left px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
 									}

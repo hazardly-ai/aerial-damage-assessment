@@ -1,4 +1,4 @@
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -28,7 +28,12 @@ export function BreadcrumbItem({
 	className,
 	...props
 }: React.ComponentPropsWithoutRef<"li">) {
-	return <li className={cn("inline-flex items-center gap-1.5", className)} {...props} />;
+	return (
+		<li
+			className={cn("inline-flex items-center gap-1.5", className)}
+			{...props}
+		/>
+	);
 }
 
 export function BreadcrumbLink({
@@ -48,7 +53,13 @@ export function BreadcrumbPage({
 	className,
 	...props
 }: React.ComponentPropsWithoutRef<"span">) {
-	return <span aria-current="page" className={cn("font-medium text-foreground", className)} {...props} />;
+	return (
+		<span
+			aria-current="page"
+			className={cn("font-medium text-foreground", className)}
+			{...props}
+		/>
+	);
 }
 
 export function BreadcrumbSeparator({

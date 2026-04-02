@@ -1,9 +1,9 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import DisasterResponsesAssistant from "@/components/features/DisasterResponseAssistant";
 import MapView from "@/components/features/MapView";
-import Dashboard from "@/pages/Dashboard";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import Dashboard from "@/pages/Dashboard";
 
 function HomePage() {
 	return (

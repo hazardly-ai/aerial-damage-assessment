@@ -13,7 +13,11 @@ type SpinnerEmptyProps = {
 	className?: string;
 };
 
-export function SpinnerEmpty({ title, description, className }: SpinnerEmptyProps) {
+export function SpinnerEmpty({
+	title,
+	description,
+	className,
+}: SpinnerEmptyProps) {
 	return (
 		<Empty className={className}>
 			<EmptyHeader>

@@ -1,5 +1,3 @@
-import * as React from "react";
-
 import { cn } from "@/lib/utils";
 
 type ItemProps = {
@@ -37,11 +35,15 @@ export default function Item({
 			</div>
 
 			<div className="min-w-0">
-				<p className="truncate text-sm font-medium text-card-foreground">{title}</p>
+				<p className="truncate text-sm font-medium text-card-foreground">
+					{title}
+				</p>
 				{subtitle && (
 					<p className="truncate text-xs text-muted-foreground">{subtitle}</p>
 				)}
-				{meta && <p className="truncate text-xs text-muted-foreground">{meta}</p>}
+				{meta && (
+					<p className="truncate text-xs text-muted-foreground">{meta}</p>
+				)}
 			</div>
 		</div>
 	);

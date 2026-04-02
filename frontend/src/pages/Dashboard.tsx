@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-
-import { DAMAGE_COLOR_HEX } from "@/constants/app";
-import { Button } from "@/components/ui/Button";
-import { SpinnerEmpty } from "@/components/ui/SpinnerEmpty";
-import Header from "@/components/layout/Header";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AppSidebar from "@/components/layout/AppSidebar";
+import Header from "@/components/layout/Header";
+import { Button } from "@/components/ui/Button";
 import Item from "@/components/ui/Item";
 import Pagination from "@/components/ui/Pagination";
+import { SpinnerEmpty } from "@/components/ui/SpinnerEmpty";
+import { DAMAGE_COLOR_HEX } from "@/constants/app";
 
 type DamageLevel =
 	| "no-damage"
@@ -94,7 +93,11 @@ const DAMAGE_FILTERS: Array<{ key: string; label: string }> = [
 	{ key: "un-classified", label: "Unclassified" },
 ];
 
-const DAMAGED_FILTER_SET = new Set(["minor-damage", "major-damage", "destroyed"]);
+const DAMAGED_FILTER_SET = new Set([
+	"minor-damage",
+	"major-damage",
+	"destroyed",
+]);
 
 const prettyLabel = (value: string): string =>
 	value
@@ -104,7 +107,8 @@ const prettyLabel = (value: string): string =>
 
 const normalizeDamage = (raw?: string | null): DamageLevel => {
 	if (!raw) return "un-classified";
-	if (DAMAGE_FILTERS.some((item) => item.key === raw)) return raw as DamageLevel;
+	if (DAMAGE_FILTERS.some((item) => item.key === raw))
+		return raw as DamageLevel;
 	return "un-classified";
 };
 
@@ -164,17 +168,24 @@ export default function Dashboard() {
 	const [loadingStats, setLoadingStats] = useState(true);
 	const [loadingBuildings, setLoadingBuildings] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [supportsStatsEndpoint, setSupportsStatsEndpoint] = useState(true);
 	const [supportsPagedEndpoint, setSupportsPagedEndpoint] = useState(true);
 	const [activeSection, setActiveSection] = useState<ActiveSection>("overview");
 	const [activeDamageFilter, setActiveDamageFilter] = useState<string>("all");
-	const [disasterName, setDisasterName] = useState<string>("Current Disaster");
-	const [selectedDisasterId, setSelectedDisasterId] = useState<number | null>(null);
-	const [allBuildingsCache, setAllBuildingsCache] = useState<BuildingFeatureNoBox[] | null>(
+	const [selectedDisasterId, setSelectedDisasterId] = useState<number | null>(
 		null,
 	);
+	const [allBuildingsCache, setAllBuildingsCache] = useState<
+		BuildingFeatureNoBox[] | null
+	>(null);
 	const [imagePairMap, setImagePairMap] = useState<
-		Map<number, { xbd_id: number; pre_image_path?: string | null; post_image_path?: string | null }>
+		Map<
+			number,
+			{
+				xbd_id: number;
+				pre_image_path?: string | null;
+				post_image_path?: string | null;
+			}
+		>
 	>(new Map());
 	const [stats, setStats] = useState<BuildingStatsResponse>({
 		total: 0,
@@ -188,35 +199,47 @@ export default function Dashboard() {
 	const [totalPages, setTotalPages] = useState(1);
 	const [totalItems, setTotalItems] = useState(0);
 
-	const ensureImagePairs = async (disasterId: number) => {
-		if (imagePairMap.size > 0) return imagePairMap;
-		const res = await fetch(`${API_BASE}/disasters/${disasterId}/image-pairs`);
-		if (!res.ok) throw new Error("Failed to load image pairs.");
-		const data = (await res.json()) as ImagePairFeatureCollection;
-		const next = new Map<
-			number,
-			{ xbd_id: number; pre_image_path?: string | null; post_image_path?: string | null }
-		>();
-		for (const feature of data.features ?? []) {
-			next.set(feature.properties.id, {
-				xbd_id: feature.properties.xbd_id,
-				pre_image_path: feature.properties.pre_image_path ?? null,
-				post_image_path: feature.properties.post_image_path ?? null,
-			});
-		}
-		setImagePairMap(next);
-		return next;
-	};
+	const ensureImagePairs = useCallback(
+		async (disasterId: number) => {
+			if (imagePairMap.size > 0) return imagePairMap;
+			const res = await fetch(
+				`${API_BASE}/disasters/${disasterId}/image-pairs`,
+			);
+			if (!res.ok) throw new Error("Failed to load image pairs.");
+			const data = (await res.json()) as ImagePairFeatureCollection;
+			const next = new Map<
+				number,
+				{
+					xbd_id: number;
+					pre_image_path?: string | null;
+					post_image_path?: string | null;
+				}
+			>();
+			for (const feature of data.features ?? []) {
+				next.set(feature.properties.id, {
+					xbd_id: feature.properties.xbd_id,
+					pre_image_path: feature.properties.pre_image_path ?? null,
+					post_image_path: feature.properties.post_image_path ?? null,
+				});
+			}
+			setImagePairMap(next);
+			return next;
+		},
+		[imagePairMap],
+	);
 
-	const ensureAllBuildings = async (disasterId: number) => {
-		if (allBuildingsCache) return allBuildingsCache;
-		const res = await fetch(`${API_BASE}/disasters/${disasterId}/buildings`);
-		if (!res.ok) throw new Error("Failed to load building data.");
-		const data = (await res.json()) as BuildingFeatureCollectionNoBox;
-		const features = data.features ?? [];
-		setAllBuildingsCache(features);
-		return features;
-	};
+	const ensureAllBuildings = useCallback(
+		async (disasterId: number) => {
+			if (allBuildingsCache) return allBuildingsCache;
+			const res = await fetch(`${API_BASE}/disasters/${disasterId}/buildings`);
+			if (!res.ok) throw new Error("Failed to load building data.");
+			const data = (await res.json()) as BuildingFeatureCollectionNoBox;
+			const features = data.features ?? [];
+			setAllBuildingsCache(features);
+			return features;
+		},
+		[allBuildingsCache],
+	);
 
 	useEffect(() => {
 		const loadStats = async () => {
@@ -232,27 +255,29 @@ export default function Dashboard() {
 
 				const currentDisaster = disasters[0];
 				setSelectedDisasterId(currentDisaster.id);
-				setDisasterName(currentDisaster.name);
 
-				const statsRes = await fetch(`${API_BASE}/disasters/${currentDisaster.id}/buildings/stats`);
+				const statsRes = await fetch(
+					`${API_BASE}/disasters/${currentDisaster.id}/buildings/stats`,
+				);
 				if (statsRes.ok) {
 					setStats((await statsRes.json()) as BuildingStatsResponse);
 				} else if (statsRes.status === 404) {
-					setSupportsStatsEndpoint(false);
 					const features = await ensureAllBuildings(currentDisaster.id);
 					setStats(buildStatsFromFeatures(features));
 				} else {
 					throw new Error("Failed to load building stats.");
 				}
 			} catch (err) {
-				setError(err instanceof Error ? err.message : "Unexpected dashboard error.");
+				setError(
+					err instanceof Error ? err.message : "Unexpected dashboard error.",
+				);
 			} finally {
 				setLoadingStats(false);
 			}
 		};
 
 		void loadStats();
-	}, []);
+	}, [ensureAllBuildings]);
 
 	useEffect(() => {
 		if (activeSection !== "buildings") return;
@@ -270,7 +295,8 @@ export default function Dashboard() {
 						page: String(page),
 						page_size: String(PAGE_SIZE),
 					});
-					if (activeDamageFilter !== "all") params.set("damage", activeDamageFilter);
+					if (activeDamageFilter !== "all")
+						params.set("damage", activeDamageFilter);
 
 					const res = await fetch(
 						`${API_BASE}/disasters/${selectedDisasterId}/buildings/paged?${params.toString()}`,
@@ -297,11 +323,15 @@ export default function Dashboard() {
 						? features
 						: activeDamageFilter === "damaged"
 							? features.filter((feature) =>
-									DAMAGED_FILTER_SET.has(normalizeDamage(feature.properties.actual_damage)),
+									DAMAGED_FILTER_SET.has(
+										normalizeDamage(feature.properties.actual_damage),
+									),
 								)
-						: features.filter(
-								(feature) => normalizeDamage(feature.properties.actual_damage) === activeDamageFilter,
-							);
+							: features.filter(
+									(feature) =>
+										normalizeDamage(feature.properties.actual_damage) ===
+										activeDamageFilter,
+								);
 
 				const mapped: BuildingListItem[] = filtered.map((feature) => {
 					const prop = feature.properties;
@@ -329,14 +359,24 @@ export default function Dashboard() {
 				setTotalPages(pages);
 				setTotalItems(total);
 			} catch (err) {
-				setError(err instanceof Error ? err.message : "Unable to load buildings.");
+				setError(
+					err instanceof Error ? err.message : "Unable to load buildings.",
+				);
 			} finally {
 				setLoadingBuildings(false);
 			}
 		};
 
 		void loadBuildingsPage();
-	}, [activeSection, selectedDisasterId, page, activeDamageFilter]);
+	}, [
+		activeSection,
+		selectedDisasterId,
+		page,
+		activeDamageFilter,
+		supportsPagedEndpoint,
+		ensureAllBuildings,
+		ensureImagePairs,
+	]);
 
 	const overviewDamageRows = useMemo(
 		() =>
@@ -364,206 +404,240 @@ export default function Dashboard() {
 			<Header />
 			<div className="mx-auto w-full max-w-7xl px-6 py-8">
 				<div className="flex flex-row gap-6 items-start">
-				<AppSidebar
-					activeSection={activeSection}
-					activeDamageFilter={activeDamageFilter}
-					filters={DAMAGE_FILTERS}
-					onOverview={() => setActiveSection("overview")}
-					onSelectFilter={setDamageFilter}
-				/>
+					<AppSidebar
+						activeSection={activeSection}
+						activeDamageFilter={activeDamageFilter}
+						filters={DAMAGE_FILTERS}
+						onOverview={() => setActiveSection("overview")}
+						onSelectFilter={setDamageFilter}
+					/>
 
-				<div className="space-y-6 min-w-0 flex-1">
-
-					{loadingStats && (
-						<div className="rounded-xl border border-border bg-card p-4">
-							<SpinnerEmpty
-								title="Preparing dashboard"
-								description="Fetching disaster metadata and damage statistics to populate the overview cards."
-								className="min-h-[180px] border-0 p-0"
-							/>
-						</div>
-					)}
-
-					{error && (
-						<div className="rounded-xl border border-destructive/40 bg-card p-4 text-sm text-destructive">
-							{error}
-						</div>
-					)}
-
-					{activeSection === "overview" && (
-						<>
-							<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-								<div className="rounded-xl border border-border bg-card text-card-foreground p-4 lg:col-span-2 flex h-full flex-col">
-									<p className="text-sm text-muted-foreground">Total Buildings</p>
-									<p className="mt-2 text-3xl font-bold leading-none">{stats.total}</p>
-									<p className="mt-2 text-xs invisible">0% of all mapped buildings</p>
-									<Button
-										variant="outline"
-										size="sm"
-										className="mt-2"
-										onClick={() => setDamageFilter("all")}
-									>
-										View
-									</Button>
-								</div>
-
-								<div className="rounded-xl border border-border bg-card text-card-foreground p-4 lg:col-span-2 flex h-full flex-col">
-									<p className="text-sm text-muted-foreground">Damaged</p>
-									<p className="mt-2 text-3xl font-bold leading-none">{stats.damaged}</p>
-									<p className="mt-2 text-xs text-muted-foreground">
-										{toPct(stats.damaged, stats.total)}% of all mapped buildings
-									</p>
-									<Button
-										variant="outline"
-										size="sm"
-										className="mt-auto"
-										onClick={() => setDamageFilter("damaged")}
-									>
-										View
-									</Button>
-								</div>
-
-								<div className="rounded-xl border border-border bg-card text-card-foreground p-4 lg:col-span-2 flex h-full flex-col">
-									<p className="text-sm text-muted-foreground">No Damage</p>
-									<p className="mt-2 text-3xl font-bold leading-none">{stats.no_damage}</p>
-									<p className="mt-2 text-xs text-muted-foreground">
-										{toPct(stats.no_damage, stats.total)}% of all mapped buildings
-									</p>
-									<Button
-										variant="outline"
-										size="sm"
-										className="mt-auto"
-										onClick={() => setDamageFilter("no-damage")}
-									>
-										View
-									</Button>
-								</div>
+					<div className="space-y-6 min-w-0 flex-1">
+						{loadingStats && (
+							<div className="rounded-xl border border-border bg-card p-4">
+								<SpinnerEmpty
+									title="Preparing dashboard"
+									description="Fetching disaster metadata and damage statistics to populate the overview cards."
+									className="min-h-[180px] border-0 p-0"
+								/>
 							</div>
+						)}
 
+						{error && (
+							<div className="rounded-xl border border-destructive/40 bg-card p-4 text-sm text-destructive">
+								{error}
+							</div>
+						)}
+
+						{activeSection === "overview" && (
+							<>
+								<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+									<div className="rounded-xl border border-border bg-card text-card-foreground p-4 lg:col-span-2 flex h-full flex-col">
+										<p className="text-sm text-muted-foreground">
+											Total Buildings
+										</p>
+										<p className="mt-2 text-3xl font-bold leading-none">
+											{stats.total}
+										</p>
+										<p className="mt-2 text-xs invisible">
+											0% of all mapped buildings
+										</p>
+										<Button
+											variant="outline"
+											size="sm"
+											className="mt-2"
+											onClick={() => setDamageFilter("all")}
+										>
+											View
+										</Button>
+									</div>
+
+									<div className="rounded-xl border border-border bg-card text-card-foreground p-4 lg:col-span-2 flex h-full flex-col">
+										<p className="text-sm text-muted-foreground">Damaged</p>
+										<p className="mt-2 text-3xl font-bold leading-none">
+											{stats.damaged}
+										</p>
+										<p className="mt-2 text-xs text-muted-foreground">
+											{toPct(stats.damaged, stats.total)}% of all mapped
+											buildings
+										</p>
+										<Button
+											variant="outline"
+											size="sm"
+											className="mt-auto"
+											onClick={() => setDamageFilter("damaged")}
+										>
+											View
+										</Button>
+									</div>
+
+									<div className="rounded-xl border border-border bg-card text-card-foreground p-4 lg:col-span-2 flex h-full flex-col">
+										<p className="text-sm text-muted-foreground">No Damage</p>
+										<p className="mt-2 text-3xl font-bold leading-none">
+											{stats.no_damage}
+										</p>
+										<p className="mt-2 text-xs text-muted-foreground">
+											{toPct(stats.no_damage, stats.total)}% of all mapped
+											buildings
+										</p>
+										<Button
+											variant="outline"
+											size="sm"
+											className="mt-auto"
+											onClick={() => setDamageFilter("no-damage")}
+										>
+											View
+										</Button>
+									</div>
+								</div>
+
+								<div className="rounded-xl border border-border bg-card text-card-foreground p-5">
+									<h3 className="text-lg font-semibold mb-4">
+										Damage Distribution
+									</h3>
+									<div className="space-y-4">
+										{overviewDamageRows.map((row) => (
+											<div key={row.key} className="space-y-1.5">
+												<div className="flex items-center justify-between text-sm">
+													<span className="font-medium">{row.label}</span>
+													<span className="text-muted-foreground">
+														{row.count} ({row.percentage}%)
+													</span>
+												</div>
+												<div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
+													<div
+														className="h-full rounded-full"
+														style={{
+															width: `${row.percentage}%`,
+															backgroundColor: row.color,
+														}}
+													/>
+												</div>
+											</div>
+										))}
+									</div>
+								</div>
+							</>
+						)}
+
+						{activeSection === "buildings" && (
 							<div className="rounded-xl border border-border bg-card text-card-foreground p-5">
-								<h3 className="text-lg font-semibold mb-4">Damage Distribution</h3>
-								<div className="space-y-4">
-									{overviewDamageRows.map((row) => (
-										<div key={row.key} className="space-y-1.5">
-											<div className="flex items-center justify-between text-sm">
-												<span className="font-medium">{row.label}</span>
-												<span className="text-muted-foreground">
-													{row.count} ({row.percentage}%)
-												</span>
-											</div>
-											<div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
-												<div
-													className="h-full rounded-full"
-													style={{
-														width: `${row.percentage}%`,
-														backgroundColor: row.color,
-													}}
-												/>
-											</div>
-										</div>
-									))}
+								<div className="flex items-center justify-between mb-4 gap-3">
+									<h3 className="text-lg font-semibold">Buildings</h3>
+									<p className="text-xs text-muted-foreground">
+										{totalItems} total rows
+									</p>
 								</div>
+
+								{loadingBuildings ? (
+									<div className="rounded-md border border-border bg-background p-4">
+										<SpinnerEmpty
+											title="Loading building records"
+											description={`Retrieving building rows for page ${page} with the ${prettyLabel(activeDamageFilter)} filter.`}
+											className="min-h-[280px] border-0 p-0"
+										/>
+									</div>
+								) : (
+									<div className="overflow-x-auto">
+										<table className="w-full min-w-[980px] text-sm">
+											<thead>
+												<tr className="border-b border-border text-left text-muted-foreground">
+													<th className="py-2 pr-3 font-medium">Building</th>
+													<th className="py-2 pr-3 font-medium">ID</th>
+													<th className="py-2 pr-3 font-medium">Image Pair</th>
+													<th className="py-2 pr-3 font-medium">Actual</th>
+													<th className="py-2 pr-3 font-medium">Predicted</th>
+													<th className="py-2 pr-3 font-medium">Correct</th>
+													<th className="py-2 pr-0 font-medium">Created</th>
+												</tr>
+											</thead>
+											<tbody>
+												{rows.map((building) => {
+													const thumbnail = resolveStorageUrl(
+														building.post_image_path ?? building.pre_image_path,
+													);
+													const created = building.created_at
+														? new Date(building.created_at).toLocaleString()
+														: "-";
+
+													return (
+														<tr
+															key={building.uid}
+															className="border-b border-border/70 align-top"
+														>
+															<td className="py-3 pr-3">
+																<Item
+																	imageSrc={thumbnail}
+																	imageAlt={`Building ${building.uid}`}
+																	title={building.uid}
+																	subtitle={`xBD: ${building.xbd_id}`}
+																	meta={`Image Pair ID: ${building.image_pair_id}`}
+																/>
+															</td>
+															<td className="py-3 pr-3 text-muted-foreground">
+																{building.id}
+															</td>
+															<td className="py-3 pr-3 text-muted-foreground">
+																{building.image_pair_id}
+															</td>
+															<td className="py-3 pr-3">
+																<span
+																	className="inline-flex rounded-md px-2 py-1 text-xs font-medium text-white"
+																	style={{
+																		backgroundColor:
+																			DAMAGE_COLOR_HEX[
+																				normalizeDamage(building.actual_damage)
+																			],
+																	}}
+																>
+																	{prettyLabel(
+																		normalizeDamage(building.actual_damage),
+																	)}
+																</span>
+															</td>
+															<td className="py-3 pr-3">
+																<span
+																	className="inline-flex rounded-md px-2 py-1 text-xs font-medium text-white"
+																	style={{
+																		backgroundColor:
+																			DAMAGE_COLOR_HEX[
+																				normalizeDamage(
+																					building.predicted_damage,
+																				)
+																			],
+																	}}
+																>
+																	{prettyLabel(
+																		normalizeDamage(building.predicted_damage),
+																	)}
+																</span>
+															</td>
+															<td className="py-3 pr-3 text-muted-foreground">
+																{typeof building.is_correct === "boolean"
+																	? building.is_correct
+																		? "Yes"
+																		: "No"
+																	: "-"}
+															</td>
+															<td className="py-3 pr-0 text-muted-foreground">
+																{created}
+															</td>
+														</tr>
+													);
+												})}
+											</tbody>
+										</table>
+									</div>
+								)}
+
+								<Pagination
+									page={page}
+									totalPages={totalPages}
+									onPageChange={setPage}
+								/>
 							</div>
-						</>
-					)}
-
-					{activeSection === "buildings" && (
-						<div className="rounded-xl border border-border bg-card text-card-foreground p-5">
-							<div className="flex items-center justify-between mb-4 gap-3">
-								<h3 className="text-lg font-semibold">Buildings</h3>
-								<p className="text-xs text-muted-foreground">{totalItems} total rows</p>
-							</div>
-
-							{loadingBuildings ? (
-								<div className="rounded-md border border-border bg-background p-4">
-									<SpinnerEmpty
-										title="Loading building records"
-										description={`Retrieving building rows for page ${page} with the ${prettyLabel(activeDamageFilter)} filter.`}
-										className="min-h-[280px] border-0 p-0"
-									/>
-								</div>
-							) : (
-								<div className="overflow-x-auto">
-									<table className="w-full min-w-[980px] text-sm">
-										<thead>
-											<tr className="border-b border-border text-left text-muted-foreground">
-												<th className="py-2 pr-3 font-medium">Building</th>
-												<th className="py-2 pr-3 font-medium">ID</th>
-												<th className="py-2 pr-3 font-medium">Image Pair</th>
-												<th className="py-2 pr-3 font-medium">Actual</th>
-												<th className="py-2 pr-3 font-medium">Predicted</th>
-												<th className="py-2 pr-3 font-medium">Correct</th>
-												<th className="py-2 pr-0 font-medium">Created</th>
-											</tr>
-										</thead>
-										<tbody>
-											{rows.map((building) => {
-												const thumbnail = resolveStorageUrl(
-													building.post_image_path ?? building.pre_image_path,
-												);
-												const created = building.created_at
-													? new Date(building.created_at).toLocaleString()
-													: "-";
-
-												return (
-													<tr key={building.uid} className="border-b border-border/70 align-top">
-														<td className="py-3 pr-3">
-															<Item
-																imageSrc={thumbnail}
-																imageAlt={`Building ${building.uid}`}
-																title={building.uid}
-																subtitle={`xBD: ${building.xbd_id}`}
-																meta={`Image Pair ID: ${building.image_pair_id}`}
-															/>
-														</td>
-														<td className="py-3 pr-3 text-muted-foreground">{building.id}</td>
-														<td className="py-3 pr-3 text-muted-foreground">{building.image_pair_id}</td>
-														<td className="py-3 pr-3">
-															<span
-																className="inline-flex rounded-md px-2 py-1 text-xs font-medium text-white"
-																style={{
-																	backgroundColor:
-																		DAMAGE_COLOR_HEX[normalizeDamage(building.actual_damage)],
-																}}
-															>
-																{prettyLabel(normalizeDamage(building.actual_damage))}
-															</span>
-														</td>
-														<td className="py-3 pr-3">
-															<span
-																className="inline-flex rounded-md px-2 py-1 text-xs font-medium text-white"
-																style={{
-																	backgroundColor:
-																		DAMAGE_COLOR_HEX[normalizeDamage(building.predicted_damage)],
-																}}
-															>
-																{prettyLabel(normalizeDamage(building.predicted_damage))}
-															</span>
-														</td>
-														<td className="py-3 pr-3 text-muted-foreground">
-															{typeof building.is_correct === "boolean"
-																? building.is_correct
-																	? "Yes"
-																	: "No"
-																: "-"}
-														</td>
-														<td className="py-3 pr-0 text-muted-foreground">{created}</td>
-													</tr>
-												);
-											})}
-										</tbody>
-									</table>
-								</div>
-							)}
-
-							<Pagination
-								page={page}
-								totalPages={totalPages}
-								onPageChange={setPage}
-							/>
-						</div>
-					)}
-				</div>
+						)}
+					</div>
 				</div>
 			</div>
 		</div>
