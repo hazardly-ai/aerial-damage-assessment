@@ -1,16 +1,17 @@
-/* Tailwind base styles, components, and utility classes */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Smooth background + text color transitions when switching themes */
+/* =========================
+   GLOBAL TRANSITIONS
+========================= */
+
 html {
 	transition:
 		background-color 300ms ease,
 		color 300ms ease;
 }
 
-/* Apply smooth transitions to all elements for theme switching */
 *,
 *::before,
 *::after {
@@ -20,10 +21,10 @@ html {
 		border-color 300ms ease;
 }
 
-/*
-   Light mode color system
-   These CSS variables are used throughout the app via Tailwind (hsl(var(--...)))
-*/
+/* =========================
+   THEME VARIABLES (LIGHT)
+========================= */
+
 :root {
 	--background: 210 40% 98%;
 	--foreground: 222 47% 11%;
@@ -31,101 +32,46 @@ html {
 	--card: 0 0% 100%;
 	--card-foreground: 222 47% 11%;
 
-	--popover: 0 0% 100%;
-	--popover-foreground: 222 47% 11%;
-
-	--primary: 199 89% 48%;
-	--primary-foreground: 0 0% 100%;
-
-	--secondary: 210 40% 96%;
-	--secondary-foreground: 222 47% 11%;
-
-	--muted: 210 40% 96%;
+	--border: 214 32% 91%;
 	--muted-foreground: 215 16% 47%;
 
-	--accent: 24 95% 53%;
-	--accent-foreground: 222 47% 11%;
+	--primary: 199 89% 48%;
 
-	--destructive: 0 84% 60%;
-	--destructive-foreground: 0 0% 100%;
-
-	--border: 214 32% 91%;
-	--input: 214 32% 91%;
-	--ring: 199 89% 48%;
-
-	/* Global border radius used for components */
-	--radius: 0.75rem;
-
-	/* Map compare + popup clip region */
 	--map-radius: 16px;
-
-	/* Building toggle — light mode */
-	--toggle-bg: rgba(255, 255, 255, 0.88);
-	--toggle-bg-off: rgba(255, 255, 255, 0.65);
-	--toggle-border: rgba(0, 0, 0, 0.12);
-	--toggle-color: hsl(222 47% 11%);
-	--toggle-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-	--toggle-track-off: rgba(0, 0, 0, 0.18);
-	--toggle-track-on: hsl(var(--primary));
 }
 
-/*
-   Dark mode overrides
-   Activated when the "dark" class is added to <html>
-*/
-.dark {
-	--background: 220 10% 6%; /* near black */
-	--foreground: 210 20% 96%; /* soft white */
+/* =========================
+   DARK MODE
+========================= */
 
-	--card: 220 10% 9%; /* dark gray */
+.dark {
+	--background: 220 10% 6%;
+	--foreground: 210 20% 96%;
+
+	--card: 220 10% 9%;
 	--card-foreground: 210 20% 96%;
 
-	--popover: 220 10% 9%;
-	--popover-foreground: 210 20% 96%;
-
-	--primary: 199 89% 55%; /* slightly brighter blue for dark mode */
-	--primary-foreground: 0 0% 100%;
-
-	--secondary: 220 8% 14%;
-	--secondary-foreground: 210 20% 96%;
-
-	--muted: 220 8% 14%;
+	--border: 220 8% 18%;
 	--muted-foreground: 215 15% 70%;
 
-	--accent: 24 95% 55%;
-	--accent-foreground: 0 0% 100%;
-
-	--destructive: 0 70% 40%;
-	--destructive-foreground: 0 0% 100%;
-
-	--border: 220 8% 18%;
-	--input: 220 8% 18%;
-	--ring: 199 89% 55%;
-
-	/* Building toggle — dark mode */
-	--toggle-bg: rgba(15, 23, 42, 0.82);
-	--toggle-bg-off: rgba(15, 23, 42, 0.55);
-	--toggle-border: rgba(255, 255, 255, 0.18);
-	--toggle-color: hsl(210 20% 96%);
-	--toggle-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-	--toggle-track-off: rgba(255, 255, 255, 0.2);
-	--toggle-track-on: hsl(var(--primary));
+	--primary: 199 89% 55%;
 }
 
-/* Base body styling */
+/* =========================
+   BASE
+========================= */
+
 body {
 	margin: 0;
 	min-height: 100vh;
-
-	/* Primary font stack */
 	font-family: "Space Grotesk", "Segoe UI", sans-serif;
-
-	/* Use theme variables for background and text color */
 	background-color: hsl(var(--background));
 	color: hsl(var(--foreground));
 }
 
-/* Map wrapper + container */
+/* =========================
+   MAP
+========================= */
 
 .map-wrapper {
 	position: relative;
@@ -142,7 +88,90 @@ body {
 	overflow: hidden;
 }
 
-/* Building polygon toggle button */
+/* =========================
+   XBD SELECTOR
+========================= */
+
+.xbd-selector-bar {
+	position: absolute;
+	top: 16px;
+	left: 16px;
+	z-index: 20;
+
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.xbd-selector {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+
+	background: rgba(255, 255, 255, 0.9);
+	border: 1px solid rgba(0, 0, 0, 0.1);
+	border-radius: 8px;
+	padding: 6px 10px;
+
+	font-size: 13px;
+	font-weight: 500;
+
+	backdrop-filter: blur(6px);
+}
+
+.dark .xbd-selector {
+	background: rgba(15, 23, 42, 0.85);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.xbd-selector__label {
+	opacity: 0.7;
+}
+
+/* FIXED SELECT */
+.xbd-selector__select {
+	appearance: none;
+	-webkit-appearance: none;
+	-moz-appearance: none;
+
+	background-color: hsl(var(--card));
+	color: hsl(var(--foreground));
+
+	border: none;
+	outline: none;
+
+	padding: 2px 18px 2px 6px;
+	border-radius: 6px;
+
+	font-size: 13px;
+	cursor: pointer;
+}
+
+/* FIX dropdown options */
+.xbd-selector__select option {
+	background-color: hsl(var(--card));
+	color: hsl(var(--foreground));
+}
+
+/* Custom arrow */
+.xbd-selector::after {
+	content: "▾";
+	position: absolute;
+	right: 8px;
+	font-size: 12px;
+	pointer-events: none;
+	opacity: 0.7;
+}
+
+.xbd-selector-bar__loading {
+	font-size: 12px;
+	opacity: 0.7;
+}
+
+/* =========================
+   BUILDING TOGGLE / SLIDER
+========================= */
 
 .building-toggle {
 	position: absolute;
@@ -180,180 +209,123 @@ body {
 	background: var(--toggle-bg);
 }
 
-/* Track (the pill behind the knob) */
-.building-toggle-track {
-	display: inline-flex;
-	align-items: center;
-	flex-shrink: 0;
-	width: 32px;
-	height: 18px;
-	padding: 2px;
-	border-radius: 9999px;
-	background: var(--toggle-track-off);
+/* Slider track */
+.building-toggle input[type="range"] {
+	-webkit-appearance: none;
+	width: 120px;
+	height: 6px;
+	border-radius: 3px;
+	background: #bbb; /* Light gray track */
+	cursor: pointer;
+	margin-left: 8px;
+	box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.3);
 	transition: background 0.2s ease;
 }
 
-.building-toggle[data-active="true"] .building-toggle-track {
-	background: var(--toggle-track-on);
+.dark .building-toggle input[type="range"] {
+	background: #444; /* Dark track */
 }
 
-/* Knob */
-.building-toggle-knob {
-	display: block;
-	width: 14px;
-	height: 14px;
+/* Slider thumb */
+.building-toggle input[type="range"]::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: 18px;
+	height: 18px;
 	border-radius: 50%;
-	background: #fff;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-	transform: translateX(0);
-	transition: transform 0.2s ease;
+	background: #ff5722; /* Bright orange thumb */
+	border: 2px solid #fff;
+	box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+	cursor: pointer;
+	transition: transform 0.1s ease;
 }
 
-.building-toggle[data-active="true"] .building-toggle-knob {
-	transform: translateX(14px);
+.building-toggle input[type="range"]::-webkit-slider-thumb:hover {
+	transform: scale(1.2);
+	box-shadow: 0 0 6px rgba(0, 0, 0, 0.7);
 }
 
-/* Popup overlay — rendered as a React div above both map containers so it is
-   never clipped by the mapbox-gl-compare slider. left/top are set inline as
-   they are dynamic pixel values derived from map.project(lngLat). */
+.building-toggle input[type="range"]::-moz-range-thumb {
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	background: #ff5722;
+	border: 2px solid #fff;
+	box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+	cursor: pointer;
+	transition: transform 0.1s ease;
+}
+
+.building-toggle input[type="range"]::-moz-range-thumb:hover {
+	transform: scale(1.2);
+	box-shadow: 0 0 6px rgba(0, 0, 0, 0.7);
+}
+
+/* Label next to slider */
+.building-toggle label {
+	font-weight: 500;
+	color: inherit; /* matches container text */
+}
+
+/* =========================
+   POPUP
+========================= */
+
 .popup-overlay {
 	position: absolute;
 	transform: translate(-50%, calc(-100% - 12px));
 	z-index: 11;
-	pointer-events: auto;
 }
 
-/* Popup card container */
 .popup-card {
 	width: 260px;
 	background: hsl(var(--card));
 	color: hsl(var(--card-foreground));
 	border-radius: 12px;
-	overflow: hidden;
 	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+	overflow: hidden;
 }
 
-/* Arrow tip pointing to the property */
-.popup-arrow {
-	position: absolute;
-	bottom: -7px;
-	left: 50%;
-	width: 14px;
-	height: 14px;
-	padding: 0;
-	background: hsl(var(--card));
-	border-radius: 2px;
-	box-shadow: none;
-	transform: translateX(-50%) rotate(45deg);
-	clip-path: polygon(100% 0, 100% 100%, 0 100%);
-}
-
-/* Header with gradient */
 .popup-header {
-	position: relative;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
 	padding: 10px 14px;
-	font-size: 14px;
 	font-weight: 600;
 	background: linear-gradient(90deg, #6366f1, #8b5cf6);
 	color: white;
 }
 
-/* Close button */
-.popup-close-btn {
-	position: absolute;
-	top: 50%;
-	right: 8px;
-	transform: translateY(-50%);
-	width: 28px;
-	height: 28px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	line-height: 1;
-	font-size: 18px;
-	background: rgba(0, 0, 0, 0.25);
-	border-radius: 8px;
-	cursor: pointer;
-	user-select: none;
-	flex-shrink: 0;
-	transition: background 0.2s ease;
-}
-
-.popup-close-btn:hover {
-	background: rgba(0, 0, 0, 0.45);
-}
-
-/* Popup body padding */
 .popup-body {
 	padding: 12px 14px;
 	font-size: 13px;
 }
 
-/* Section spacing */
-.popup-section {
-	margin-bottom: 1px;
+/* =========================
+   LOADING OVERLAY
+========================= */
+
+.map-status-overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 10;
+	border-radius: var(--map-radius);
 }
 
-/* Bottom section does not have a bottom margin */
-.popup-section:last-child {
-	margin-bottom: 0;
-}
-
-/* Labels */
-.popup-label {
-	font-size: 11px;
-	opacity: 0.7;
-	margin-bottom: 2px;
-}
-
-/* Values */
-.popup-value {
-	font-weight: 600;
-	word-break: break-all;
-	display: inline;
-}
-.popup-damage {
-	display: inline-block;
-	padding: 4px 10px;
-	border-radius: 6px;
-	color: white;
-	font-weight: 600;
-	font-size: 12px;
-}
-
-.popup-value-container {
-	display: block;
-}
-
-.copy-btn {
-	background: none;
-	border: none;
-	padding: 0;
-	margin: 0;
-	margin-left: 6px;
-	cursor: pointer;
-	display: inline-flex;
+.map-status-overlay--loading {
+	display: flex;
 	align-items: center;
 	justify-content: center;
-	color: hsl(var(--muted-foreground));
-	transition: color 0.2s;
-	line-height: 1;
-	vertical-align: middle;
+	background: hsl(var(--background) / 0.88);
 }
 
-.copy-btn:hover {
-	color: hsl(var(--foreground));
+.map-status-spinner {
+	width: 28px;
+	height: 28px;
+	border: 2px solid hsl(var(--border));
+	border-top-color: hsl(var(--muted-foreground));
+	border-radius: 50%;
+	animation: spin 0.75s linear infinite;
 }
 
-.copy-icon {
-	width: 1em;
-	height: 1em;
-	transition: color 0.2s;
-}
-
-.copy-icon.copied {
-	color: hsl(142 71% 45%);
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
 }
