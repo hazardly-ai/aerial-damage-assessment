@@ -62,3 +62,32 @@ class BuildingFeatureCollectionNoBox(BaseModel):
 class BuildingFeatureCollectionBboxOnly(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[BuildingFeatureBboxOnly]
+
+
+class BuildingListItem(BaseModel):
+    id: int
+    uid: str
+    image_pair_id: int
+    xbd_id: int
+    actual_damage: str
+    predicted_damage: str | None = None
+    is_correct: bool | None = None
+    created_at: datetime | None = None
+    pre_image_path: str | None = None
+    post_image_path: str | None = None
+
+
+class PaginatedBuildingListResponse(BaseModel):
+    items: list[BuildingListItem]
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int
+
+
+class BuildingDamageStatsResponse(BaseModel):
+    total: int
+    no_damage: int
+    damaged: int
+    unclassified: int
+    by_damage: dict[str, int]
