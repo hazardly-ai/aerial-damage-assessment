@@ -4,7 +4,7 @@
  * All functions throw on non-OK responses so callers can catch and surface errors.
  */
 
-import bbox from "@turf/bbox";
+// import bbox from "@turf/bbox";
 
 const BASE_URL = "https://hazardly-api.vercel.app";
 const IMAGE_BASE_URL =
@@ -179,19 +179,8 @@ export async function fetchMapData(disasterId: number, xbdId: number) {
 		fetchBuildings(disasterId, xbdId),
 	]);
 
-	const [minLng, minLat, maxLng, maxLat] = bbox(buildings);
-
-	const bounds: ImageBounds = {
-		bbox: [minLng, minLat, maxLng, maxLat],
-		coordinates: [
-			[minLng, maxLat], // top-left
-			[maxLng, maxLat], // top-right
-			[maxLng, minLat], // bottom-right
-			[minLng, minLat], // bottom-left
-		],
-		sw: [minLng, minLat],
-		ne: [maxLng, maxLat],
-	};
+	// Use geo metadata instead of building bbox
+	const bounds = computeImageBounds(imagePair.properties);
 
 	return { imagePair, buildings, bounds };
 }

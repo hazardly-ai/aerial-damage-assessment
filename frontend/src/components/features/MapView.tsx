@@ -7,6 +7,7 @@ import type { Feature } from "geojson";
 
 import { BuildingPopup } from "@/components/features/BuildingPopup";
 import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
+import { XbdSelector } from "@/components/features/XbdSelector";
 import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
 import type { MapStatus } from "@/types/map.ts";
 import {
@@ -19,20 +20,8 @@ import {
 import { fetchMapData, resolveImageUrl } from "@/utils/hazardlyApi";
 
 // Constants
-//
-// TODO (Person 2): replace these with dynamic values from the selector.
-//
-// To find DISASTER_ID: GET https://hazardly-api.vercel.app/disasters
-//   → look for the feature whose name contains "hurricane-harvey"
-//   → copy its properties.disaster_id
-//
-// To find XBD_ID: GET https://hazardly-api.vercel.app/disasters/{disaster_id}/image-pairs
-//   → pick any features[0].properties.xbd_id
-//
-// TODO: confirm integer disaster_id from GET /disasters
-// TODO: Remove some of these comments - JH
-const DISASTER_ID: number = 1; // replace with actual integer from /disasters
-const XBD_ID: number = 18; // replace with actual integer from /disasters/{id}/image-pairs
+const DISASTER_ID: number = 1;
+const XBD_ID: number = 18;
 
 // Types
 
@@ -65,6 +54,8 @@ export default function MapView() {
 	const afterMapRef = useRef<mapboxgl.Map | null>(null);
 	const layersReadyRef = useRef(false);
 
+	const [xbdId, setXbdId] = useState<number>(XBD_ID);
+	const [sceneLoading, setSceneLoading] = useState(false);
 	const [retryCount, setRetryCount] = useState(0);
 	const [buildingsVisible, setBuildingsVisible] = useState(true);
 	const [status, setStatus] = useState<MapStatus>("idle");
@@ -132,6 +123,10 @@ export default function MapView() {
 		});
 	}, [closePopup]);
 
+	const xbdIdRef = useRef(xbdId);
+	xbdIdRef.current = xbdId;
+
+	// Effect 1: one-time map initialisation. Tears down and rebuilds on retry.
 	useEffect(() => {
 		if (!containerRef.current) return;
 
@@ -139,17 +134,15 @@ export default function MapView() {
 		let beforeMap: mapboxgl.Map | null = null;
 		let afterMap: mapboxgl.Map | null = null;
 
-		// retryCount is read here to re-trigger this effect on retry
 		void retryCount;
 
 		setStatus("loading");
 		setErrorMessage(null);
 
-		fetchMapData(DISASTER_ID, XBD_ID)
+		fetchMapData(DISASTER_ID, xbdIdRef.current)
 			.then(({ imagePair, buildings, bounds }) => {
 				if (cancelled || !containerRef.current) return;
 
-				// DOM setup
 				containerRef.current.innerHTML = "";
 				const beforeDiv = document.createElement("div");
 				const afterDiv = document.createElement("div");
@@ -185,14 +178,12 @@ export default function MapView() {
 					imagePair.properties.post_image_path,
 				);
 
-				// Capture refs for use inside the load handler
 				const _before = beforeMap;
 				const _after = afterMap;
 
 				const onMapsLoaded = () => {
 					if (cancelled) return;
 
-					// Raster overlays
 					_before.addSource("pre-image", {
 						type: "image",
 						url: preImageUrl,
@@ -214,7 +205,6 @@ export default function MapView() {
 						source: "post-image",
 					});
 
-					// Building polygons
 					addBuildingLayer(_before, buildings);
 					addBuildingLayer(_after, buildings);
 
@@ -229,7 +219,6 @@ export default function MapView() {
 
 					_after.on("move", updatePopupPos);
 
-					// Hover sync
 					let hoveredId: string | number | null = null;
 
 					const setHoverOnBoth = (id: string | number, hover: boolean) => {
@@ -274,23 +263,15 @@ export default function MapView() {
 					bindHover(_before);
 					bindHover(_after);
 
-					// --- Click handlers ---
-					// Both maps use the same handler. The popup is rendered by React in an
-					// overlay div above both map containers, so it's never clipped by the
-					// compare slider. afterMap.project() is used for pixel positioning since
-					// both maps are synced to the same viewport.
 					const handleBuildingClick = (
-						e: mapboxgl.MapMouseEvent & {
-							features?: Feature[];
-						},
+						e: mapboxgl.MapMouseEvent & { features?: Feature[] },
 					) => {
 						const feature = e.features?.[0];
 						if (
 							!feature ||
 							(typeof feature.id !== "string" && typeof feature.id !== "number")
-						) {
+						)
 							return;
-						}
 
 						const uid = asString(feature.properties?.uid);
 						if (!uid) return;
@@ -325,7 +306,6 @@ export default function MapView() {
 					_before.on("click", BUILDINGS_FILL_LAYER_ID, handleBuildingClick);
 					_after.on("click", BUILDINGS_FILL_LAYER_ID, handleBuildingClick);
 
-					// Compare slider
 					if (containerRef.current) {
 						compareRef.current = new Compare(
 							_before,
@@ -378,18 +358,106 @@ export default function MapView() {
 			beforeMapRef.current = null;
 			afterMapRef.current = null;
 		};
+		// xbdId is intentionally excluded — scene switches are handled by Effect 2.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [openPopup, updatePopupPos, retryCount]);
+
+	// Effect 2: swap scene data in-place when xbdId changes.
+	// Skips on first render (layersReadyRef is false until Effect 1 completes).
+	useEffect(() => {
+		const before = beforeMapRef.current;
+		const after = afterMapRef.current;
+		if (!before || !after || !layersReadyRef.current) return;
+
+		let cancelled = false;
+		setSceneLoading(true);
+		closePopup();
+
+		fetchMapData(DISASTER_ID, xbdId)
+			.then(({ imagePair, buildings, bounds }) => {
+				if (cancelled || !beforeMapRef.current || !afterMapRef.current) return;
+
+				const _before = beforeMapRef.current;
+				const _after = afterMapRef.current;
+				const preImageUrl = resolveImageUrl(
+					imagePair.properties.pre_image_path,
+				);
+				const postImageUrl = resolveImageUrl(
+					imagePair.properties.post_image_path,
+				);
+				const { coordinates, sw, ne } = bounds;
+
+				(_before.getSource("pre-image") as mapboxgl.ImageSource).updateImage({
+					url: preImageUrl,
+					coordinates,
+				});
+				(_after.getSource("post-image") as mapboxgl.ImageSource).updateImage({
+					url: postImageUrl,
+					coordinates,
+				});
+
+				// Clear previous selection + popup (prevents stale UI)
+				selectedBuildingIdRef.current = null;
+				popupDataRef.current = null;
+				setPopupData(null);
+				setPopupPos(null);
+
+				// Reset building sources to avoid stale feature states
+				const beforeSource = _before.getSource(
+					BUILDINGS_SOURCE_ID,
+				) as mapboxgl.GeoJSONSource;
+				const afterSource = _after.getSource(
+					BUILDINGS_SOURCE_ID,
+				) as mapboxgl.GeoJSONSource;
+
+				// Clear first
+				beforeSource.setData({ type: "FeatureCollection", features: [] });
+				afterSource.setData({ type: "FeatureCollection", features: [] });
+
+				// Then set new data
+				beforeSource.setData(buildings);
+				afterSource.setData(buildings);
+
+				_before.fitBounds([sw, ne], { padding: 0, animate: true });
+
+				setSceneLoading(false);
+			})
+			.catch((err: unknown) => {
+				if (cancelled) return;
+				const msg =
+					err instanceof Error ? err.message : "Failed to load scene.";
+				setErrorMessage(msg);
+				setStatus("error");
+				setSceneLoading(false);
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, [xbdId, closePopup]);
 
 	// Render
 
 	return (
 		<div className="map-wrapper">
-			{/* Map containers — always mounted so refs are stable */}
 			<div ref={containerRef} className="map-container" />
+
+			<div className="xbd-selector-bar">
+				<XbdSelector
+					disasterId={DISASTER_ID}
+					selectedXbdId={xbdId}
+					onChange={setXbdId}
+					disabled={status !== "ready" || sceneLoading}
+				/>
+				{sceneLoading && (
+					<span className="xbd-selector-bar__loading" aria-live="polite">
+						Switching scene…
+					</span>
+				)}
+			</div>
 
 			<MapLoadingOverlay {...loadingOverlay} />
 
-			{/* Error overlay */}
 			{status === "error" && errorMessage && (
 				<div
 					className="map-status-overlay map-status-overlay--error"
@@ -412,7 +480,6 @@ export default function MapView() {
 				</div>
 			)}
 
-			{/* Building popup */}
 			{popupData && popupPos && (
 				<div
 					className="popup-overlay"
@@ -427,7 +494,6 @@ export default function MapView() {
 				</div>
 			)}
 
-			{/* Building layer toggle */}
 			<button
 				type="button"
 				className="building-toggle"
