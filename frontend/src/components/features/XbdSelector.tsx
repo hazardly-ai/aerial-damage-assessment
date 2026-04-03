@@ -32,7 +32,6 @@ export function XbdSelector({
 				setXbdIds(ids);
 				setStatus("ready");
 
-				// ensure selected ID is valid
 				if (ids.length > 0 && !ids.includes(selectedXbdId)) {
 					onChange(ids[0]);
 				}
@@ -40,7 +39,17 @@ export function XbdSelector({
 			.catch(() => setStatus("error"));
 	}, [disasterId, selectedXbdId, onChange]);
 
-	// Handle no data
+	const currentIndex = xbdIds.indexOf(selectedXbdId);
+	const canGoPrev = currentIndex > 0;
+	const canGoNext = currentIndex < xbdIds.length - 1;
+
+	const goPrev = () => {
+		if (canGoPrev) onChange(xbdIds[currentIndex - 1]);
+	};
+	const goNext = () => {
+		if (canGoNext) onChange(xbdIds[currentIndex + 1]);
+	};
+
 	if (status === "ready" && xbdIds.length === 0) {
 		return (
 			<span className="xbd-selector" role="alert">
@@ -57,25 +66,47 @@ export function XbdSelector({
 		);
 	}
 
+	const isDisabled = disabled || status === "loading";
+
 	return (
-		<label className="xbd-selector">
+		<div className="xbd-selector">
 			<span className="xbd-selector__label">Scene</span>
-			<select
-				className="xbd-selector__select"
-				value={selectedXbdId}
-				disabled={disabled || status === "loading"}
-				onChange={(e) => onChange(Number(e.target.value))}
+			<button
+				type="button"
+				className="xbd-selector__arrow"
+				onClick={goPrev}
+				disabled={isDisabled || !canGoPrev}
+				aria-label="Previous scene"
 			>
-				{status === "loading" ? (
-					<option>Loading…</option>
-				) : (
-					xbdIds.map((id) => (
-						<option key={id} value={id}>
-							{id}
-						</option>
-					))
-				)}
-			</select>
-		</label>
+				‹
+			</button>
+			<div className="xbd-selector__select-wrapper">
+				<select
+					className="xbd-selector__select"
+					value={selectedXbdId}
+					disabled={isDisabled}
+					onChange={(e) => onChange(Number(e.target.value))}
+				>
+					{status === "loading" ? (
+						<option>Loading…</option>
+					) : (
+						xbdIds.map((id) => (
+							<option key={id} value={id}>
+								{id}
+							</option>
+						))
+					)}
+				</select>
+			</div>
+			<button
+				type="button"
+				className="xbd-selector__arrow"
+				onClick={goNext}
+				disabled={isDisabled || !canGoNext}
+				aria-label="Next scene"
+			>
+				›
+			</button>
+		</div>
 	);
 }
