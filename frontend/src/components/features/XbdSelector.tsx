@@ -1,24 +1,35 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchImagePairs } from "@/utils/hazardlyApi";
 
-interface XbdSelectorProps {
+type XbdSelectorStatus = "loading" | "ready" | "error";
+
+interface UseXbdSelectorStateArgs {
 	disasterId: number;
 	selectedXbdId: number;
 	onChange: (xbdId: number) => void;
-	disabled?: boolean;
 }
 
-export function XbdSelector({
+interface XbdSelectorProps {
+	selectedXbdId: number;
+	onChange: (xbdId: number) => void;
+	disabled?: boolean;
+	status: XbdSelectorStatus;
+	xbdIds: number[];
+	canGoPrev: boolean;
+	canGoNext: boolean;
+	onPrev: () => void;
+	onNext: () => void;
+	showArrows?: boolean;
+}
+
+export function useXbdSelectorState({
 	disasterId,
 	selectedXbdId,
 	onChange,
-	disabled,
-}: XbdSelectorProps) {
+}: UseXbdSelectorStateArgs) {
 	const [xbdIds, setXbdIds] = useState<number[]>([]);
-	const [status, setStatus] = useState<"loading" | "ready" | "error">(
-		"loading",
-	);
+	const [status, setStatus] = useState<XbdSelectorStatus>("loading");
 
 	useEffect(() => {
 		setStatus("loading");
@@ -42,15 +53,37 @@ export function XbdSelector({
 
 	const currentIndex = xbdIds.indexOf(selectedXbdId);
 	const canGoPrev = currentIndex > 0;
-	const canGoNext = currentIndex < xbdIds.length - 1;
+	const canGoNext = currentIndex >= 0 && currentIndex < xbdIds.length - 1;
 
-	const goPrev = () => {
-		if (canGoPrev) onChange(xbdIds[currentIndex - 1]);
-	};
-	const goNext = () => {
-		if (canGoNext) onChange(xbdIds[currentIndex + 1]);
-	};
+	return useMemo(
+		() => ({
+			xbdIds,
+			status,
+			canGoPrev,
+			canGoNext,
+			goPrev: () => {
+				if (canGoPrev) onChange(xbdIds[currentIndex - 1]);
+			},
+			goNext: () => {
+				if (canGoNext) onChange(xbdIds[currentIndex + 1]);
+			},
+		}),
+		[xbdIds, status, canGoPrev, canGoNext, onChange, currentIndex],
+	);
+}
 
+export function XbdSelector({
+	selectedXbdId,
+	onChange,
+	disabled,
+	status,
+	xbdIds,
+	canGoPrev,
+	canGoNext,
+	onPrev,
+	onNext,
+	showArrows = true,
+}: XbdSelectorProps) {
 	if (status === "ready" && xbdIds.length === 0) {
 		return (
 			<span className="xbd-selector" role="alert">
@@ -72,15 +105,17 @@ export function XbdSelector({
 	return (
 		<div className="xbd-selector">
 			<span className="xbd-selector__label">Scene</span>
-			<button
-				type="button"
-				className="xbd-selector__arrow"
-				onClick={goPrev}
-				disabled={isDisabled || !canGoPrev}
-				aria-label="Previous scene"
-			>
-				<ChevronLeft size={16} />
-			</button>
+			{showArrows && (
+				<button
+					type="button"
+					className="xbd-selector__arrow"
+					onClick={onPrev}
+					disabled={isDisabled || !canGoPrev}
+					aria-label="Previous scene"
+				>
+					<ChevronLeft size={16} />
+				</button>
+			)}
 			<div className="xbd-selector__select-wrapper">
 				<select
 					className="xbd-selector__select"
@@ -89,7 +124,7 @@ export function XbdSelector({
 					onChange={(e) => onChange(Number(e.target.value))}
 				>
 					{status === "loading" ? (
-						<option>Loading…</option>
+						<option>Loading...</option>
 					) : (
 						xbdIds.map((id) => (
 							<option key={id} value={id}>
@@ -99,15 +134,17 @@ export function XbdSelector({
 					)}
 				</select>
 			</div>
-			<button
-				type="button"
-				className="xbd-selector__arrow"
-				onClick={goNext}
-				disabled={isDisabled || !canGoNext}
-				aria-label="Next scene"
-			>
-				<ChevronRight size={16} />
-			</button>
+			{showArrows && (
+				<button
+					type="button"
+					className="xbd-selector__arrow"
+					onClick={onNext}
+					disabled={isDisabled || !canGoNext}
+					aria-label="Next scene"
+				>
+					<ChevronRight size={16} />
+				</button>
+			)}
 		</div>
 	);
 }

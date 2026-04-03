@@ -6,8 +6,8 @@ import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 import type { Feature } from "geojson";
 
 import { BuildingPopup } from "@/components/features/BuildingPopup";
+import { MapControls } from "@/components/features/MapControls";
 import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
-import { XbdSelector } from "@/components/features/XbdSelector";
 import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
 import type { MapStatus } from "@/types/map.ts";
 import {
@@ -19,11 +19,13 @@ import {
 } from "@/utils/addBuildingLayer";
 import { fetchMapData, resolveImageUrl } from "@/utils/hazardlyApi";
 
-// Constants
-const DISASTER_ID: number = 1;
-const XBD_ID: number = 18;
-
-// Types
+const DISASTER_ID = 1;
+const XBD_ID = 18;
+const PRE_IMAGE_LAYER_ID = "pre-layer";
+const POST_IMAGE_LAYER_ID = "post-layer";
+const SATELLITE_BASE_LAYER_ID = "satellite";
+const SATELLITE_DIMMED_OPACITY = 0.4;
+const SATELLITE_FULL_OPACITY = 1;
 
 interface PopupData {
 	uid: string;
@@ -31,8 +33,6 @@ interface PopupData {
 	damageColor: string;
 	lngLat: mapboxgl.LngLat;
 }
-
-// Helpers
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -42,10 +42,24 @@ const setBuildingVisibility = (map: mapboxgl.Map, visible: boolean) => {
 	map.setLayoutProperty(BUILDINGS_OUTLINE_LAYER_ID, "visibility", visibility);
 };
 
+const setImageryVisibility = (
+	map: mapboxgl.Map,
+	layerId: string,
+	visible: boolean,
+) => {
+	map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
+};
+
+const setSatelliteOpacity = (map: mapboxgl.Map, imageryVisible: boolean) => {
+	map.setPaintProperty(
+		SATELLITE_BASE_LAYER_ID,
+		"raster-opacity",
+		imageryVisible ? SATELLITE_DIMMED_OPACITY : SATELLITE_FULL_OPACITY,
+	);
+};
+
 const asString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.length > 0 ? value : undefined;
-
-// Component
 
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -58,18 +72,19 @@ export default function MapView() {
 	const [sceneLoading, setSceneLoading] = useState(false);
 	const [retryCount, setRetryCount] = useState(0);
 	const [buildingsVisible, setBuildingsVisible] = useState(true);
+	const [imageryVisible, setImageryVisible] = useState(true);
 	const [status, setStatus] = useState<MapStatus>("idle");
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
 	const [popupData, setPopupData] = useState<PopupData | null>(null);
 	const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
 		null,
 	);
 
 	const loadingOverlay = useLoadingOverlay(status);
-
 	const popupDataRef = useRef<PopupData | null>(null);
 	const selectedBuildingIdRef = useRef<string | number | null>(null);
+	const imageryVisibleRef = useRef(imageryVisible);
+	imageryVisibleRef.current = imageryVisible;
 
 	const updatePopupPos = useCallback(() => {
 		if (popupDataRef.current && afterMapRef.current) {
@@ -123,10 +138,26 @@ export default function MapView() {
 		});
 	}, [closePopup]);
 
+	const handleImageryToggle = useCallback(() => {
+		setImageryVisible((prev) => {
+			const next = !prev;
+			if (
+				layersReadyRef.current &&
+				beforeMapRef.current &&
+				afterMapRef.current
+			) {
+				setImageryVisibility(beforeMapRef.current, PRE_IMAGE_LAYER_ID, next);
+				setImageryVisibility(afterMapRef.current, POST_IMAGE_LAYER_ID, next);
+				setSatelliteOpacity(beforeMapRef.current, next);
+				setSatelliteOpacity(afterMapRef.current, next);
+			}
+			return next;
+		});
+	}, []);
+
 	const xbdIdRef = useRef(xbdId);
 	xbdIdRef.current = xbdId;
 
-	// Effect 1: one-time map initialisation. Tears down and rebuilds on retry.
 	useEffect(() => {
 		if (!containerRef.current) return;
 
@@ -158,7 +189,7 @@ export default function MapView() {
 						renderWorldCopies: false,
 					});
 					map.on("style.load", () =>
-						map.setPaintProperty("satellite", "raster-opacity", 0.4),
+						setSatelliteOpacity(map, imageryVisibleRef.current),
 					);
 					map.on("error", (e) => console.error("Mapbox error:", e));
 					map.addControl(new mapboxgl.NavigationControl(), "top-right");
@@ -190,7 +221,7 @@ export default function MapView() {
 						coordinates,
 					});
 					_before.addLayer({
-						id: "pre-layer",
+						id: PRE_IMAGE_LAYER_ID,
 						type: "raster",
 						source: "pre-image",
 					});
@@ -200,7 +231,7 @@ export default function MapView() {
 						coordinates,
 					});
 					_after.addLayer({
-						id: "post-layer",
+						id: POST_IMAGE_LAYER_ID,
 						type: "raster",
 						source: "post-image",
 					});
@@ -214,9 +245,15 @@ export default function MapView() {
 						setBuildingVisibility(_after, current);
 						return current;
 					});
+					setImageryVisible((current) => {
+						setImageryVisibility(_before, PRE_IMAGE_LAYER_ID, current);
+						setImageryVisibility(_after, POST_IMAGE_LAYER_ID, current);
+						setSatelliteOpacity(_before, current);
+						setSatelliteOpacity(_after, current);
+						return current;
+					});
 
 					setStatus("ready");
-
 					_after.on("move", updatePopupPos);
 
 					let hoveredId: string | number | null = null;
@@ -245,8 +282,10 @@ export default function MapView() {
 								!feature ||
 								(typeof feature.id !== "string" &&
 									typeof feature.id !== "number")
-							)
+							) {
 								return;
+							}
+
 							activeMap.getCanvas().style.cursor = "pointer";
 							const next = feature.id;
 							if (hoveredId === next) return;
@@ -270,8 +309,9 @@ export default function MapView() {
 						if (
 							!feature ||
 							(typeof feature.id !== "string" && typeof feature.id !== "number")
-						)
+						) {
 							return;
+						}
 
 						const uid = asString(feature.properties?.uid);
 						if (!uid) return;
@@ -288,6 +328,7 @@ export default function MapView() {
 								{ selected: false },
 							);
 						}
+
 						selectedBuildingIdRef.current = featureId;
 						_before.setFeatureState(
 							{ source: BUILDINGS_SOURCE_ID, id: featureId },
@@ -358,12 +399,10 @@ export default function MapView() {
 			beforeMapRef.current = null;
 			afterMapRef.current = null;
 		};
-		// xbdId is intentionally excluded — scene switches are handled by Effect 2.
+		// xbdId is intentionally excluded; scene switches are handled by Effect 2.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [openPopup, updatePopupPos, retryCount]);
 
-	// Effect 2: swap scene data in-place when xbdId changes.
-	// Skips on first render (layersReadyRef is false until Effect 1 completes).
 	useEffect(() => {
 		const before = beforeMapRef.current;
 		const after = afterMapRef.current;
@@ -396,13 +435,11 @@ export default function MapView() {
 					coordinates,
 				});
 
-				// Clear previous selection + popup (prevents stale UI)
 				selectedBuildingIdRef.current = null;
 				popupDataRef.current = null;
 				setPopupData(null);
 				setPopupPos(null);
 
-				// Reset building sources to avoid stale feature states
 				const beforeSource = _before.getSource(
 					BUILDINGS_SOURCE_ID,
 				) as mapboxgl.GeoJSONSource;
@@ -410,16 +447,12 @@ export default function MapView() {
 					BUILDINGS_SOURCE_ID,
 				) as mapboxgl.GeoJSONSource;
 
-				// Clear first
 				beforeSource.setData({ type: "FeatureCollection", features: [] });
 				afterSource.setData({ type: "FeatureCollection", features: [] });
-
-				// Then set new data
 				beforeSource.setData(buildings);
 				afterSource.setData(buildings);
 
 				_before.fitBounds([sw, ne], { padding: 0, animate: true });
-
 				setSceneLoading(false);
 			})
 			.catch((err: unknown) => {
@@ -436,28 +469,22 @@ export default function MapView() {
 		};
 	}, [xbdId, closePopup]);
 
-	// Render
-
 	return (
 		<div className="map-wrapper">
 			<div ref={containerRef} className="map-container" />
 
-			<div
-				className="xbd-selector-bar"
-				style={{ visibility: status === "ready" ? "visible" : "hidden" }}
-			>
-				<XbdSelector
-					disasterId={DISASTER_ID}
-					selectedXbdId={xbdId}
-					onChange={setXbdId}
-					disabled={status !== "ready" || sceneLoading}
-				/>
-				{sceneLoading && (
-					<span className="xbd-selector-bar__loading" aria-live="polite">
-						Switching scene…
-					</span>
-				)}
-			</div>
+			<MapControls
+				disasterId={DISASTER_ID}
+				selectedXbdId={xbdId}
+				onXbdChange={setXbdId}
+				sceneDisabled={status !== "ready" || sceneLoading}
+				sceneLoading={sceneLoading}
+				imageryVisible={imageryVisible}
+				onImageryToggle={handleImageryToggle}
+				buildingsVisible={buildingsVisible}
+				onBuildingsToggle={handleToggle}
+				visible={status === "ready"}
+			/>
 
 			<MapLoadingOverlay {...loadingOverlay} />
 
@@ -496,22 +523,6 @@ export default function MapView() {
 					/>
 				</div>
 			)}
-
-			<button
-				type="button"
-				className="building-toggle"
-				style={{ visibility: status === "ready" ? "visible" : "hidden" }}
-				data-active={buildingsVisible ? "true" : "false"}
-				onClick={handleToggle}
-				title={
-					buildingsVisible ? "Hide building polygons" : "Show building polygons"
-				}
-			>
-				<span className="building-toggle-track">
-					<span className="building-toggle-knob" />
-				</span>
-				Show Building Polygons
-			</button>
 		</div>
 	);
 }
