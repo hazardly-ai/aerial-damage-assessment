@@ -157,6 +157,7 @@ body {
 	align-items: center;
 	justify-content: center;
 	background: hsl(var(--background) / 0.88);
+	gap: 0.75rem;
 }
 
 .map-status-spinner {
