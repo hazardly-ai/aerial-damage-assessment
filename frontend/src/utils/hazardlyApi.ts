@@ -3,6 +3,7 @@
  * API client utility for the Hazardly backend.
  * All functions throw on non-OK responses so callers can catch and surface errors.
  */
+import { EXCLUDED_XBD_IDS } from "@/constants/excludedXbdIds.ts";
 
 // import bbox from "@turf/bbox";
 
@@ -93,23 +94,24 @@ export interface ImageBounds {
 	ne: [number, number];
 }
 
-export function computeImageBounds(props: ImagePairProperties): ImageBounds {
-	const {
-		geo_origin_lon,
-		geo_origin_lat,
-		geo_pixel_width,
-		geo_pixel_height,
-		width,
-		height,
-	} = props;
+export function computeImageBounds(
+	_props: ImagePairProperties,
+	buildings: BuildingsResponse,
+): ImageBounds {
+	const coords = buildings.features.flatMap((f) => {
+		const geom = f.geometry;
+		if (geom.type === "Polygon") return geom.coordinates[0] as number[][];
+		if (geom.type === "MultiPolygon")
+			return (geom.coordinates as number[][][][]).flatMap((p) => p[0]);
+		return [];
+	});
 
-	const lonExtent = width * geo_pixel_width;
-	const latExtent = height * geo_pixel_height; // negative for north-up images
-
-	const minLng = Math.min(geo_origin_lon, geo_origin_lon + lonExtent);
-	const maxLng = Math.max(geo_origin_lon, geo_origin_lon + lonExtent);
-	const minLat = Math.min(geo_origin_lat, geo_origin_lat + latExtent);
-	const maxLat = Math.max(geo_origin_lat, geo_origin_lat + latExtent);
+	const lngs = coords.map((c) => c[0]);
+	const lats = coords.map((c) => c[1]);
+	const minLng = Math.min(...lngs);
+	const maxLng = Math.max(...lngs);
+	const minLat = Math.min(...lats);
+	const maxLat = Math.max(...lats);
 
 	return {
 		bbox: [minLng, minLat, maxLng, maxLat],
@@ -144,10 +146,18 @@ export const fetchDisasters = (): Promise<DisastersResponse> =>
  * List all image pairs for a disaster.
  * Returns a GeoJSON FeatureCollection; each feature's properties contain xbd_id.
  */
-export const fetchImagePairs = (
+export const fetchImagePairs = async (
 	disasterId: number,
-): Promise<ImagePairsResponse> =>
-	apiFetch<ImagePairsResponse>(`/disasters/${disasterId}/image-pairs`);
+): Promise<ImagePairsResponse> => {
+	const resp = await apiFetch<ImagePairsResponse>(
+		`/disasters/${disasterId}/image-pairs`,
+	);
+	const excluded = EXCLUDED_XBD_IDS[disasterId] ?? new Set();
+	return {
+		...resp,
+		features: resp.features.filter((f) => !excluded.has(f.properties.xbd_id)),
+	};
+};
 
 /** Fetch metadata for a single image pair. */
 export const fetchImagePair = (
@@ -179,8 +189,6 @@ export async function fetchMapData(disasterId: number, xbdId: number) {
 		fetchBuildings(disasterId, xbdId),
 	]);
 
-	// Use geo metadata instead of building bbox
-	const bounds = computeImageBounds(imagePair.properties);
-
+	const bounds = computeImageBounds(imagePair.properties, buildings);
 	return { imagePair, buildings, bounds };
 }

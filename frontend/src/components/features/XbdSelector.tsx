@@ -26,7 +26,7 @@ export function XbdSelector({
 			.then((res) => {
 				const ids = res.features
 					.map((f) => f.properties.xbd_id)
-					.filter((id): id is number => typeof id === "number")
+					.filter((id): id is number => true)
 					.sort((a, b) => a - b);
 
 				setXbdIds(ids);
