@@ -162,6 +162,7 @@ export default function MapView() {
 		if (!containerRef.current) return;
 
 		let cancelled = false;
+		const abortController = new AbortController();
 		let beforeMap: mapboxgl.Map | null = null;
 		let afterMap: mapboxgl.Map | null = null;
 
@@ -170,7 +171,9 @@ export default function MapView() {
 		setStatus("loading");
 		setErrorMessage(null);
 
-		fetchMapData(DISASTER_ID, xbdIdRef.current)
+		fetchMapData(DISASTER_ID, xbdIdRef.current, {
+			signal: abortController.signal,
+		})
 			.then(({ imagePair, buildings, bounds }) => {
 				if (cancelled || !containerRef.current) return;
 
@@ -381,6 +384,7 @@ export default function MapView() {
 			})
 			.catch((err: unknown) => {
 				if (cancelled) return;
+				if (err instanceof DOMException && err.name === "AbortError") return;
 				const msg =
 					err instanceof Error
 						? err.message
@@ -391,6 +395,7 @@ export default function MapView() {
 
 		return () => {
 			cancelled = true;
+			abortController.abort();
 			selectedBuildingIdRef.current = null;
 			layersReadyRef.current = false;
 			compareRef.current?.remove();
@@ -409,10 +414,11 @@ export default function MapView() {
 		if (!before || !after || !layersReadyRef.current) return;
 
 		let cancelled = false;
+		const abortController = new AbortController();
 		setSceneLoading(true);
 		closePopup();
 
-		fetchMapData(DISASTER_ID, xbdId)
+		fetchMapData(DISASTER_ID, xbdId, { signal: abortController.signal })
 			.then(({ imagePair, buildings, bounds }) => {
 				if (cancelled || !beforeMapRef.current || !afterMapRef.current) return;
 
@@ -457,6 +463,7 @@ export default function MapView() {
 			})
 			.catch((err: unknown) => {
 				if (cancelled) return;
+				if (err instanceof DOMException && err.name === "AbortError") return;
 				const msg =
 					err instanceof Error ? err.message : "Failed to load scene.";
 				setErrorMessage(msg);
@@ -466,6 +473,7 @@ export default function MapView() {
 
 		return () => {
 			cancelled = true;
+			abortController.abort();
 		};
 	}, [xbdId, closePopup]);
 
@@ -477,7 +485,7 @@ export default function MapView() {
 				disasterId={DISASTER_ID}
 				selectedXbdId={xbdId}
 				onXbdChange={setXbdId}
-				sceneDisabled={status !== "ready" || sceneLoading}
+				sceneDisabled={status !== "ready"}
 				sceneLoading={sceneLoading}
 				imageryVisible={imageryVisible}
 				onImageryToggle={handleImageryToggle}

@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchImagePairs } from "@/utils/hazardlyApi";
 
 type XbdSelectorStatus = "loading" | "ready" | "error";
@@ -30,6 +30,8 @@ export function useXbdSelectorState({
 }: UseXbdSelectorStateArgs) {
 	const [xbdIds, setXbdIds] = useState<number[]>([]);
 	const [status, setStatus] = useState<XbdSelectorStatus>("loading");
+	const selectedXbdIdRef = useRef(selectedXbdId);
+	selectedXbdIdRef.current = selectedXbdId;
 
 	useEffect(() => {
 		setStatus("loading");
@@ -44,12 +46,12 @@ export function useXbdSelectorState({
 				setXbdIds(ids);
 				setStatus("ready");
 
-				if (ids.length > 0 && !ids.includes(selectedXbdId)) {
+				if (ids.length > 0 && !ids.includes(selectedXbdIdRef.current)) {
 					onChange(ids[0]);
 				}
 			})
 			.catch(() => setStatus("error"));
-	}, [disasterId, selectedXbdId, onChange]);
+	}, [disasterId, onChange]);
 
 	const currentIndex = xbdIds.indexOf(selectedXbdId);
 	const canGoPrev = currentIndex > 0;

@@ -95,9 +95,10 @@ export interface ImageBounds {
 }
 
 export function computeImageBounds(
-	_props: ImagePairProperties,
+	props: ImagePairProperties,
 	buildings: BuildingsResponse,
 ): ImageBounds {
+	// ── 1. Collect building coordinates ───────────────────────────────────────
 	const coords = buildings.features.flatMap((f) => {
 		const geom = f.geometry;
 		if (geom.type === "Polygon") return geom.coordinates[0] as number[][];
@@ -108,10 +109,48 @@ export function computeImageBounds(
 
 	const lngs = coords.map((c) => c[0]);
 	const lats = coords.map((c) => c[1]);
-	const minLng = Math.min(...lngs);
-	const maxLng = Math.max(...lngs);
-	const minLat = Math.min(...lats);
-	const maxLat = Math.max(...lats);
+
+	const bMinLng = Math.min(...lngs);
+	const bMaxLng = Math.max(...lngs);
+	const bMinLat = Math.min(...lats);
+	const bMaxLat = Math.max(...lats);
+
+	// ── 2. Image bounds from metadata ─────────────────────────────────────────
+	const {
+		geo_origin_lon,
+		geo_origin_lat,
+		geo_pixel_width,
+		geo_pixel_height,
+		width,
+		height,
+	} = props;
+
+	// Assume origin is top-left
+	const iMinLng = geo_origin_lon;
+	const iMaxLat = geo_origin_lat;
+	const iMaxLng = geo_origin_lon + width * geo_pixel_width;
+	const iMinLat = geo_origin_lat - height * geo_pixel_height;
+
+	// ── 3. Check if any buildings are outside image bounds ────────────────────
+	const hasOutOfBoundsBuildings =
+		bMinLng < iMinLng ||
+		bMaxLng > iMaxLng ||
+		bMinLat < iMinLat ||
+		bMaxLat > iMaxLat;
+
+	// ── 4. Use image bounds as base; expand ONLY if needed ────────────────────
+	let minLng = iMinLng;
+	let maxLng = iMaxLng;
+	let minLat = iMinLat;
+	let maxLat = iMaxLat;
+
+	if (hasOutOfBoundsBuildings) {
+		// Expand (union), never shrink image bounds
+		minLng = Math.min(iMinLng, bMinLng);
+		maxLng = Math.max(iMaxLng, bMaxLng);
+		minLat = Math.min(iMinLat, bMinLat);
+		maxLat = Math.max(iMaxLat, bMaxLat);
+	}
 
 	return {
 		bbox: [minLng, minLat, maxLng, maxLat],
@@ -128,8 +167,15 @@ export function computeImageBounds(
 
 // ─── Fetch helpers ───────────────────────────────────────────────────────────
 
-async function apiFetch<T>(path: string): Promise<T> {
-	const res = await fetch(`${BASE_URL}${path}`);
+interface ApiFetchOptions {
+	signal?: AbortSignal;
+}
+
+async function apiFetch<T>(
+	path: string,
+	options?: ApiFetchOptions,
+): Promise<T> {
+	const res = await fetch(`${BASE_URL}${path}`, { signal: options?.signal });
 	if (!res.ok) {
 		throw new Error(`API error ${res.status} for ${path}: ${res.statusText}`);
 	}
@@ -148,9 +194,11 @@ export const fetchDisasters = (): Promise<DisastersResponse> =>
  */
 export const fetchImagePairs = async (
 	disasterId: number,
+	options?: ApiFetchOptions,
 ): Promise<ImagePairsResponse> => {
 	const resp = await apiFetch<ImagePairsResponse>(
 		`/disasters/${disasterId}/image-pairs`,
+		options,
 	);
 	const excluded = EXCLUDED_XBD_IDS[disasterId] ?? new Set();
 	return {
@@ -163,16 +211,22 @@ export const fetchImagePairs = async (
 export const fetchImagePair = (
 	disasterId: number,
 	xbdId: number,
+	options?: ApiFetchOptions,
 ): Promise<ImagePairFeature> =>
-	apiFetch<ImagePairFeature>(`/disasters/${disasterId}/image-pairs/${xbdId}`);
+	apiFetch<ImagePairFeature>(
+		`/disasters/${disasterId}/image-pairs/${xbdId}`,
+		options,
+	);
 
 /** Fetch building polygons + metadata for a single image pair. */
 export const fetchBuildings = (
 	disasterId: number,
 	xbdId: number,
+	options?: ApiFetchOptions,
 ): Promise<BuildingsResponse> =>
 	apiFetch<BuildingsResponse>(
 		`/disasters/${disasterId}/image-pairs/${xbdId}/buildings`,
+		options,
 	);
 
 /**
@@ -183,10 +237,14 @@ export const fetchBuildings = (
  * original local-asset code) rather than the geo origin fields, which avoids
  * ambiguity around pixel-center vs pixel-edge conventions.
  */
-export async function fetchMapData(disasterId: number, xbdId: number) {
+export async function fetchMapData(
+	disasterId: number,
+	xbdId: number,
+	options?: ApiFetchOptions,
+) {
 	const [imagePair, buildings] = await Promise.all([
-		fetchImagePair(disasterId, xbdId),
-		fetchBuildings(disasterId, xbdId),
+		fetchImagePair(disasterId, xbdId, options),
+		fetchBuildings(disasterId, xbdId, options),
 	]);
 
 	const bounds = computeImageBounds(imagePair.properties, buildings);
