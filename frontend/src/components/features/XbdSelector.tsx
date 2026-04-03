@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { fetchImagePairs } from "@/utils/hazardlyApi";
 
 interface XbdSelectorProps {
@@ -78,7 +79,7 @@ export function XbdSelector({
 				disabled={isDisabled || !canGoPrev}
 				aria-label="Previous scene"
 			>
-				‹
+				<ChevronLeft size={16} />
 			</button>
 			<div className="xbd-selector__select-wrapper">
 				<select
@@ -105,7 +106,7 @@ export function XbdSelector({
 				disabled={isDisabled || !canGoNext}
 				aria-label="Next scene"
 			>
-				›
+				<ChevronRight size={16} />
 			</button>
 		</div>
 	);
