@@ -478,7 +478,10 @@ export default function MapView() {
 	}, [xbdId, closePopup]);
 
 	return (
-		<div className="map-wrapper">
+		<div
+			className="map-wrapper"
+			data-imagery-visible={imageryVisible ? "true" : "false"}
+		>
 			<div ref={containerRef} className="map-container" />
 
 			<MapControls
