@@ -146,6 +146,20 @@ body {
 	pointer-events: none;
 }
 
+.map-wrapper .mapboxgl-compare {
+	transition: opacity 0.24s ease;
+}
+
+.map-wrapper .mapboxgl-compare .compare-swiper-vertical,
+.map-wrapper .mapboxgl-compare .compare-swiper-horizontal {
+	transition: opacity 0.24s ease;
+}
+
+.map-wrapper--compare-idle .compare-swiper-vertical,
+.map-wrapper--compare-idle .compare-swiper-horizontal {
+	opacity: 0.32;
+}
+
 /* =========================
    MAP STATUS OVERLAY
 ========================= */

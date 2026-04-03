@@ -64,6 +64,7 @@ const asString = (value: unknown): string | undefined =>
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
+	const compareIdleTimerRef = useRef<number | null>(null);
 	const beforeMapRef = useRef<mapboxgl.Map | null>(null);
 	const afterMapRef = useRef<mapboxgl.Map | null>(null);
 	const layersReadyRef = useRef(false);
@@ -73,6 +74,7 @@ export default function MapView() {
 	const [retryCount, setRetryCount] = useState(0);
 	const [buildingsVisible, setBuildingsVisible] = useState(true);
 	const [imageryVisible, setImageryVisible] = useState(true);
+	const [compareIdle, setCompareIdle] = useState(false);
 	const [status, setStatus] = useState<MapStatus>("idle");
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 	const [popupData, setPopupData] = useState<PopupData | null>(null);
@@ -84,6 +86,7 @@ export default function MapView() {
 	const popupDataRef = useRef<PopupData | null>(null);
 	const selectedBuildingIdRef = useRef<string | number | null>(null);
 	const imageryVisibleRef = useRef(imageryVisible);
+	const scheduleCompareIdleRef = useRef<() => void>(() => {});
 	imageryVisibleRef.current = imageryVisible;
 
 	const updatePopupPos = useCallback(() => {
@@ -92,6 +95,17 @@ export default function MapView() {
 			setPopupPos({ x, y });
 		}
 	}, []);
+
+	const scheduleCompareIdle = useCallback(() => {
+		if (compareIdleTimerRef.current !== null) {
+			window.clearTimeout(compareIdleTimerRef.current);
+		}
+		setCompareIdle(false);
+		compareIdleTimerRef.current = window.setTimeout(() => {
+			setCompareIdle(true);
+		}, 2000);
+	}, []);
+	scheduleCompareIdleRef.current = scheduleCompareIdle;
 
 	const closePopup = useCallback(() => {
 		const id = selectedBuildingIdRef.current;
@@ -372,6 +386,7 @@ export default function MapView() {
 							if (x > freshBounds.width) x = freshBounds.width;
 							return x;
 						};
+						scheduleCompareIdleRef.current();
 					}
 
 					_before.fitBounds([sw, ne], { padding: 0, animate: false });
@@ -396,6 +411,10 @@ export default function MapView() {
 		return () => {
 			cancelled = true;
 			abortController.abort();
+			if (compareIdleTimerRef.current !== null) {
+				window.clearTimeout(compareIdleTimerRef.current);
+				compareIdleTimerRef.current = null;
+			}
 			selectedBuildingIdRef.current = null;
 			layersReadyRef.current = false;
 			compareRef.current?.remove();
@@ -477,10 +496,40 @@ export default function MapView() {
 		};
 	}, [xbdId, closePopup]);
 
+	useEffect(() => {
+		if (!imageryVisible) {
+			if (compareIdleTimerRef.current !== null) {
+				window.clearTimeout(compareIdleTimerRef.current);
+				compareIdleTimerRef.current = null;
+			}
+			setCompareIdle(false);
+			return;
+		}
+
+		scheduleCompareIdle();
+		const container = containerRef.current;
+		if (!container) return;
+
+		const handleActivity = () => {
+			scheduleCompareIdle();
+		};
+
+		container.addEventListener("pointerdown", handleActivity);
+		container.addEventListener("pointermove", handleActivity);
+		container.addEventListener("touchstart", handleActivity);
+
+		return () => {
+			container.removeEventListener("pointerdown", handleActivity);
+			container.removeEventListener("pointermove", handleActivity);
+			container.removeEventListener("touchstart", handleActivity);
+		};
+	}, [imageryVisible, scheduleCompareIdle]);
+
 	return (
 		<div
-			className="map-wrapper"
+			className={`map-wrapper${compareIdle ? " map-wrapper--compare-idle" : ""}`}
 			data-imagery-visible={imageryVisible ? "true" : "false"}
+			data-compare-idle={compareIdle ? "true" : "false"}
 		>
 			<div ref={containerRef} className="map-container" />
 
