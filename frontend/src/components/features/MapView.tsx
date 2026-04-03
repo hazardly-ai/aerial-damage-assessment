@@ -442,7 +442,10 @@ export default function MapView() {
 		<div className="map-wrapper">
 			<div ref={containerRef} className="map-container" />
 
-			<div className="xbd-selector-bar">
+			<div
+				className="xbd-selector-bar"
+				style={{ visibility: status === "ready" ? "visible" : "hidden" }}
+			>
 				<XbdSelector
 					disasterId={DISASTER_ID}
 					selectedXbdId={xbdId}
@@ -497,6 +500,7 @@ export default function MapView() {
 			<button
 				type="button"
 				className="building-toggle"
+				style={{ visibility: status === "ready" ? "visible" : "hidden" }}
 				data-active={buildingsVisible ? "true" : "false"}
 				onClick={handleToggle}
 				title={
