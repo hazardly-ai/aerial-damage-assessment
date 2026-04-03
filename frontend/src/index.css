@@ -257,7 +257,6 @@ body {
 	opacity: 0.7;
 }
 
-
 .xbd-selector-bar__loading {
 	font-size: 12px;
 	opacity: 0.7;
@@ -282,9 +281,9 @@ body {
 	font-size: 16px;
 
 	transition:
-			background-color 0.2s ease,
-			transform 0.1s ease,
-			opacity 0.2s ease;
+		background-color 0.2s ease,
+		transform 0.1s ease,
+		opacity 0.2s ease;
 
 	&:hover:not(:disabled) {
 		opacity: 1;
@@ -294,7 +293,6 @@ body {
 		cursor: default;
 	}
 }
-
 
 .xbd-selector__arrow:hover:not(:disabled) {
 	background-color: hsl(var(--foreground) / 0.08);

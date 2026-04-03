@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useState } from "react";
 import { fetchImagePairs } from "@/utils/hazardlyApi";
 
 interface XbdSelectorProps {
