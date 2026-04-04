@@ -90,7 +90,7 @@ export default function DisasterResponsesAssistant() {
 						<button
 							type="button"
 							onClick={() => setIsOpen(false)}
-							className="hover:opacity-80 transition"
+							className="hover:opacity-80 transition-opacity duration-theme ease-theme"
 						>
 							<X className="h-4 w-4" />
 						</button>
@@ -132,7 +132,7 @@ export default function DisasterResponsesAssistant() {
 								focus:outline-none
 								focus:ring-2
 								focus:ring-primary
-								transition-colors
+								transition-colors duration-theme ease-theme
 							"
 							placeholder="Ask Disaster Response Assistant..."
 						/>
@@ -146,7 +146,7 @@ export default function DisasterResponsesAssistant() {
 								rounded-md
 								text-sm
 								hover:opacity-90
-								transition
+								transition-colors duration-theme ease-theme
 							"
 						>
 							Send
@@ -165,7 +165,7 @@ export default function DisasterResponsesAssistant() {
 					bg-gradient-to-br from-primary to-indigo-500
 					text-white
 					shadow-xl
-					transition-all duration-300
+					transition-all duration-theme ease-theme
 					hover:scale-105
 				"
 			>

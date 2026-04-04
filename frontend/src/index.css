@@ -6,26 +6,14 @@
    GLOBAL TRANSITIONS
 ========================= */
 
-html {
-	transition:
-		background-color 300ms ease,
-		color 300ms ease;
-}
-
-*,
-*::before,
-*::after {
-	transition:
-		background-color 300ms ease,
-		color 300ms ease,
-		border-color 300ms ease;
-}
-
 /* =========================
    THEME VARIABLES (LIGHT)
 ========================= */
 
 :root {
+	--theme-transition-duration: 280ms;
+	--theme-transition-easing: cubic-bezier(0.22, 1, 0.36, 1);
+
 	--background: 210 40% 98%;
 	--foreground: 222 47% 11%;
 
@@ -67,11 +55,33 @@ html {
 	--toggle-track-on: hsl(var(--primary));
 }
 
+html {
+	color-scheme: light;
+	transition:
+		background-color var(--theme-transition-duration)
+		var(--theme-transition-easing),
+		color var(--theme-transition-duration) var(--theme-transition-easing);
+}
+
+*,
+*::before,
+*::after {
+	transition:
+		background-color var(--theme-transition-duration)
+		var(--theme-transition-easing),
+		color var(--theme-transition-duration) var(--theme-transition-easing),
+		border-color var(--theme-transition-duration) var(--theme-transition-easing),
+		fill var(--theme-transition-duration) var(--theme-transition-easing),
+		stroke var(--theme-transition-duration) var(--theme-transition-easing),
+		box-shadow var(--theme-transition-duration) var(--theme-transition-easing);
+}
+
 /* =========================
    DARK MODE
 ========================= */
 
 .dark {
+	color-scheme: dark;
 	--background: 220 10% 6%;
 	--foreground: 210 20% 96%;
 
@@ -215,9 +225,10 @@ body {
 	-webkit-backdrop-filter: blur(8px);
 	transition:
 		width 0.24s ease,
-		box-shadow 0.24s ease,
-		background-color 0.24s ease,
-		border-color 0.24s ease;
+		box-shadow var(--theme-transition-duration) var(--theme-transition-easing),
+		background-color var(--theme-transition-duration)
+		var(--theme-transition-easing),
+		border-color var(--theme-transition-duration) var(--theme-transition-easing);
 }
 
 .map-controls[data-collapsed="true"] {
@@ -246,7 +257,8 @@ body {
 	background: transparent;
 	color: inherit;
 	cursor: pointer;
-	transition: opacity 0.18s ease;
+	transition: opacity var(--theme-transition-duration)
+		var(--theme-transition-easing);
 	flex-shrink: 0;
 }
 
@@ -470,9 +482,10 @@ body {
 	font-size: 14px;
 
 	transition:
-		background-color 0.2s ease,
+		background-color var(--theme-transition-duration)
+		var(--theme-transition-easing),
 		transform 0.1s ease,
-		opacity 0.2s ease;
+		opacity var(--theme-transition-duration) var(--theme-transition-easing);
 
 	&:hover:not(:disabled) {
 		opacity: 1;
@@ -515,10 +528,11 @@ body {
 	cursor: pointer;
 	text-align: left;
 	transition:
-		background-color 0.18s ease,
-		border-color 0.18s ease,
+		background-color var(--theme-transition-duration)
+		var(--theme-transition-easing),
+		border-color var(--theme-transition-duration) var(--theme-transition-easing),
 		transform 0.18s ease,
-		opacity 0.18s ease;
+		opacity var(--theme-transition-duration) var(--theme-transition-easing);
 }
 
 .map-layer-toggle:hover {
@@ -561,7 +575,8 @@ body {
 	padding: 2px;
 	border-radius: 9999px;
 	background: var(--toggle-track-off);
-	transition: background 0.2s ease;
+	transition: background-color var(--theme-transition-duration)
+		var(--theme-transition-easing);
 }
 
 .map-layer-toggle[data-active="true"] .building-toggle-track {
@@ -576,7 +591,9 @@ body {
 	background: #fff;
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 	transform: translateX(0);
-	transition: transform 0.2s ease;
+	transition:
+		transform 0.2s ease,
+		box-shadow var(--theme-transition-duration) var(--theme-transition-easing);
 }
 
 .map-layer-toggle[data-active="true"] .building-toggle-knob {
@@ -654,7 +671,8 @@ body {
 	cursor: pointer;
 	user-select: none;
 	flex-shrink: 0;
-	transition: background 0.2s ease;
+	transition: background-color var(--theme-transition-duration)
+		var(--theme-transition-easing);
 }
 
 .popup-close-btn:hover {
@@ -713,7 +731,9 @@ body {
 	align-items: center;
 	justify-content: center;
 	color: hsl(var(--muted-foreground));
-	transition: color 0.2s;
+	transition:
+		color var(--theme-transition-duration) var(--theme-transition-easing),
+		opacity var(--theme-transition-duration) var(--theme-transition-easing);
 	line-height: 1;
 	vertical-align: middle;
 }
@@ -725,7 +745,10 @@ body {
 .copy-icon {
 	width: 1em;
 	height: 1em;
-	transition: color 0.2s;
+	transition:
+		color var(--theme-transition-duration) var(--theme-transition-easing),
+		fill var(--theme-transition-duration) var(--theme-transition-easing),
+		stroke var(--theme-transition-duration) var(--theme-transition-easing);
 }
 
 .copy-icon.copied {
