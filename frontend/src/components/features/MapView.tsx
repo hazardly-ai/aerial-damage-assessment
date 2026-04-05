@@ -1,65 +1,33 @@
 import mapboxgl from "mapbox-gl";
-import Compare from "mapbox-gl-compare";
+import type Compare from "mapbox-gl-compare";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
-import type { Feature } from "geojson";
 
 import { BuildingPopup } from "@/components/features/BuildingPopup";
 import { MapControls } from "@/components/features/MapControls";
 import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
 import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
 import type { MapStatus } from "@/types/map.ts";
-import {
-	addBuildingLayer,
-	BUILDINGS_FILL_LAYER_ID,
-	BUILDINGS_OUTLINE_LAYER_ID,
-	BUILDINGS_SOURCE_ID,
-	getBuildingDamageColor,
-} from "@/utils/addBuildingLayer";
+import { BUILDINGS_SOURCE_ID } from "@/utils/addBuildingLayer";
 import { fetchMapData, resolveImageUrl } from "@/utils/hazardlyApi";
+import {
+	addInitialSourcesAndLayers,
+	bindBuildingInteractions,
+	createCompareInstance,
+	createMapInstance,
+	POST_IMAGE_LAYER_ID,
+	type PopupData,
+	PRE_IMAGE_LAYER_ID,
+	setBuildingVisibility,
+	setImageryVisibility,
+	setSatelliteOpacity,
+	waitForMapsLoad,
+} from "@/utils/mapViewSetup";
 
 const DISASTER_ID = 1;
 const XBD_ID = 18;
-const PRE_IMAGE_LAYER_ID = "pre-layer";
-const POST_IMAGE_LAYER_ID = "post-layer";
-const SATELLITE_BASE_LAYER_ID = "satellite";
-const SATELLITE_DIMMED_OPACITY = 0.4;
-const SATELLITE_FULL_OPACITY = 1;
-
-interface PopupData {
-	uid: string;
-	damage?: string;
-	damageColor: string;
-	lngLat: mapboxgl.LngLat;
-}
-
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
-
-const setBuildingVisibility = (map: mapboxgl.Map, visible: boolean) => {
-	const visibility = visible ? "visible" : "none";
-	map.setLayoutProperty(BUILDINGS_FILL_LAYER_ID, "visibility", visibility);
-	map.setLayoutProperty(BUILDINGS_OUTLINE_LAYER_ID, "visibility", visibility);
-};
-
-const setImageryVisibility = (
-	map: mapboxgl.Map,
-	layerId: string,
-	visible: boolean,
-) => {
-	map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
-};
-
-const setSatelliteOpacity = (map: mapboxgl.Map, imageryVisible: boolean) => {
-	map.setPaintProperty(
-		SATELLITE_BASE_LAYER_ID,
-		"raster-opacity",
-		imageryVisible ? SATELLITE_DIMMED_OPACITY : SATELLITE_FULL_OPACITY,
-	);
-};
-
-const asString = (value: unknown): string | undefined =>
-	typeof value === "string" && value.length > 0 ? value : undefined;
 
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -199,23 +167,9 @@ export default function MapView() {
 				containerRef.current.appendChild(beforeDiv);
 				containerRef.current.appendChild(afterDiv);
 
-				const createMap = (container: HTMLElement) => {
-					const map = new mapboxgl.Map({
-						container,
-						style: "mapbox://styles/mapbox/satellite-v9",
-						renderWorldCopies: false,
-					});
-					map.on("style.load", () =>
-						setSatelliteOpacity(map, imageryVisibleRef.current),
-					);
-					map.on("error", (e) => console.error("Mapbox error:", e));
-					map.addControl(new mapboxgl.NavigationControl(), "top-right");
-					return map;
-				};
-
-				beforeMap = createMap(beforeDiv);
+				beforeMap = createMapInstance(beforeDiv, imageryVisibleRef);
 				beforeMapRef.current = beforeMap;
-				afterMap = createMap(afterDiv);
+				afterMap = createMapInstance(afterDiv, imageryVisibleRef);
 				afterMapRef.current = afterMap;
 
 				const { coordinates, sw, ne } = bounds;
@@ -232,29 +186,14 @@ export default function MapView() {
 				const onMapsLoaded = () => {
 					if (cancelled) return;
 
-					_before.addSource("pre-image", {
-						type: "image",
-						url: preImageUrl,
+					addInitialSourcesAndLayers({
+						beforeMap: _before,
+						afterMap: _after,
+						preImageUrl,
+						postImageUrl,
 						coordinates,
+						buildings,
 					});
-					_before.addLayer({
-						id: PRE_IMAGE_LAYER_ID,
-						type: "raster",
-						source: "pre-image",
-					});
-					_after.addSource("post-image", {
-						type: "image",
-						url: postImageUrl,
-						coordinates,
-					});
-					_after.addLayer({
-						id: POST_IMAGE_LAYER_ID,
-						type: "raster",
-						source: "post-image",
-					});
-
-					addBuildingLayer(_before, buildings);
-					addBuildingLayer(_after, buildings);
 
 					layersReadyRef.current = true;
 					setBuildingsVisible((current) => {
@@ -271,131 +210,27 @@ export default function MapView() {
 					});
 
 					setStatus("ready");
-					_after.on("move", updatePopupPos);
-
-					let hoveredId: string | number | null = null;
-
-					const setHoverOnBoth = (id: string | number, hover: boolean) => {
-						_before.setFeatureState(
-							{ source: BUILDINGS_SOURCE_ID, id },
-							{ hover },
-						);
-						_after.setFeatureState(
-							{ source: BUILDINGS_SOURCE_ID, id },
-							{ hover },
-						);
-					};
-
-					const clearHover = () => {
-						if (hoveredId === null) return;
-						setHoverOnBoth(hoveredId, false);
-						hoveredId = null;
-					};
-
-					const bindHover = (activeMap: mapboxgl.Map) => {
-						activeMap.on("mousemove", BUILDINGS_FILL_LAYER_ID, (e) => {
-							const feature = e.features?.[0];
-							if (
-								!feature ||
-								(typeof feature.id !== "string" &&
-									typeof feature.id !== "number")
-							) {
-								return;
-							}
-
-							activeMap.getCanvas().style.cursor = "pointer";
-							const next = feature.id;
-							if (hoveredId === next) return;
-							if (hoveredId !== null) setHoverOnBoth(hoveredId, false);
-							hoveredId = next;
-							setHoverOnBoth(next, true);
-						});
-						activeMap.on("mouseleave", BUILDINGS_FILL_LAYER_ID, () => {
-							activeMap.getCanvas().style.cursor = "";
-							clearHover();
-						});
-					};
-
-					bindHover(_before);
-					bindHover(_after);
-
-					const handleBuildingClick = (
-						e: mapboxgl.MapMouseEvent & { features?: Feature[] },
-					) => {
-						const feature = e.features?.[0];
-						if (
-							!feature ||
-							(typeof feature.id !== "string" && typeof feature.id !== "number")
-						) {
-							return;
-						}
-
-						const uid = asString(feature.properties?.uid);
-						if (!uid) return;
-
-						const featureId = feature.id;
-						const prev = selectedBuildingIdRef.current;
-						if (prev !== null && prev !== featureId) {
-							_before.setFeatureState(
-								{ source: BUILDINGS_SOURCE_ID, id: prev },
-								{ selected: false },
-							);
-							_after.setFeatureState(
-								{ source: BUILDINGS_SOURCE_ID, id: prev },
-								{ selected: false },
-							);
-						}
-
-						selectedBuildingIdRef.current = featureId;
-						_before.setFeatureState(
-							{ source: BUILDINGS_SOURCE_ID, id: featureId },
-							{ selected: true },
-						);
-						_after.setFeatureState(
-							{ source: BUILDINGS_SOURCE_ID, id: featureId },
-							{ selected: true },
-						);
-
-						const damage = asString(feature.properties?.predicted_damage);
-						const damageColor = getBuildingDamageColor(damage);
-						openPopup({ uid, damage, damageColor, lngLat: e.lngLat });
-					};
-
-					_before.on("click", BUILDINGS_FILL_LAYER_ID, handleBuildingClick);
-					_after.on("click", BUILDINGS_FILL_LAYER_ID, handleBuildingClick);
+					bindBuildingInteractions({
+						beforeMap: _before,
+						afterMap: _after,
+						onPopupOpen: openPopup,
+						onPopupPositionUpdate: updatePopupPos,
+						selectedBuildingIdRef,
+					});
 
 					if (containerRef.current) {
-						compareRef.current = new Compare(
-							_before,
-							_after,
-							containerRef.current,
-						);
-						(
-							compareRef.current as Compare & {
-								_mapB: mapboxgl.Map;
-								_getX: (e: MouseEvent | TouchEvent) => number;
-							}
-						)._getX = function (e) {
-							const touch = (e as TouchEvent).touches;
-							const ev = touch ? touch[0] : (e as MouseEvent);
-							const freshBounds = this._mapB
-								.getContainer()
-								.getBoundingClientRect();
-							let x = ev.clientX - freshBounds.left;
-							if (x < 0) x = 0;
-							if (x > freshBounds.width) x = freshBounds.width;
-							return x;
-						};
+						compareRef.current = createCompareInstance({
+							beforeMap: _before,
+							afterMap: _after,
+							container: containerRef.current,
+						});
 						scheduleCompareIdleRef.current();
 					}
 
 					_before.fitBounds([sw, ne], { padding: 0, animate: false });
 				};
 
-				Promise.all([
-					new Promise<void>((resolve) => _before.on("load", () => resolve())),
-					new Promise<void>((resolve) => _after.on("load", () => resolve())),
-				]).then(onMapsLoaded);
+				waitForMapsLoad(_before, _after).then(onMapsLoaded);
 			})
 			.catch((err: unknown) => {
 				if (cancelled) return;
