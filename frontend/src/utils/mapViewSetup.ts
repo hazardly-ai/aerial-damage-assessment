@@ -59,9 +59,77 @@ export const setSatelliteOpacity = (
 	);
 };
 
+class ResetBoundsControl implements mapboxgl.IControl {
+	private container?: HTMLDivElement;
+	private button?: HTMLButtonElement;
+
+	constructor(private readonly onResetView: () => void) {}
+
+	onAdd() {
+		const container = document.createElement("div");
+		container.className = "mapboxgl-ctrl mapboxgl-ctrl-group";
+
+		const button = document.createElement("button");
+		button.type = "button";
+		button.className = "mapboxgl-ctrl-reset-bounds";
+		button.setAttribute("aria-label", "Reset view to scene bounds");
+		button.title = "Reset view";
+
+		const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+		icon.setAttribute("viewBox", "0 0 24 24");
+		icon.setAttribute("fill", "none");
+		icon.setAttribute("stroke", "currentColor");
+		icon.setAttribute("stroke-width", "2");
+		icon.setAttribute("stroke-linecap", "round");
+		icon.setAttribute("stroke-linejoin", "round");
+		icon.setAttribute("aria-hidden", "true");
+		icon.classList.add("mapboxgl-ctrl-reset-bounds__icon");
+
+		for (const [tagName, attrs] of [
+			["line", { x1: "2", x2: "5", y1: "12", y2: "12" }],
+			["line", { x1: "19", x2: "22", y1: "12", y2: "12" }],
+			["line", { x1: "12", x2: "12", y1: "2", y2: "5" }],
+			["line", { x1: "12", x2: "12", y1: "19", y2: "22" }],
+			["circle", { cx: "12", cy: "12", r: "7" }],
+			["circle", { cx: "12", cy: "12", r: "3" }],
+		] as const) {
+			const element = document.createElementNS(
+				"http://www.w3.org/2000/svg",
+				tagName,
+			);
+			for (const [name, value] of Object.entries(attrs)) {
+				element.setAttribute(name, value);
+			}
+			icon.appendChild(element);
+		}
+
+		button.appendChild(icon);
+		button.addEventListener("click", this.onResetView);
+		container.appendChild(button);
+
+		this.container = container;
+		this.button = button;
+
+		return container;
+	}
+
+	onRemove() {
+		if (this.button) {
+			this.button.removeEventListener("click", this.onResetView);
+		}
+		this.container?.remove();
+		this.container = undefined;
+		this.button = undefined;
+	}
+}
+
 export function createMapInstance(
 	container: HTMLElement,
 	imageryVisibleRef: MutableRefObject<boolean>,
+	options?: {
+		withResetBoundsControl?: boolean;
+		onResetView?: () => void;
+	},
 ) {
 	const map = new mapboxgl.Map({
 		container,
@@ -74,7 +142,9 @@ export function createMapInstance(
 	);
 	map.on("error", (e) => console.error("Mapbox error:", e));
 	map.addControl(new mapboxgl.NavigationControl(), "top-right");
-
+	if (options?.withResetBoundsControl && options.onResetView) {
+		map.addControl(new ResetBoundsControl(options.onResetView), "top-right");
+	}
 	return map;
 }
 

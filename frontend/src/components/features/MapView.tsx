@@ -10,7 +10,11 @@ import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
 import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
 import type { MapStatus } from "@/types/map.ts";
 import { BUILDINGS_SOURCE_ID } from "@/utils/addBuildingLayer";
-import { fetchMapData, resolveImageUrl } from "@/utils/hazardlyApi";
+import {
+	fetchMapData,
+	type ImageBounds,
+	resolveImageUrl,
+} from "@/utils/hazardlyApi";
 import {
 	addInitialSourcesAndLayers,
 	bindBuildingInteractions,
@@ -54,6 +58,7 @@ export default function MapView() {
 	const popupDataRef = useRef<PopupData | null>(null);
 	const selectedBuildingIdRef = useRef<string | number | null>(null);
 	const imageryVisibleRef = useRef(imageryVisible);
+	const boundsRef = useRef<ImageBounds | null>(null);
 	const scheduleCompareIdleRef = useRef<() => void>(() => {});
 	imageryVisibleRef.current = imageryVisible;
 
@@ -137,6 +142,16 @@ export default function MapView() {
 		});
 	}, []);
 
+	const handleResetView = useCallback(() => {
+		const before = beforeMapRef.current;
+		const after = afterMapRef.current;
+		const bounds = boundsRef.current;
+		if (!before || !after || !bounds) return;
+
+		before.fitBounds([bounds.sw, bounds.ne], { padding: 0, animate: true });
+		after.fitBounds([bounds.sw, bounds.ne], { padding: 0, animate: true });
+	}, []);
+
 	const xbdIdRef = useRef(xbdId);
 	xbdIdRef.current = xbdId;
 
@@ -158,6 +173,7 @@ export default function MapView() {
 		})
 			.then(({ imagePair, buildings, bounds }) => {
 				if (cancelled || !containerRef.current) return;
+				boundsRef.current = bounds;
 
 				containerRef.current.innerHTML = "";
 				const beforeDiv = document.createElement("div");
@@ -167,9 +183,15 @@ export default function MapView() {
 				containerRef.current.appendChild(beforeDiv);
 				containerRef.current.appendChild(afterDiv);
 
-				beforeMap = createMapInstance(beforeDiv, imageryVisibleRef);
+				beforeMap = createMapInstance(beforeDiv, imageryVisibleRef, {
+					withResetBoundsControl: true,
+					onResetView: handleResetView,
+				});
 				beforeMapRef.current = beforeMap;
-				afterMap = createMapInstance(afterDiv, imageryVisibleRef);
+				afterMap = createMapInstance(afterDiv, imageryVisibleRef, {
+					withResetBoundsControl: true,
+					onResetView: handleResetView,
+				});
 				afterMapRef.current = afterMap;
 
 				const { coordinates, sw, ne } = bounds;
@@ -251,6 +273,7 @@ export default function MapView() {
 				compareIdleTimerRef.current = null;
 			}
 			selectedBuildingIdRef.current = null;
+			boundsRef.current = null;
 			layersReadyRef.current = false;
 			compareRef.current?.remove();
 			beforeMap?.remove();
@@ -260,7 +283,7 @@ export default function MapView() {
 		};
 		// xbdId is intentionally excluded; scene switches are handled by Effect 2.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [openPopup, updatePopupPos, retryCount]);
+	}, [openPopup, updatePopupPos, retryCount, handleResetView]);
 
 	useEffect(() => {
 		const before = beforeMapRef.current;
@@ -275,6 +298,7 @@ export default function MapView() {
 		fetchMapData(DISASTER_ID, xbdId, { signal: abortController.signal })
 			.then(({ imagePair, buildings, bounds }) => {
 				if (cancelled || !beforeMapRef.current || !afterMapRef.current) return;
+				boundsRef.current = bounds;
 
 				const _before = beforeMapRef.current;
 				const _after = afterMapRef.current;

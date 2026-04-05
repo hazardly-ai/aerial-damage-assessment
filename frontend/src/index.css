@@ -377,6 +377,30 @@ body {
 	background: rgba(255, 255, 255, 0.1);
 }
 
+.mapboxgl-ctrl-group button.mapboxgl-ctrl-reset-bounds {
+	align-items: center;
+	color: #111827;
+	display: flex;
+	justify-content: center;
+}
+
+.mapboxgl-ctrl-reset-bounds__icon {
+	display: block;
+	width: 17px;
+	height: 17px;
+	flex: 0 0 auto;
+	overflow: visible;
+}
+
+.dark .mapboxgl-ctrl-group button.mapboxgl-ctrl-reset-bounds {
+	color: #111827;
+}
+
+.mapboxgl-ctrl-group button.mapboxgl-ctrl-reset-bounds:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
 .map-controls__layers {
 	display: flex;
 	flex-direction: column;
