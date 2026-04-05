@@ -492,7 +492,7 @@ body {
 }
 
 .dark .mapboxgl-ctrl button.mapboxgl-ctrl-compass .mapboxgl-ctrl-icon {
-	background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23ffffff' viewBox='0 0 29 29'%3E%3Cpath d='M11.5 14l3-6 3 6h-6z'/%3E%3Cpath d='M11.5 15l3 6 3-6h-6z' fill='%23475569'/%3E%3C/svg%3E");
+	background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23ffffff' viewBox='0 0 29 29'%3E%3Cpath d='M10.5 14l4-8 4 8h-8z'/%3E%3Cpath d='M10.5 16l4 8 4-8h-8z' fill='%23475569'/%3E%3C/svg%3E");
 	filter: none;
 }
 
