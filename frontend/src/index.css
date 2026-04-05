@@ -132,6 +132,25 @@ body {
 	color: hsl(var(--foreground));
 }
 
+.header-divider {
+	height: 1px;
+	background-color: hsl(var(--border));
+	mask-image: linear-gradient(
+		90deg,
+		#000 0%,
+		rgb(0 0 0 / 0.5) 50%,
+		transparent 100%
+	);
+	-webkit-mask-image: linear-gradient(
+		90deg,
+		#000 0%,
+		rgb(0 0 0 / 0.5) 50%,
+		transparent 100%
+	);
+	transition: background-color var(--theme-transition-duration)
+		var(--theme-transition-easing);
+}
+
 /* =========================
    MAP
 ========================= */
