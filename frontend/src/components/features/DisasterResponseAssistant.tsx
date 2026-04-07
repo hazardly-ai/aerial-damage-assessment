@@ -14,7 +14,7 @@ interface ResponseMssg {
 	content: string;
 }
 
-export default function DisasterResponsesAssistant() {
+export default function DisasterResponseAssistant() {
 	const [responseLog, setResponseLog] = useState<ResponseMssg[]>([
 		{
 			id: crypto.randomUUID(),
