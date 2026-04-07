@@ -5,8 +5,6 @@
  */
 import { EXCLUDED_XBD_IDS } from "@/constants/excludedXbdIds.ts";
 
-// import bbox from "@turf/bbox";
-
 const BASE_URL = "https://hazardly-api.vercel.app";
 const IMAGE_BASE_URL =
 	"https://zbnrjjmqbnqunkjbmsdk.supabase.co/storage/v1/object/public/satellite-images";
@@ -98,6 +96,39 @@ export function computeImageBounds(
 	props: ImagePairProperties,
 	buildings: BuildingsResponse,
 ): ImageBounds {
+	const {
+		geo_origin_lon,
+		geo_origin_lat,
+		geo_pixel_width,
+		geo_pixel_height,
+		width,
+		height,
+	} = props;
+
+	// Guard: validate georeference fields
+	const hasValidGeo =
+		geo_origin_lon != null &&
+		geo_origin_lat != null &&
+		geo_pixel_width != null &&
+		geo_pixel_height != null &&
+		width != null &&
+		height != null;
+
+	if (!hasValidGeo) {
+		// Fallback: no georeference available
+		return {
+			bbox: [0, 0, 0, 0],
+			coordinates: [
+				[0, 0],
+				[0, 0],
+				[0, 0],
+				[0, 0],
+			],
+			sw: [0, 0],
+			ne: [0, 0],
+		};
+	}
+
 	// ── 1. Collect building coordinates ───────────────────────────────────────
 	const coords = buildings.features.flatMap((f) => {
 		const geom = f.geometry;
@@ -106,6 +137,26 @@ export function computeImageBounds(
 			return (geom.coordinates as number[][][][]).flatMap((p) => p[0]);
 		return [];
 	});
+
+	// Guard: no building coordinates
+	if (coords.length === 0) {
+		const iMinLng = geo_origin_lon;
+		const iMaxLat = geo_origin_lat;
+		const iMaxLng = geo_origin_lon + width * geo_pixel_width;
+		const iMinLat = geo_origin_lat - height * geo_pixel_height;
+
+		return {
+			bbox: [iMinLng, iMinLat, iMaxLng, iMaxLat],
+			coordinates: [
+				[iMinLng, iMaxLat],
+				[iMaxLng, iMaxLat],
+				[iMaxLng, iMinLat],
+				[iMinLng, iMinLat],
+			],
+			sw: [iMinLng, iMinLat],
+			ne: [iMaxLng, iMaxLat],
+		};
+	}
 
 	const lngs = coords.map((c) => c[0]);
 	const lats = coords.map((c) => c[1]);
@@ -116,16 +167,6 @@ export function computeImageBounds(
 	const bMaxLat = Math.max(...lats);
 
 	// ── 2. Image bounds from metadata ─────────────────────────────────────────
-	const {
-		geo_origin_lon,
-		geo_origin_lat,
-		geo_pixel_width,
-		geo_pixel_height,
-		width,
-		height,
-	} = props;
-
-	// Assume origin is top-left
 	const iMinLng = geo_origin_lon;
 	const iMaxLat = geo_origin_lat;
 	const iMaxLng = geo_origin_lon + width * geo_pixel_width;
@@ -145,7 +186,6 @@ export function computeImageBounds(
 	let maxLat = iMaxLat;
 
 	if (hasOutOfBoundsBuildings) {
-		// Expand (union), never shrink image bounds
 		minLng = Math.min(iMinLng, bMinLng);
 		maxLng = Math.max(iMaxLng, bMaxLng);
 		minLat = Math.min(iMinLat, bMinLat);
@@ -155,10 +195,10 @@ export function computeImageBounds(
 	return {
 		bbox: [minLng, minLat, maxLng, maxLat],
 		coordinates: [
-			[minLng, maxLat], // top-left
-			[maxLng, maxLat], // top-right
-			[maxLng, minLat], // bottom-right
-			[minLng, minLat], // bottom-left
+			[minLng, maxLat],
+			[maxLng, maxLat],
+			[maxLng, minLat],
+			[minLng, minLat],
 		],
 		sw: [minLng, minLat],
 		ne: [maxLng, maxLat],
@@ -184,14 +224,9 @@ async function apiFetch<T>(
 
 // ─── Public API functions ────────────────────────────────────────────────────
 
-/** List all disasters. */
 export const fetchDisasters = (): Promise<DisastersResponse> =>
 	apiFetch<DisastersResponse>("/disasters");
 
-/**
- * List all image pairs for a disaster.
- * Returns a GeoJSON FeatureCollection; each feature's properties contain xbd_id.
- */
 export const fetchImagePairs = async (
 	disasterId: number,
 	options?: ApiFetchOptions,
@@ -207,7 +242,6 @@ export const fetchImagePairs = async (
 	};
 };
 
-/** Fetch metadata for a single image pair. */
 export const fetchImagePair = (
 	disasterId: number,
 	xbdId: number,
@@ -218,7 +252,6 @@ export const fetchImagePair = (
 		options,
 	);
 
-/** Fetch building polygons + metadata for a single image pair. */
 export const fetchBuildings = (
 	disasterId: number,
 	xbdId: number,
@@ -229,14 +262,6 @@ export const fetchBuildings = (
 		options,
 	);
 
-/**
- * Convenience: fetch image-pair metadata and buildings in parallel.
- * Returns everything MapView needs to render a scene.
- *
- * Bounds are derived from the building polygon extents (same approach as the
- * original local-asset code) rather than the geo origin fields, which avoids
- * ambiguity around pixel-center vs pixel-edge conventions.
- */
 export async function fetchMapData(
 	disasterId: number,
 	xbdId: number,
