@@ -7,6 +7,7 @@ import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 import { BuildingPopup } from "@/components/features/BuildingPopup";
 import { MapControls } from "@/components/features/MapControls";
 import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
+import { EXCLUDED_XBD_IDS } from "@/constants/excludedXbdIds";
 import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
 import type { MapStatus } from "@/types/map.ts";
 import { BUILDINGS_SOURCE_ID } from "@/utils/addBuildingLayer";
@@ -41,7 +42,16 @@ export default function MapView() {
 	const afterMapRef = useRef<mapboxgl.Map | null>(null);
 	const layersReadyRef = useRef(false);
 
-	const [xbdId, setXbdId] = useState<number>(XBD_ID);
+	const [disasterId, setDisasterIdState] = useState<number>(() => {
+		const saved = localStorage.getItem("lastDisasterId");
+		return saved ? parseInt(saved, 10) : DISASTER_ID;
+	});
+	const [xbdId, setXbdIdState] = useState<number>(() => {
+		const saved = localStorage.getItem("lastXbdId");
+		const parsed = saved ? parseInt(saved, 10) : XBD_ID;
+		const excluded = EXCLUDED_XBD_IDS[disasterId] || new Set();
+		return excluded.has(parsed) ? XBD_ID : parsed;
+	});
 	const [sceneLoading, setSceneLoading] = useState(false);
 	const [retryCount, setRetryCount] = useState(0);
 	const [buildingsVisible, setBuildingsVisible] = useState(true);
@@ -61,6 +71,12 @@ export default function MapView() {
 	const boundsRef = useRef<ImageBounds | null>(null);
 	const scheduleCompareIdleRef = useRef<() => void>(() => {});
 	imageryVisibleRef.current = imageryVisible;
+
+	const setXbdId = useCallback((newId: number) => {
+		setXbdIdState(newId);
+		localStorage.setItem("lastXbdId", newId.toString());
+	}, []);
+
 
 	const updatePopupPos = useCallback(() => {
 		if (popupDataRef.current && afterMapRef.current) {
@@ -168,7 +184,7 @@ export default function MapView() {
 		setStatus("loading");
 		setErrorMessage(null);
 
-		fetchMapData(DISASTER_ID, xbdIdRef.current, {
+		fetchMapData(disasterId, xbdIdRef.current, {
 			signal: abortController.signal,
 		})
 			.then(({ imagePair, buildings, bounds }) => {
@@ -283,7 +299,7 @@ export default function MapView() {
 		};
 		// xbdId is intentionally excluded; scene switches are handled by Effect 2.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [openPopup, updatePopupPos, retryCount, handleResetView]);
+	}, [openPopup, updatePopupPos, retryCount, handleResetView, disasterId]);
 
 	useEffect(() => {
 		const before = beforeMapRef.current;
@@ -295,7 +311,7 @@ export default function MapView() {
 		setSceneLoading(true);
 		closePopup();
 
-		fetchMapData(DISASTER_ID, xbdId, { signal: abortController.signal })
+		fetchMapData(disasterId, xbdId, { signal: abortController.signal })
 			.then(({ imagePair, buildings, bounds }) => {
 				if (cancelled || !beforeMapRef.current || !afterMapRef.current) return;
 				boundsRef.current = bounds;
@@ -353,7 +369,7 @@ export default function MapView() {
 			cancelled = true;
 			abortController.abort();
 		};
-	}, [xbdId, closePopup]);
+	}, [xbdId, closePopup, disasterId]);
 
 	useEffect(() => {
 		if (!imageryVisible) {
@@ -393,7 +409,7 @@ export default function MapView() {
 			<div ref={containerRef} className="map-container" />
 
 			<MapControls
-				disasterId={DISASTER_ID}
+				disasterId={disasterId}
 				selectedXbdId={xbdId}
 				onXbdChange={setXbdId}
 				sceneDisabled={status !== "ready"}
