@@ -121,7 +121,10 @@ export function MapControls({
 					aria-expanded={collapsed ? "false" : "true"}
 					aria-label={collapsed ? "Expand controls" : "Collapse controls"}
 				>
-					<span className="map-controls__toggle-icon select-none" aria-hidden="true">
+					<span
+						className="map-controls__toggle-icon select-none"
+						aria-hidden="true"
+					>
 						{collapsed ? "+" : "-"}
 					</span>
 				</button>

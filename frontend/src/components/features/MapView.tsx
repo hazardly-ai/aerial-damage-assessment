@@ -42,7 +42,7 @@ export default function MapView() {
 	const afterMapRef = useRef<mapboxgl.Map | null>(null);
 	const layersReadyRef = useRef(false);
 
-	const [disasterId, setDisasterIdState] = useState<number>(() => {
+	const [disasterId, _setDisasterIdState] = useState<number>(() => {
 		const saved = localStorage.getItem("lastDisasterId");
 		return saved ? parseInt(saved, 10) : DISASTER_ID;
 	});
@@ -76,7 +76,6 @@ export default function MapView() {
 		setXbdIdState(newId);
 		localStorage.setItem("lastXbdId", newId.toString());
 	}, []);
-
 
 	const updatePopupPos = useCallback(() => {
 		if (popupDataRef.current && afterMapRef.current) {
