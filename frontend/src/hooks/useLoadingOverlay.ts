@@ -14,6 +14,9 @@ interface LoadingOverlayState {
  * - Mounts the overlay immediately when status becomes "loading".
  * - When status becomes "ready", triggers a CSS fade-out, then unmounts
  *   the overlay after FADE_DURATION_MS so the transition can complete.
+ * - When status becomes "error" (or any other non-loading terminal state),
+ *   dismisses the overlay immediately with no fade so the error UI is
+ *   never obscured by a stale loading layer.
  */
 export function useLoadingOverlay(status: MapStatus): LoadingOverlayState {
 	const [show, setShow] = useState(false);
@@ -33,6 +36,10 @@ export function useLoadingOverlay(status: MapStatus): LoadingOverlayState {
 			}, FADE_DURATION_MS);
 			return () => clearTimeout(t);
 		}
+		// Any other terminal state (e.g. "error"): dismiss immediately so the
+		// overlay doesn't obscure the error UI.
+		setFading(false);
+		setShow(false);
 	}, [status]);
 
 	return { show, fading };
