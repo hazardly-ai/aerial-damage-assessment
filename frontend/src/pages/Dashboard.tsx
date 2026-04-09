@@ -5,6 +5,12 @@ import { Button } from "@/components/ui/Button";
 import Item from "@/components/ui/Item";
 import Pagination from "@/components/ui/Pagination";
 import { SpinnerEmpty } from "@/components/ui/SpinnerEmpty";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { DAMAGE_COLOR_HEX } from "@/constants/app";
 
 type DamageLevel =
@@ -44,7 +50,6 @@ type PaginatedBuildingsResponse = {
 type BuildingStatsResponse = {
 	total: number;
 	no_damage: number;
-	damaged: number;
 	unclassified: number;
 	by_damage: Record<string, number>;
 };
@@ -78,6 +83,14 @@ type ImagePairFeatureCollection = {
 
 type ActiveSection = "overview" | "buildings";
 
+const CONFUSION_LABELS: DamageLevel[] = [
+	"no-damage",
+	"minor-damage",
+	"major-damage",
+	"destroyed",
+	"un-classified",
+];
+
 const API_BASE = "http://localhost:8000";
 const SATELLITE_IMAGE_BASE_URL =
 	(import.meta.env.VITE_SATELLITE_IMAGE_BASE as string | undefined)?.trim() ||
@@ -85,19 +98,12 @@ const SATELLITE_IMAGE_BASE_URL =
 const PAGE_SIZE = 25;
 const DAMAGE_FILTERS: Array<{ key: string; label: string }> = [
 	{ key: "all", label: "All" },
-	{ key: "damaged", label: "Damaged" },
 	{ key: "no-damage", label: "No Damage" },
 	{ key: "minor-damage", label: "Minor Damage" },
 	{ key: "major-damage", label: "Major Damage" },
 	{ key: "destroyed", label: "Destroyed" },
 	{ key: "un-classified", label: "Unclassified" },
 ];
-
-const DAMAGED_FILTER_SET = new Set([
-	"minor-damage",
-	"major-damage",
-	"destroyed",
-]);
 
 const prettyLabel = (value: string): string =>
 	value
@@ -107,8 +113,33 @@ const prettyLabel = (value: string): string =>
 
 const normalizeDamage = (raw?: string | null): DamageLevel => {
 	if (!raw) return "un-classified";
-	if (DAMAGE_FILTERS.some((item) => item.key === raw))
-		return raw as DamageLevel;
+
+	const normalized = raw
+		.toLowerCase()
+		.trim()
+		.replace(/[_\s]+/g, "-")
+		.replace(/-+/g, "-");
+
+	if (normalized === "no-damage" || normalized === "no-damages")
+		return "no-damage";
+	if (normalized === "minor-damage" || normalized === "minor-damages")
+		return "minor-damage";
+	if (normalized === "major-damage" || normalized === "major-damages")
+		return "major-damage";
+	if (normalized === "destroyed" || normalized === "destroy")
+		return "destroyed";
+	if (
+		normalized === "un-classified" ||
+		normalized === "unclassified" ||
+		normalized === "unknown" ||
+		normalized === "uncertain"
+	)
+		return "un-classified";
+
+	if (DAMAGE_FILTERS.some((item) => item.key === normalized)) {
+		return normalized as DamageLevel;
+	}
+
 	return "un-classified";
 };
 
@@ -116,6 +147,47 @@ const toPct = (value: number, total: number): string => {
 	if (total <= 0) return "0.0";
 	return ((value / total) * 100).toFixed(1);
 };
+
+const createEmptyConfusionMatrix = (): Record<
+	DamageLevel,
+	Record<DamageLevel, number>
+> => ({
+	"no-damage": {
+		"no-damage": 0,
+		"minor-damage": 0,
+		"major-damage": 0,
+		destroyed: 0,
+		"un-classified": 0,
+	},
+	"minor-damage": {
+		"no-damage": 0,
+		"minor-damage": 0,
+		"major-damage": 0,
+		destroyed: 0,
+		"un-classified": 0,
+	},
+	"major-damage": {
+		"no-damage": 0,
+		"minor-damage": 0,
+		"major-damage": 0,
+		destroyed: 0,
+		"un-classified": 0,
+	},
+	destroyed: {
+		"no-damage": 0,
+		"minor-damage": 0,
+		"major-damage": 0,
+		destroyed: 0,
+		"un-classified": 0,
+	},
+	"un-classified": {
+		"no-damage": 0,
+		"minor-damage": 0,
+		"major-damage": 0,
+		destroyed: 0,
+		"un-classified": 0,
+	},
+});
 
 const buildStatsFromFeatures = (
 	features: BuildingFeatureNoBox[],
@@ -134,15 +206,10 @@ const buildStatsFromFeatures = (
 	}
 
 	const total = features.length;
-	const damaged =
-		(byDamage["minor-damage"] ?? 0) +
-		(byDamage["major-damage"] ?? 0) +
-		(byDamage.destroyed ?? 0);
 
 	return {
 		total,
 		no_damage: byDamage["no-damage"] ?? 0,
-		damaged,
 		unclassified: byDamage["un-classified"] ?? 0,
 		by_damage: byDamage,
 	};
@@ -190,7 +257,6 @@ export default function Dashboard() {
 	const [stats, setStats] = useState<BuildingStatsResponse>({
 		total: 0,
 		no_damage: 0,
-		damaged: 0,
 		unclassified: 0,
 		by_damage: {},
 	});
@@ -256,6 +322,10 @@ export default function Dashboard() {
 				const currentDisaster = disasters[0];
 				setSelectedDisasterId(currentDisaster.id);
 
+				// Load full building features so overview metrics (accuracy/confusion matrix)
+				// can be derived even if the stats endpoint is available.
+				void ensureAllBuildings(currentDisaster.id);
+
 				const statsRes = await fetch(
 					`${API_BASE}/disasters/${currentDisaster.id}/buildings/stats`,
 				);
@@ -279,6 +349,60 @@ export default function Dashboard() {
 		void loadStats();
 	}, [ensureAllBuildings]);
 
+	const predictionMetrics = useMemo(() => {
+		const confusionMatrix = createEmptyConfusionMatrix();
+
+		if (!allBuildingsCache) {
+			return {
+				correctCount: 0,
+				comparedCount: 0,
+				accuracyPct: "0.0",
+				confusionMatrix,
+				available: false,
+				matrixTotal: 0,
+				matrixMax: 0,
+			};
+		}
+
+		let correctCount = 0;
+		let comparedCount = 0;
+
+		for (const feature of allBuildingsCache) {
+			const actual = normalizeDamage(feature.properties.actual_damage);
+			const rawPredicted = feature.properties.predicted_damage;
+			if (rawPredicted == null) continue;
+
+			const predicted = normalizeDamage(rawPredicted);
+			comparedCount += 1;
+			if (actual === predicted) correctCount += 1;
+
+			confusionMatrix[actual][predicted] += 1;
+		}
+
+		let matrixMax = 0;
+		for (const actualLabel of CONFUSION_LABELS) {
+			for (const predictedLabel of CONFUSION_LABELS) {
+				const value = confusionMatrix[actualLabel][predictedLabel];
+				if (value > matrixMax) matrixMax = value;
+			}
+		}
+
+		const accuracyPct =
+			comparedCount > 0
+				? ((correctCount / comparedCount) * 100).toFixed(1)
+				: "0.0";
+
+		return {
+			correctCount,
+			comparedCount,
+			accuracyPct,
+			confusionMatrix,
+			available: comparedCount > 0,
+			matrixTotal: comparedCount,
+			matrixMax,
+		};
+	}, [allBuildingsCache]);
+
 	useEffect(() => {
 		if (activeSection !== "buildings") return;
 		if (selectedDisasterId == null) return;
@@ -288,9 +412,8 @@ export default function Dashboard() {
 				setLoadingBuildings(true);
 				setError(null);
 				const pairs = await ensureImagePairs(selectedDisasterId);
-				const isAggregateDamagedFilter = activeDamageFilter === "damaged";
 
-				if (supportsPagedEndpoint && !isAggregateDamagedFilter) {
+				if (supportsPagedEndpoint) {
 					const params = new URLSearchParams({
 						page: String(page),
 						page_size: String(PAGE_SIZE),
@@ -321,17 +444,11 @@ export default function Dashboard() {
 				const filtered =
 					activeDamageFilter === "all"
 						? features
-						: activeDamageFilter === "damaged"
-							? features.filter((feature) =>
-									DAMAGED_FILTER_SET.has(
-										normalizeDamage(feature.properties.actual_damage),
-									),
-								)
-							: features.filter(
-									(feature) =>
-										normalizeDamage(feature.properties.actual_damage) ===
-										activeDamageFilter,
-								);
+						: features.filter(
+								(feature) =>
+									normalizeDamage(feature.properties.actual_damage) ===
+									activeDamageFilter,
+							);
 
 				const mapped: BuildingListItem[] = filtered.map((feature) => {
 					const prop = feature.properties;
@@ -378,20 +495,52 @@ export default function Dashboard() {
 		ensureImagePairs,
 	]);
 
-	const overviewDamageRows = useMemo(
-		() =>
-			DAMAGE_FILTERS.filter((item) => item.key !== "all").map((item) => {
-				const count = stats.by_damage[item.key] ?? 0;
-				return {
-					key: item.key,
-					label: item.label,
-					count,
-					percentage: toPct(count, stats.total),
-					color: DAMAGE_COLOR_HEX[item.key] ?? "#9ca3af",
-				};
-			}),
-		[stats],
-	);
+	const overviewDamageRows = useMemo(() => {
+		const predictedByDamage: Record<string, number> = {
+			"no-damage": 0,
+			"minor-damage": 0,
+			"major-damage": 0,
+			destroyed: 0,
+			"un-classified": 0,
+		};
+
+		let predictedTotal = 0;
+		for (const feature of allBuildingsCache ?? []) {
+			const rawPredicted = feature.properties.predicted_damage;
+			if (rawPredicted == null) continue;
+			const key = normalizeDamage(rawPredicted);
+			predictedByDamage[key] = (predictedByDamage[key] ?? 0) + 1;
+			predictedTotal += 1;
+		}
+
+		return DAMAGE_FILTERS.filter((item) => item.key !== "all").map((item) => {
+			const actualCount = stats.by_damage[item.key] ?? 0;
+			const predictedCount = predictedByDamage[item.key] ?? 0;
+			const classKey = item.key as DamageLevel;
+			const actualTotalWithPrediction = CONFUSION_LABELS.reduce(
+				(sum, predictedLabel) =>
+					sum +
+					(predictionMetrics.confusionMatrix[classKey][predictedLabel] ?? 0),
+				0,
+			);
+			const diagonal =
+				predictionMetrics.confusionMatrix[classKey][classKey] ?? 0;
+			const classAccuracy =
+				actualTotalWithPrediction > 0
+					? `${toPct(diagonal, actualTotalWithPrediction)}%`
+					: "0.0%";
+			return {
+				key: item.key,
+				label: item.label,
+				actualCount,
+				actualPercentage: toPct(actualCount, stats.total),
+				predictedCount,
+				predictedPercentage: toPct(predictedCount, predictedTotal),
+				classAccuracy,
+				color: DAMAGE_COLOR_HEX[item.key] ?? "#9ca3af",
+			};
+		});
+	}, [stats, allBuildingsCache, predictionMetrics]);
 
 	const setDamageFilter = (filter: string) => {
 		setActiveDamageFilter(filter);
@@ -431,91 +580,217 @@ export default function Dashboard() {
 
 						{activeSection === "overview" && (
 							<>
-								<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-									<div className="rounded-xl border border-border bg-card text-card-foreground p-4 lg:col-span-2 flex h-full flex-col">
+								<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
+									<div className="rounded-xl border border-border bg-card text-card-foreground p-4 flex min-h-[180px] flex-col">
 										<p className="text-sm text-muted-foreground">
 											Total Buildings
 										</p>
-										<p className="mt-2 text-3xl font-bold leading-none">
+										<p className="mt-2 text-4xl font-bold leading-none">
 											{stats.total}
-										</p>
-										<p className="mt-2 text-xs invisible">
-											0% of all mapped buildings
 										</p>
 										<Button
 											variant="outline"
 											size="sm"
-											className="mt-2"
+											className="mt-auto"
 											onClick={() => setDamageFilter("all")}
 										>
 											View
 										</Button>
 									</div>
 
-									<div className="rounded-xl border border-border bg-card text-card-foreground p-4 lg:col-span-2 flex h-full flex-col">
-										<p className="text-sm text-muted-foreground">Damaged</p>
-										<p className="mt-2 text-3xl font-bold leading-none">
-											{stats.damaged}
+									<div className="rounded-xl border border-border bg-card text-card-foreground p-4 flex min-h-[180px] flex-col">
+										<p className="text-sm text-muted-foreground">
+											Overall Accuracy
 										</p>
-										<p className="mt-2 text-xs text-muted-foreground">
-											{toPct(stats.damaged, stats.total)}% of all mapped
-											buildings
+										<p className="mt-2 text-4xl font-bold leading-none">
+											{predictionMetrics.available
+												? `${predictionMetrics.accuracyPct}%`
+												: "N/A"}
 										</p>
-										<Button
-											variant="outline"
-											size="sm"
-											className="mt-auto"
-											onClick={() => setDamageFilter("damaged")}
-										>
-											View
-										</Button>
-									</div>
-
-									<div className="rounded-xl border border-border bg-card text-card-foreground p-4 lg:col-span-2 flex h-full flex-col">
-										<p className="text-sm text-muted-foreground">No Damage</p>
-										<p className="mt-2 text-3xl font-bold leading-none">
-											{stats.no_damage}
-										</p>
-										<p className="mt-2 text-xs text-muted-foreground">
-											{toPct(stats.no_damage, stats.total)}% of all mapped
-											buildings
-										</p>
-										<Button
-											variant="outline"
-											size="sm"
-											className="mt-auto"
-											onClick={() => setDamageFilter("no-damage")}
-										>
-											View
-										</Button>
+										<div className="mt-auto space-y-1">
+											<p className="text-xs text-muted-foreground">
+												{predictionMetrics.correctCount} exact matches from{" "}
+												{predictionMetrics.comparedCount} predictions
+											</p>
+											<p className="text-[11px] text-muted-foreground">
+												Exact class match between ground truth and VLM output.
+											</p>
+										</div>
 									</div>
 								</div>
 
 								<div className="rounded-xl border border-border bg-card text-card-foreground p-5">
-									<h3 className="text-lg font-semibold mb-4">
-										Damage Distribution
-									</h3>
-									<div className="space-y-4">
-										{overviewDamageRows.map((row) => (
-											<div key={row.key} className="space-y-1.5">
-												<div className="flex items-center justify-between text-sm">
-													<span className="font-medium">{row.label}</span>
-													<span className="text-muted-foreground">
-														{row.count} ({row.percentage}%)
-													</span>
-												</div>
-												<div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
-													<div
-														className="h-full rounded-full"
-														style={{
-															width: `${row.percentage}%`,
-															backgroundColor: row.color,
-														}}
-													/>
-												</div>
-											</div>
-										))}
+									<div className="mb-4 flex items-center justify-between gap-3">
+										<h3 className="text-lg font-semibold">
+											Damage Distribution
+										</h3>
+										<span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+											<span
+												className="h-2 w-2 rounded-full"
+												style={{ backgroundColor: "#2563eb", opacity: 0.85 }}
+											/>
+											Predicted
+										</span>
 									</div>
+									<div className="space-y-4">
+										<TooltipProvider>
+											{overviewDamageRows.map((row) => (
+												<div key={row.key} className="space-y-1.5">
+													<div className="flex items-center justify-between text-sm">
+														<span className="font-medium">{row.label}</span>
+														<span className="text-xs text-muted-foreground">
+															{row.classAccuracy}
+														</span>
+													</div>
+
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<div className="relative h-2.5 w-full cursor-help overflow-hidden rounded-full bg-muted">
+																<div
+																	className="absolute left-0 top-0 h-2.5 rounded-full"
+																	style={{
+																		width: `${row.actualPercentage}%`,
+																		backgroundColor: row.color,
+																		opacity: 0.75,
+																	}}
+																/>
+															</div>
+														</TooltipTrigger>
+														<TooltipContent side="top">
+															<p>
+																Actual: {row.actualCount} (
+																{row.actualPercentage}%)
+															</p>
+														</TooltipContent>
+													</Tooltip>
+
+													<Tooltip>
+														<TooltipTrigger asChild>
+															<div className="relative h-2.5 w-full cursor-help overflow-hidden rounded-full bg-muted">
+																<div
+																	className="absolute left-0 top-0 h-2.5 rounded-full"
+																	style={{
+																		width: `${row.predictedPercentage}%`,
+																		backgroundColor: "#2563eb",
+																		opacity: 0.85,
+																	}}
+																/>
+															</div>
+														</TooltipTrigger>
+														<TooltipContent side="top">
+															<p>
+																Predicted: {row.predictedCount} (
+																{row.predictedPercentage}%)
+															</p>
+														</TooltipContent>
+													</Tooltip>
+												</div>
+											))}
+										</TooltipProvider>
+									</div>
+								</div>
+
+								<div className="rounded-xl border border-border bg-card text-card-foreground p-5">
+									<div className="mb-4 flex items-end justify-between gap-3">
+										<div>
+											<h3 className="text-lg font-semibold">
+												Confusion Matrix Heatmap
+											</h3>
+											<p className="text-xs text-muted-foreground">
+												Rows = actual labels, columns = VLM predictions
+											</p>
+										</div>
+										<p className="text-xs text-muted-foreground">
+											{predictionMetrics.matrixTotal} predictions compared
+										</p>
+									</div>
+
+									{predictionMetrics.available ? (
+										<div className="overflow-x-auto">
+											<table className="w-full min-w-[760px] text-sm">
+												<thead>
+													<tr className="border-b border-border text-left text-muted-foreground">
+														<th className="px-2 py-2 font-medium">
+															Actual \ Predicted
+														</th>
+														{CONFUSION_LABELS.map((predictedLabel) => (
+															<th
+																key={`pred-${predictedLabel}`}
+																className="px-2 py-2 font-medium text-center"
+															>
+																{prettyLabel(predictedLabel)}
+															</th>
+														))}
+														<th className="px-2 py-2 font-medium text-center">
+															Total
+														</th>
+													</tr>
+												</thead>
+												<tbody>
+													{CONFUSION_LABELS.map((actualLabel) => {
+														const rowTotal = CONFUSION_LABELS.reduce(
+															(sum, predictedLabel) =>
+																sum +
+																(predictionMetrics.confusionMatrix[actualLabel][
+																	predictedLabel
+																] ?? 0),
+															0,
+														);
+
+														return (
+															<tr
+																key={`row-${actualLabel}`}
+																className="border-b border-border/70"
+															>
+																<td className="px-2 py-2 font-medium">
+																	{prettyLabel(actualLabel)}
+																</td>
+																{CONFUSION_LABELS.map((predictedLabel) => {
+																	const value =
+																		predictionMetrics.confusionMatrix[
+																			actualLabel
+																		][predictedLabel] ?? 0;
+																	const isDiagonal =
+																		actualLabel === predictedLabel;
+																	const intensity =
+																		predictionMetrics.matrixMax > 0
+																			? value / predictionMetrics.matrixMax
+																			: 0;
+																	const alpha =
+																		value > 0 ? 0.15 + intensity * 0.55 : 0.06;
+																	const backgroundColor = isDiagonal
+																		? `rgba(16, 185, 129, ${alpha})`
+																		: `rgba(239, 68, 68, ${alpha})`;
+
+																	return (
+																		<td
+																			key={`cell-${actualLabel}-${predictedLabel}`}
+																			className={`px-2 py-2 text-center font-medium ${
+																				isDiagonal
+																					? "text-emerald-900"
+																					: "text-rose-900"
+																			}`}
+																			style={{ backgroundColor }}
+																		>
+																			{value}
+																		</td>
+																	);
+																})}
+																<td className="px-2 py-2 text-center font-semibold text-muted-foreground">
+																	{rowTotal}
+																</td>
+															</tr>
+														);
+													})}
+												</tbody>
+											</table>
+										</div>
+									) : (
+										<div className="rounded-md border border-border bg-background px-4 py-6 text-sm text-muted-foreground">
+											No predicted VLM labels available yet to build the
+											confusion matrix.
+										</div>
+									)}
 								</div>
 							</>
 						)}

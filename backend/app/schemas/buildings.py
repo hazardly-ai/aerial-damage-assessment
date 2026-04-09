@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -88,6 +88,5 @@ class PaginatedBuildingListResponse(BaseModel):
 class BuildingDamageStatsResponse(BaseModel):
     total: int
     no_damage: int
-    damaged: int
     unclassified: int
     by_damage: dict[str, int]

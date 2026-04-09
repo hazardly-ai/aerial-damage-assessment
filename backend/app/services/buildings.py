@@ -191,12 +191,10 @@ def fetch_building_damage_stats_by_disaster(
         by_damage[key] = row["count"]
 
     total = sum(by_damage.values())
-    damaged = by_damage["minor-damage"] + by_damage["major-damage"] + by_damage["destroyed"]
 
     return {
         "total": total,
         "no_damage": by_damage["no-damage"],
-        "damaged": damaged,
         "unclassified": by_damage["un-classified"],
         "by_damage": by_damage,
     }
