@@ -29,6 +29,7 @@ MAPBOX_GEOCODE_URL = "https://api.mapbox.com/search/geocode/v6/reverse"
 
 REQUESTS_PER_MINUTE = 550
 MIN_REQUEST_INTERVAL = 60.0 / REQUESTS_PER_MINUTE
+BATCH_SIZE = 500
 
 
 def reverse_geocode(client: httpx.Client, lon: float, lat: float) -> str | None:
@@ -67,15 +68,10 @@ def reverse_geocode(client: httpx.Client, lon: float, lat: float) -> str | None:
         return None
 
 
-def fetch_buildings_without_address(
+def count_buildings_without_address(
     conn: psycopg.Connection, disaster_filter: str | None
-) -> list[dict]:
-    sql = """
-    SELECT b.id,
-           ST_X(ST_Centroid(b.geom)) AS lon,
-           ST_Y(ST_Centroid(b.geom)) AS lat
-    FROM buildings b
-    """
+) -> int:
+    sql = "SELECT COUNT(*) AS n FROM buildings b"
     params: tuple = ()
     if disaster_filter:
         sql += """
@@ -86,11 +82,47 @@ def fetch_buildings_without_address(
         params = (disaster_filter,)
     else:
         sql += " WHERE b.address IS NULL"
-    sql += " ORDER BY b.id"
-
     with conn.cursor() as cur:
         cur.execute(sql, params)
-        return cur.fetchall()
+        row = cur.fetchone()
+        return row["n"] if row else 0
+
+
+def fetch_buildings_without_address(
+    conn: psycopg.Connection, disaster_filter: str | None
+):
+    last_seen_id = 0
+
+    while True:
+        sql = """
+        SELECT b.id,
+               ST_X(ST_Centroid(b.geom)) AS lon,
+               ST_Y(ST_Centroid(b.geom)) AS lat
+        FROM buildings b
+        """
+        params: tuple
+        if disaster_filter:
+            sql += """
+            JOIN image_pairs ip ON b.image_pair_id = ip.id
+            JOIN disasters d ON ip.disaster_id = d.id
+            WHERE b.address IS NULL AND d.name = %s AND b.id > %s
+            """
+            params = (disaster_filter, last_seen_id, BATCH_SIZE)
+        else:
+            sql += " WHERE b.address IS NULL AND b.id > %s"
+            params = (last_seen_id, BATCH_SIZE)
+        sql += " ORDER BY b.id LIMIT %s"
+
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+        if not rows:
+            break
+
+        yield from rows
+
+        last_seen_id = rows[-1]["id"]
 
 
 def update_address(conn: psycopg.Connection, building_id: int, address: str):
@@ -120,8 +152,7 @@ def main(disaster_filter: str | None = None):
     print(f"Connecting to {DB_HOST}:{DB_PORT}...")
     conn = connect_db()
 
-    buildings = fetch_buildings_without_address(conn, disaster_filter)
-    total = len(buildings)
+    total = count_buildings_without_address(conn, disaster_filter)
     if total == 0:
         print("All buildings already have addresses. Nothing to do.")
         conn.close()
@@ -131,9 +162,10 @@ def main(disaster_filter: str | None = None):
 
     success = 0
     failed = 0
+    done = 0
     client = httpx.Client()
 
-    for i, row in enumerate(buildings):
+    for row in fetch_buildings_without_address(conn, disaster_filter):
         bid, lon, lat = row["id"], row["lon"], row["lat"]
         address = reverse_geocode(client, lon, lat)
 
@@ -152,7 +184,7 @@ def main(disaster_filter: str | None = None):
         else:
             failed += 1
 
-        done = i + 1
+        done += 1
         if done % 50 == 0 or done == total:
             elapsed = time.perf_counter() - t0
             rate = done / elapsed * 60 if elapsed > 0 else 0
