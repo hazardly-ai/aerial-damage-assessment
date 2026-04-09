@@ -27,7 +27,6 @@ if not MAPBOX_TOKEN:
 
 MAPBOX_GEOCODE_URL = "https://api.mapbox.com/search/geocode/v6/reverse"
 
-BATCH_SIZE = 100
 REQUESTS_PER_MINUTE = 550
 MIN_REQUEST_INTERVAL = 60.0 / REQUESTS_PER_MINUTE
 
@@ -61,7 +60,7 @@ def reverse_geocode(client: httpx.Client, lon: float, lat: float) -> str | None:
         data = resp.json()
         features = data.get("features", [])
         if features:
-            return features[0]["properties"].get("full_address")
+            return features[0].get("properties", {}).get("full_address")
         return None
     except Exception as e:
         print(f"  [error] geocode ({lon}, {lat}): {e}")
