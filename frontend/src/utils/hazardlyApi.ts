@@ -92,6 +92,52 @@ export interface ImageBounds {
 	ne: [number, number];
 }
 
+function extractBuildingCoords(buildings: BuildingsResponse): number[][] {
+	return buildings.features.flatMap((f) => {
+		const geom = f.geometry;
+
+		if (geom.type === "Polygon") {
+			return geom.coordinates[0] as number[][];
+		}
+
+		if (geom.type === "MultiPolygon") {
+			return (geom.coordinates as number[][][][]).flatMap((p) => p[0]);
+		}
+
+		return [];
+	});
+}
+
+function computeBounds(coords: number[][]) {
+	const lngs = coords.map((c) => c[0]);
+	const lats = coords.map((c) => c[1]);
+
+	const minLng = Math.min(...lngs);
+	const maxLng = Math.max(...lngs);
+	const minLat = Math.min(...lats);
+	const maxLat = Math.max(...lats);
+
+	return { minLng, maxLng, minLat, maxLat };
+}
+
+function computeImageBoundsFromMeta(props: ImagePairProperties) {
+	const {
+		geo_origin_lon,
+		geo_origin_lat,
+		geo_pixel_width,
+		geo_pixel_height,
+		width,
+		height,
+	} = props;
+
+	const iMinLng = geo_origin_lon;
+	const iMaxLat = geo_origin_lat;
+	const iMaxLng = geo_origin_lon + width * geo_pixel_width;
+	const iMinLat = geo_origin_lat - height * geo_pixel_height;
+
+	return { iMinLng, iMaxLng, iMinLat, iMaxLat };
+}
+
 export function computeImageBounds(
 	props: ImagePairProperties,
 	buildings: BuildingsResponse,
@@ -105,7 +151,6 @@ export function computeImageBounds(
 		height,
 	} = props;
 
-	// Guard: validate georeference fields
 	const hasValidGeo =
 		geo_origin_lon != null &&
 		geo_origin_lat != null &&
@@ -114,36 +159,45 @@ export function computeImageBounds(
 		width != null &&
 		height != null;
 
+	// Fallback: no georeference
 	if (!hasValidGeo) {
-		// Fallback: no georeference available
+		const coords = extractBuildingCoords(buildings);
+
+		if (coords.length === 0) {
+			return {
+				bbox: [0, 0, 0, 0],
+				coordinates: [
+					[0, 0],
+					[0, 0],
+					[0, 0],
+					[0, 0],
+				],
+				sw: [0, 0],
+				ne: [0, 0],
+			};
+		}
+
+		const { minLng, maxLng, minLat, maxLat } = computeBounds(coords);
+
 		return {
-			bbox: [0, 0, 0, 0],
+			bbox: [minLng, minLat, maxLng, maxLat],
 			coordinates: [
-				[0, 0],
-				[0, 0],
-				[0, 0],
-				[0, 0],
+				[minLng, maxLat],
+				[maxLng, maxLat],
+				[maxLng, minLat],
+				[minLng, minLat],
 			],
-			sw: [0, 0],
-			ne: [0, 0],
+			sw: [minLng, minLat],
+			ne: [maxLng, maxLat],
 		};
 	}
 
-	// ── 1. Collect building coordinates ───────────────────────────────────────
-	const coords = buildings.features.flatMap((f) => {
-		const geom = f.geometry;
-		if (geom.type === "Polygon") return geom.coordinates[0] as number[][];
-		if (geom.type === "MultiPolygon")
-			return (geom.coordinates as number[][][][]).flatMap((p) => p[0]);
-		return [];
-	});
+	// ── Image bounds from metadata ───────────────────────────────────────────
+	const coords = extractBuildingCoords(buildings);
 
-	// Guard: no building coordinates
 	if (coords.length === 0) {
-		const iMinLng = geo_origin_lon;
-		const iMaxLat = geo_origin_lat;
-		const iMaxLng = geo_origin_lon + width * geo_pixel_width;
-		const iMinLat = geo_origin_lat - height * geo_pixel_height;
+		const { iMinLng, iMaxLng, iMinLat, iMaxLat } =
+			computeImageBoundsFromMeta(props);
 
 		return {
 			bbox: [iMinLng, iMinLat, iMaxLng, iMaxLat],
@@ -158,28 +212,22 @@ export function computeImageBounds(
 		};
 	}
 
-	const lngs = coords.map((c) => c[0]);
-	const lats = coords.map((c) => c[1]);
+	const {
+		minLng: bMinLng,
+		maxLng: bMaxLng,
+		minLat: bMinLat,
+		maxLat: bMaxLat,
+	} = computeBounds(coords);
 
-	const bMinLng = Math.min(...lngs);
-	const bMaxLng = Math.max(...lngs);
-	const bMinLat = Math.min(...lats);
-	const bMaxLat = Math.max(...lats);
+	const { iMinLng, iMaxLng, iMinLat, iMaxLat } =
+		computeImageBoundsFromMeta(props);
 
-	// ── 2. Image bounds from metadata ─────────────────────────────────────────
-	const iMinLng = geo_origin_lon;
-	const iMaxLat = geo_origin_lat;
-	const iMaxLng = geo_origin_lon + width * geo_pixel_width;
-	const iMinLat = geo_origin_lat - height * geo_pixel_height;
-
-	// ── 3. Check if any buildings are outside image bounds ────────────────────
 	const hasOutOfBoundsBuildings =
 		bMinLng < iMinLng ||
 		bMaxLng > iMaxLng ||
 		bMinLat < iMinLat ||
 		bMaxLat > iMaxLat;
 
-	// ── 4. Use image bounds as base; expand ONLY if needed ────────────────────
 	let minLng = iMinLng;
 	let maxLng = iMaxLng;
 	let minLat = iMinLat;
