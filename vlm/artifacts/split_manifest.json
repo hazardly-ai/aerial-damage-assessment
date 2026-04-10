@@ -1,0 +1,13 @@
+{
+	"train_disasters": [
+		"hurricane-florence",
+		"hurricane-michael",
+		"midwest-flooding"
+	],
+	"val_disasters": ["hurricane-matthew"],
+	"test_disasters": ["hurricane-harvey"],
+	"train_count": 3000,
+	"val_count": 1000,
+	"test_count": 1000,
+	"max_pairs_per_disaster": 1000
+}

@@ -8,7 +8,6 @@ image = (
         "torch",
         "open-clip-torch",
         "pillow",
-        "huggingface_hub",
         "supabase",
         "psycopg2-binary"
     )
@@ -22,14 +21,17 @@ volume = modal.Volume.from_name("disaster-images", create_if_missing=False)
     volumes={"/images": volume},
     timeout=60 * 60
 )
-def predict_buildings(folder, batch_size: int = 100):
+def predict_buildings(folder, batch_size: int = 100, checkpoint_path: str = ""):
     import os
     import glob
     import torch
     import open_clip
     from PIL import Image
-    from huggingface_hub import hf_hub_download
     from supabase import create_client
+    try:
+        from vlm.models.damage_head import DamageHead
+    except ModuleNotFoundError:
+        from models.damage_head import DamageHead
 
     # ---------- Supabase Setup ----------
     SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -37,57 +39,25 @@ def predict_buildings(folder, batch_size: int = 100):
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model_name = "ViT-L-14"
-
-    labels = ["no-damage", "minor-damage", "major-damage", "destroyed"]
-
-    class_prompt_dict = {
-        0: [
-            "A satellite image of an intact residential building with no visible damage.",
-            "Aerial image of a house with a complete roof and no debris or flooding.",
-            "Undamaged building after a disaster with no structural failure."
-        ],
-        1: [
-            "Satellite image of a building with minor roof damage.",
-            "House with small cracks or slight structural damage but still standing.",
-            "Building with light damage and limited visible impact."
-        ],
-        2: [
-            "Satellite image of a building with major structural damage.",
-            "House with partial roof collapse or wall damage.",
-            "Structure heavily damaged with missing sections or large debris."
-        ],
-        3: [
-            "Satellite image of a completely destroyed building.",
-            "House fully collapsed or burned with severe structural failure.",
-            "Building reduced to rubble or no longer recognizable."
-        ]
-    }
-
-    # ---------------- LOAD MODEL ----------------
-    checkpoint = hf_hub_download(
-        repo_id="chendelong/RemoteCLIP",
-        filename=f"RemoteCLIP-{model_name}.pt"
-    )
-
+    if not checkpoint_path:
+        raise ValueError("checkpoint_path is required.")
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model_name = checkpoint["encoder_model_name"]
     model, _, preprocess = open_clip.create_model_and_transforms(model_name)
-    tokenizer = open_clip.get_tokenizer(model_name)
-    ckpt = torch.load(checkpoint, map_location="cpu")
-    model.load_state_dict(ckpt)
+    model.load_state_dict(checkpoint["encoder_state_dict"])
     model = model.to(device).eval()
 
-    # ---------------- TEXT EMBEDDINGS ----------------
-    with torch.no_grad():
-        class_embeddings = []
-        for class_id in sorted(class_prompt_dict.keys()):
-            prompts = class_prompt_dict[class_id]
-            tokens = tokenizer(prompts).to(device)
-            text_features = model.encode_text(tokens)
-            text_features /= text_features.norm(dim=-1, keepdim=True)
-            avg = text_features.mean(dim=0)
-            avg /= avg.norm()
-            class_embeddings.append(avg)
-        text_features = torch.stack(class_embeddings)
+    head = DamageHead(
+        embed_dim=int(checkpoint["embed_dim"]),
+        hidden_dim=int(checkpoint["head_hidden_dim"]),
+        num_classes=len(checkpoint["label_map"]),
+    ).to(device)
+    head.load_state_dict(checkpoint["head_state_dict"])
+    head.eval()
+
+    labels = [None] * len(checkpoint["label_map"])
+    for label_name, idx in checkpoint["label_map"].items():
+        labels[idx] = label_name
 
     # ---------- PROCESS IMAGES ----------
     pre_images = sorted(glob.glob(os.path.join(folder, "*_pre.png")))
@@ -113,10 +83,8 @@ def predict_buildings(folder, batch_size: int = 100):
             pre_features /= pre_features.norm(dim=-1, keepdim=True)
             post_features /= post_features.norm(dim=-1, keepdim=True)
 
-            change_features = post_features - pre_features
-            change_features /= change_features.norm(dim=-1, keepdim=True)
-
-            probs = (100.0 * change_features @ text_features.T).softmax(dim=-1)
+            logits = head(pre_features, post_features)
+            probs = logits.softmax(dim=-1)
             probs = probs.cpu().numpy()[0]
 
         pred_class = probs.argmax()

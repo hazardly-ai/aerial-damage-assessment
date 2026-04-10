@@ -2,20 +2,41 @@ import argparse
 import glob
 import os
 from contextlib import nullcontext
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
 import open_clip
 import torch
-from huggingface_hub import hf_hub_download
 from PIL import Image
 from supabase import create_client
 
+try:
+    from vlm.models.damage_head import DamageHead
+except ModuleNotFoundError:
+    from models.damage_head import DamageHead
 
-def predict_buildings(
-    folder: str,
-    batch_size: int = 100,
-    infer_batch_size: int = 32,
-) -> None:
+
+def _load_trained_model(device: str, checkpoint_path: str):
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model_name = checkpoint["encoder_model_name"]
+    encoder, _, preprocess = open_clip.create_model_and_transforms(model_name)
+    encoder.load_state_dict(checkpoint["encoder_state_dict"])
+    encoder = encoder.to(device).eval()
+
+    head = DamageHead(
+        embed_dim=int(checkpoint["embed_dim"]),
+        hidden_dim=int(checkpoint["head_hidden_dim"]),
+        num_classes=len(checkpoint["label_map"]),
+    ).to(device)
+    head.load_state_dict(checkpoint["head_state_dict"])
+    head.eval()
+
+    labels = [None] * len(checkpoint["label_map"])
+    for label_name, idx in checkpoint["label_map"].items():
+        labels[idx] = label_name
+    return encoder, head, preprocess, labels
+
+
+def predict_buildings(folder: str, batch_size: int = 100, infer_batch_size: int = 32, checkpoint: str = "") -> None:
     # Load environment variables from .env file
     load_dotenv()
     
@@ -31,69 +52,9 @@ def predict_buildings(
     supabase = create_client(supabase_url, supabase_key)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model_name = "ViT-L-14"
-
-    labels = ["no-damage", "minor-damage", "major-damage", "destroyed"]
-
-    class_prompt_dict = {
-        0: [
-            "A satellite image of an intact residential building with no visible damage.",
-            "Aerial image of a house with a complete roof and no debris or flooding.",
-            "Undamaged building after a disaster with no structural failure.",
-        ],
-        1: [
-            "Satellite image of a building with minor roof damage.",
-            "House with small cracks or slight structural damage but still standing.",
-            "Building with light damage and limited visible impact.",
-        ],
-        2: [
-            "Satellite image of a building with major structural damage.",
-            "House with partial roof collapse or wall damage.",
-            "Structure heavily damaged with missing sections or large debris.",
-        ],
-        3: [
-            "Satellite image of a completely destroyed building.",
-            "House fully collapsed or burned with severe structural failure.",
-            "Building reduced to rubble or no longer recognizable.",
-        ],
-    }
-
-    # ---------------- FIND CHECKPOINT ----------------
-    checkpoint_list = glob.glob(r"checkpoints\**\RemoteCLIP-ViT-L-14.pt", recursive=True)
-    if not checkpoint_list:
-        # If not found, download automatically to checkpoints folder
-        print("Checkpoint not found in snapshots. Downloading from Huggingface...")
-        hf_hub_download(
-            repo_id="chendelong/RemoteCLIP",
-            filename=f"RemoteCLIP-{model_name}.pt",
-            cache_dir=r"vlm\checkpoints"
-        )
-        checkpoint_list = glob.glob(r"checkpoints\**\RemoteCLIP-ViT-L-14.pt", recursive=True)
-        if not checkpoint_list:
-            raise FileNotFoundError("Checkpoint still not found after downloading!")
-    checkpoint_path = checkpoint_list[-1]  # pick the last one if multiple
-    print(f"Using checkpoint: {checkpoint_path}")
-
-    # ---------------- LOAD MODEL ----------------
-    model, _, preprocess = open_clip.create_model_and_transforms(model_name)
-    tokenizer = open_clip.get_tokenizer(model_name)
-
-    ckpt = torch.load(checkpoint_path, map_location="cpu")
-    model.load_state_dict(ckpt)
-    model = model.to(device).eval()
-
-    # ---------------- TEXT EMBEDDINGS ----------------
-    with torch.no_grad():
-        class_embeddings = []
-        for class_id in sorted(class_prompt_dict.keys()):
-            prompts = class_prompt_dict[class_id]
-            tokens = tokenizer(prompts).to(device)
-            text_features = model.encode_text(tokens)
-            text_features /= text_features.norm(dim=-1, keepdim=True)
-            avg = text_features.mean(dim=0)
-            avg /= avg.norm()
-            class_embeddings.append(avg)
-        text_features = torch.stack(class_embeddings)
+    if not checkpoint:
+        raise ValueError("Requires --checkpoint path/to/best_damage_classifier.pt")
+    model, head, preprocess, labels = _load_trained_model(device, checkpoint)
 
     # ---------- PROCESS IMAGES ----------
     pre_images = sorted(glob.glob(os.path.join(folder, "*_pre.png")))
@@ -139,11 +100,8 @@ def predict_buildings(
                 post_features = model.encode_image(post_images_batch)
                 pre_features /= pre_features.norm(dim=-1, keepdim=True)
                 post_features /= post_features.norm(dim=-1, keepdim=True)
-
-                change_features = post_features - pre_features
-                change_features /= change_features.norm(dim=-1, keepdim=True)
-
-                probs_batch = (100.0 * change_features @ text_features.T).softmax(dim=-1)
+                logits = head(pre_features, post_features)
+                probs_batch = logits.softmax(dim=-1)
 
         pred_indices = probs_batch.argmax(dim=-1).cpu().tolist()
         pred_labels = [labels[idx] for idx in pred_indices]
@@ -183,7 +141,7 @@ def predict_buildings(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run local RemoteCLIP damage inference and update existing Supabase building rows by uid."
+        description="Run trained RemoteCLIP + damage head inference and update existing Supabase building rows by uid."
     )
     parser.add_argument("folder", help="Folder containing *_pre.png and *_post*.png building crops.")
     parser.add_argument(
@@ -198,12 +156,18 @@ def main() -> None:
         default=32,
         help="How many pre/post crop pairs to run in one model forward pass.",
     )
+    parser.add_argument(
+        "--checkpoint",
+        required=True,
+        help="Path to trained model checkpoint (encoder + damage head).",
+    )
     args = parser.parse_args()
 
     predict_buildings(
         args.folder,
         batch_size=args.batch_size,
         infer_batch_size=args.infer_batch_size,
+        checkpoint=args.checkpoint,
     )
 
 

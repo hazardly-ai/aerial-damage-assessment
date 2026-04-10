@@ -1,0 +1,40 @@
+seed: 42
+
+paired_crops_root: vlm/imagery/paired_crops
+output_dir: vlm/artifacts
+checkpoint_dir: vlm/checkpoints
+
+split:
+  # Optional whitelist of disasters to consider at all.
+  # Put val and test disasters as well in this list.
+  # If empty, all folders under imagery/paired_crops are used.
+  train_include_disasters: [hurricane-michael, hurricane-florence, midwest-flooding, hurricane-matthew, hurricane-harvey]
+
+  # Optional explicit split folders.
+  # If either list is non-empty, these are used directly and val/test counts are ignored.
+  val_disasters: [hurricane-matthew]
+  test_disasters: [hurricane-harvey]
+
+  # Used only when val_disasters and test_disasters are both empty.
+  val_disaster_count: 1
+  test_disaster_count: 0
+
+  # If set (e.g. 50), each disaster folder contributes at most this many pairs,
+  # chosen randomly (reproducible via seed). Omit or null to use all pairs.
+  max_pairs_per_disaster: 1000
+
+model:
+  name: ViT-L-14
+  remoteclip_checkpoint: "vlm/checkpoints/models--chendelong--RemoteCLIP/snapshots/bf1d8a3ccf2ddbf7c875705e46373bfe542bce38/RemoteCLIP-ViT-L-14.pt"
+  num_classes: 4
+  freeze_encoder: true
+  head_hidden_dim: 1024
+
+training:
+  epochs: 1
+  batch_size: 50
+  num_workers: 8
+  lr: 0.001
+  weight_decay: 0.0001
+  max_grad_norm: 1.0
+
