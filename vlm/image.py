@@ -28,7 +28,7 @@ def load_buildings_by_uid(json_path):
         uid = props.get("uid")
         buildings[uid] = {
             "polygon": load_wkt(feat["wkt"]),
-            "damage": props.get("subtype", "unclassified")
+            "damage": props.get("subtype"),
         }
     return buildings
 
@@ -60,9 +60,12 @@ for file in sorted(os.listdir(LABEL_DIR)):
 
     common_uids = sorted(set(pre_buildings) & set(post_buildings))
 
+    n_written = 0
     for uid in common_uids:
         post_poly = post_buildings[uid]["polygon"]
         damage = post_buildings[uid]["damage"]
+        if str(damage).strip() == "un-classified":
+            continue
 
         minx, miny, maxx, maxy = map(int, post_poly.bounds)
 
@@ -81,8 +84,9 @@ for file in sorted(os.listdir(LABEL_DIR)):
 
         pre_crop.save(os.path.join(OUT_DIR, f"{pair_id}_pre.png"))
         post_crop.save(os.path.join(OUT_DIR, f"{pair_id}_post_{damage}.png"))
+        n_written += 1
 
-    print(f"{base}: {len(common_uids)} paired buildings")
+    print(f"{base}: {n_written} paired buildings")
     processed += 1
 
     if processed >= MAX_IMAGES:
