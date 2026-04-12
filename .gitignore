@@ -32,8 +32,6 @@ dist/
 /vlm/checkpoints
 /vlm/imagery
 
-data/
-
 # Generated frontend config outputs
 frontend/tailwind.config.d.ts
 frontend/tailwind.config.js

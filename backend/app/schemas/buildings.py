@@ -16,7 +16,6 @@ class BuildingProperties(BaseModel):
     actual_damage: str
     predicted_damage: str | None = None
     is_correct: bool | None = None
-    address: str | None = None
     created_at: datetime | None = None
     geom_bbox: GeoJSONGeometry | None = None
 
@@ -29,7 +28,6 @@ class BuildingPropertiesNoBox(BaseModel):
     actual_damage: str
     predicted_damage: str | None = None
     is_correct: bool | None = None
-    address: str | None = None
     created_at: datetime | None = None
 
 
