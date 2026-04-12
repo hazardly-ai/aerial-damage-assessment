@@ -337,6 +337,8 @@ export default function MapView() {
 				afterSource.setData(buildings);
 
 				_before.fitBounds([sw, ne], { padding: 0, animate: true });
+				setErrorMessage(null);
+				setStatus("ready");
 				setSceneLoading(false);
 			})
 			.catch((err: unknown) => {
