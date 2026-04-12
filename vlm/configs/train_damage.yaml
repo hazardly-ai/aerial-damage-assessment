@@ -31,8 +31,8 @@ model:
   head_hidden_dim: 1024
 
 training:
-  epochs: 1
-  batch_size: 50
+  epochs: 10
+  batch_size: 100
   num_workers: 8
   lr: 0.001
   weight_decay: 0.0001
