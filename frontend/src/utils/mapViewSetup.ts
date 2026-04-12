@@ -26,8 +26,10 @@ const SATELLITE_FULL_OPACITY = 1;
 
 export interface PopupData {
 	uid: string;
-	damage?: string;
-	damageColor: string;
+	predictedDamage?: string;
+	predictedDamageColor: string;
+	actualDamage?: string;
+	actualDamageColor: string;
 	lngLat: mapboxgl.LngLat;
 }
 
@@ -292,9 +294,18 @@ export function bindBuildingInteractions(params: {
 			{ selected: true },
 		);
 
-		const damage = asString(feature.properties?.predicted_damage);
-		const damageColor = getBuildingDamageColor(damage);
-		onPopupOpen({ uid, damage, damageColor, lngLat: e.lngLat });
+		const predictedDamage = asString(feature.properties?.predicted_damage);
+		const predictedDamageColor = getBuildingDamageColor(predictedDamage);
+		const actualDamage = asString(feature.properties?.actual_damage);
+		const actualDamageColor = getBuildingDamageColor(actualDamage);
+		onPopupOpen({
+			uid,
+			predictedDamage,
+			predictedDamageColor,
+			actualDamage,
+			actualDamageColor,
+			lngLat: e.lngLat,
+		});
 	};
 
 	bindHover(beforeMap);

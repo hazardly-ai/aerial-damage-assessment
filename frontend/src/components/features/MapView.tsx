@@ -438,8 +438,10 @@ export default function MapView() {
 				>
 					<BuildingPopup
 						uid={popupData.uid}
-						damage={popupData.damage}
-						damageColor={popupData.damageColor}
+						predictedDamage={popupData.predictedDamage}
+						predictedDamageColor={popupData.predictedDamageColor}
+						actualDamage={popupData.actualDamage}
+						actualDamageColor={popupData.actualDamageColor}
 						onClose={closePopup}
 					/>
 				</div>
