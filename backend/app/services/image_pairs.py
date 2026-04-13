@@ -41,7 +41,8 @@ def _image_pair_query(where: str) -> str:
         'geo_origin_lon',   ip.geo_origin_lon,
         'geo_origin_lat',   ip.geo_origin_lat,
         'geo_pixel_width',  ip.geo_pixel_width,
-        'geo_pixel_height', ip.geo_pixel_height
+        'geo_pixel_height', ip.geo_pixel_height,
+        'geo_refine_affine', ip.geo_refine_affine
       ) AS properties
     FROM image_pairs ip
     {where}

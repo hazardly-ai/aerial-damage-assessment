@@ -3,7 +3,6 @@
  * API client utility for the Hazardly backend.
  * All functions throw on non-OK responses so callers can catch and surface errors.
  */
-import { EXCLUDED_XBD_IDS } from "@/constants/excludedXbdIds.ts";
 
 const BASE_URL = "https://hazardly-api.vercel.app";
 const IMAGE_BASE_URL =
@@ -26,6 +25,16 @@ export interface DisastersResponse {
 	features: DisasterFeature[];
 }
 
+/** lon = a*u + b*v + c, lat = d*u + e*v + f (pixel u,v → WGS84), optional fit from buildings */
+export interface GeoRefineAffine {
+	a: number;
+	b: number;
+	c: number;
+	d: number;
+	e: number;
+	f: number;
+}
+
 export interface ImagePairProperties {
 	xbd_id: number;
 	pre_image_path: string;
@@ -36,6 +45,7 @@ export interface ImagePairProperties {
 	geo_pixel_height: number;
 	width: number; // image width in pixels
 	height: number; // image height in pixels
+	geo_refine_affine?: GeoRefineAffine | null;
 	[key: string]: unknown;
 }
 
@@ -92,6 +102,14 @@ export interface ImageBounds {
 	ne: [number, number];
 }
 
+type MetaBounds = {
+	coordinates: ImageBounds["coordinates"];
+	iMinLng: number;
+	iMaxLng: number;
+	iMinLat: number;
+	iMaxLat: number;
+};
+
 function extractBuildingCoords(buildings: BuildingsResponse): number[][] {
 	return buildings.features.flatMap((f) => {
 		const geom = f.geometry;
@@ -120,22 +138,54 @@ function computeBounds(coords: number[][]) {
 	return { minLng, maxLng, minLat, maxLat };
 }
 
-function computeImageBoundsFromMeta(props: ImagePairProperties) {
-	const {
-		geo_origin_lon,
-		geo_origin_lat,
-		geo_pixel_width,
-		geo_pixel_height,
-		width,
-		height,
-	} = props;
+function isGeoRefineAffine(
+	r: GeoRefineAffine | null | undefined,
+): r is GeoRefineAffine {
+	if (!r) return false;
+	const n = [r.a, r.b, r.c, r.d, r.e, r.f];
+	return n.every((x) => Number.isFinite(x));
+}
 
-	const iMinLng = geo_origin_lon;
-	const iMaxLat = geo_origin_lat;
-	const iMaxLng = geo_origin_lon + width * geo_pixel_width;
-	const iMinLat = geo_origin_lat - height * geo_pixel_height;
+/**
+ * Image quad: optional footprint-fitted affine (`geo_refine_affine`), else GDAL
+ * envelope from origin + width*geo_pixel_width / +height*geo_pixel_height.
+ */
+function computeImageBoundsFromMeta(props: ImagePairProperties): MetaBounds {
+	const w = props.width;
+	const h = props.height;
+	const refine = props.geo_refine_affine;
 
-	return { iMinLng, iMaxLng, iMinLat, iMaxLat };
+	let coordinates: ImageBounds["coordinates"];
+
+	if (isGeoRefineAffine(refine)) {
+		const { a, b, c, d, e, f } = refine;
+		const corner = (u: number, v: number): [number, number] => [
+			a * u + b * v + c,
+			d * u + e * v + f,
+		];
+		coordinates = [corner(0, 0), corner(w, 0), corner(w, h), corner(0, h)];
+	} else {
+		const lx = props.geo_origin_lon;
+		const ly = props.geo_origin_lat;
+		const dx = w * props.geo_pixel_width;
+		const dy = h * props.geo_pixel_height;
+		coordinates = [
+			[lx, ly],
+			[lx + dx, ly],
+			[lx + dx, ly + dy],
+			[lx, ly + dy],
+		];
+	}
+
+	const lngs = coordinates.map((c) => c[0]);
+	const lats = coordinates.map((c) => c[1]);
+	return {
+		coordinates,
+		iMinLng: Math.min(...lngs),
+		iMaxLng: Math.max(...lngs),
+		iMinLat: Math.min(...lats),
+		iMaxLat: Math.max(...lats),
+	};
 }
 
 export function computeImageBounds(
@@ -196,17 +246,12 @@ export function computeImageBounds(
 	const coords = extractBuildingCoords(buildings);
 
 	if (coords.length === 0) {
-		const { iMinLng, iMaxLng, iMinLat, iMaxLat } =
+		const { coordinates, iMinLng, iMaxLng, iMinLat, iMaxLat } =
 			computeImageBoundsFromMeta(props);
 
 		return {
 			bbox: [iMinLng, iMinLat, iMaxLng, iMaxLat],
-			coordinates: [
-				[iMinLng, iMaxLat],
-				[iMaxLng, iMaxLat],
-				[iMaxLng, iMinLat],
-				[iMinLng, iMinLat],
-			],
+			coordinates,
 			sw: [iMinLng, iMinLat],
 			ne: [iMaxLng, iMaxLat],
 		};
@@ -219,8 +264,13 @@ export function computeImageBounds(
 		maxLat: bMaxLat,
 	} = computeBounds(coords);
 
-	const { iMinLng, iMaxLng, iMinLat, iMaxLat } =
-		computeImageBoundsFromMeta(props);
+	const {
+		coordinates: imageCoordinates,
+		iMinLng,
+		iMaxLng,
+		iMinLat,
+		iMaxLat,
+	} = computeImageBoundsFromMeta(props);
 
 	const hasOutOfBoundsBuildings =
 		bMinLng < iMinLng ||
@@ -242,12 +292,7 @@ export function computeImageBounds(
 
 	return {
 		bbox: [minLng, minLat, maxLng, maxLat],
-		coordinates: [
-			[minLng, maxLat],
-			[maxLng, maxLat],
-			[maxLng, minLat],
-			[minLng, minLat],
-		],
+		coordinates: imageCoordinates,
 		sw: [minLng, minLat],
 		ne: [maxLng, maxLat],
 	};
@@ -267,7 +312,7 @@ async function apiFetch<T>(
 	if (!res.ok) {
 		throw new Error(`API error ${res.status} for ${path}: ${res.statusText}`);
 	}
-	return res.json() as Promise<T>;
+	return (await res.json()) as Promise<T>;
 }
 
 // ─── Public API functions ────────────────────────────────────────────────────
@@ -275,20 +320,11 @@ async function apiFetch<T>(
 export const fetchDisasters = (): Promise<DisastersResponse> =>
 	apiFetch<DisastersResponse>("/disasters");
 
-export const fetchImagePairs = async (
+export const fetchImagePairs = (
 	disasterId: number,
 	options?: ApiFetchOptions,
-): Promise<ImagePairsResponse> => {
-	const resp = await apiFetch<ImagePairsResponse>(
-		`/disasters/${disasterId}/image-pairs`,
-		options,
-	);
-	const excluded = EXCLUDED_XBD_IDS[disasterId] ?? new Set();
-	return {
-		...resp,
-		features: resp.features.filter((f) => !excluded.has(f.properties.xbd_id)),
-	};
-};
+): Promise<ImagePairsResponse> =>
+	apiFetch<ImagePairsResponse>(`/disasters/${disasterId}/image-pairs`, options);
 
 export const fetchImagePair = (
 	disasterId: number,
