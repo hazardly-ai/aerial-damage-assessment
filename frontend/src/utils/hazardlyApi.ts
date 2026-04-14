@@ -274,6 +274,7 @@ export const fetchDisasters = (): Promise<DisastersResponse> =>
  * @returns An {@link ImagePairsResponse} GeoJSON FeatureCollection.
  * @throws `Error` on network failure or a non-OK HTTP response.
  * @author James Harrison
+ * @author Nishil Jaiswal
  */
 export const fetchImagePairs = (
 	disasterId: number,
