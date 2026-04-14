@@ -10,6 +10,11 @@ const IMAGE_BASE_URL =
 
 // Response shape types
 
+/**
+ * A single disaster entry in GeoJSON Feature format.
+ * Properties include at minimum a numeric `disaster_id` and a human-readable
+ * `name`; additional server-defined fields may be present.
+ */
 export interface DisasterFeature {
 	type: "Feature";
 	properties: {
@@ -20,18 +25,26 @@ export interface DisasterFeature {
 	geometry: unknown;
 }
 
+/**
+ * GeoJSON FeatureCollection returned by the `/disasters` endpoint.
+ * Each feature describes one disaster event.
+ */
 export interface DisastersResponse {
 	type: "FeatureCollection";
 	features: DisasterFeature[];
 }
 
 /**
- * Affine transform mapping pixel (u, v) → WGS84 (lon, lat):
- *   lon = a*u + b*v + c
- *   lat = d*u + e*v + f
+ * Affine transform mapping pixel coordinates (u, v) to WGS-84 (lon, lat):
  *
- * Fitted server-side from building pixel↔latlon correspondences,
- * so it is always present and accurate.
+ * ```
+ * lon = a·u + b·v + c
+ * lat = d·u + e·v + f
+ * ```
+ *
+ * The coefficients are fitted server-side from building pixel/latitutde longitude
+ * correspondences, so they are always present and can be used directly in
+ * {@link computeImageBounds}.
  */
 export interface GeoRefineAffine {
 	a: number;
@@ -42,6 +55,16 @@ export interface GeoRefineAffine {
 	f: number;
 }
 
+/**
+ * Metadata for a pre/post-disaster satellite image pair.
+ *
+ * - `xbd_id` — unique identifier for this pair within its disaster.
+ * - `pre_image_path` / `post_image_path` — storage-relative paths; pass to
+ *   {@link resolveImageUrl} to obtain full URLs.
+ * - `width` / `height` — image dimensions in pixels.
+ * - `geo_refine_affine` — affine transform for pixel→WGS-84 conversion;
+ *   consumed by {@link computeImageBounds}.
+ */
 export interface ImagePairProperties {
 	xbd_id: number;
 	pre_image_path: string;
@@ -52,21 +75,48 @@ export interface ImagePairProperties {
 	[key: string]: unknown;
 }
 
-/** Resolve a relative image path to a full URL. */
+/**
+ * Resolves a storage-relative image path to its fully-qualified URL.
+ *
+ * @param path - The relative path as returned in {@link ImagePairProperties}
+ *   (`pre_image_path` or `post_image_path`).
+ * @returns The absolute URL pointing to the image in Supabase Storage.
+ *
+ * @example
+ * ```ts
+ * const url = resolveImageUrl(pair.properties.pre_image_path);
+ * // → "https://…supabase.co/storage/v1/object/public/satellite-images/foo.png"
+ * ```
+ */
 export const resolveImageUrl = (path: string): string =>
 	`${IMAGE_BASE_URL}/${path}`;
 
+/**
+ * A single pre/post image pair in GeoJSON Feature format.
+ * The `properties` field carries the full {@link ImagePairProperties} payload.
+ */
 export interface ImagePairFeature {
 	type: "Feature";
 	properties: ImagePairProperties;
 	geometry: unknown;
 }
 
+/**
+ * GeoJSON FeatureCollection returned by the `/disasters/:id/image-pairs` endpoint.
+ * Each feature describes one satellite image pair for the given disaster.
+ */
 export interface ImagePairsResponse {
 	type: "FeatureCollection";
 	features: ImagePairFeature[];
 }
 
+/**
+ * Properties for a single building detected within an image pair.
+ *
+ * - `uid` — stable identifier for the building across pre/post images.
+ * - `predicted_damage` — model-predicted damage class (e.g. `"major-damage"`).
+ * - `actual_damage` — ground-truth label when available.
+ */
 export interface BuildingProperties {
 	uid: string;
 	predicted_damage?: string;
@@ -74,6 +124,10 @@ export interface BuildingProperties {
 	[key: string]: unknown;
 }
 
+/**
+ * A single building polygon in GeoJSON Feature format.
+ * `geometry` is a standard GeoJSON geometry (typically `Polygon`).
+ */
 export interface BuildingFeature {
 	type: "Feature";
 	id?: string | number;
@@ -81,6 +135,11 @@ export interface BuildingFeature {
 	geometry: GeoJSON.Geometry;
 }
 
+/**
+ * GeoJSON FeatureCollection returned by the
+ * `/disasters/:id/image-pairs/:xbdId/buildings` endpoint.
+ * Each feature represents one building footprint with optional damage labels.
+ */
 export interface BuildingsResponse {
 	type: "FeatureCollection";
 	features: BuildingFeature[];
@@ -88,6 +147,18 @@ export interface BuildingsResponse {
 
 // ─── Bounds ──────────────────────────────────────────────────────────────────
 
+/**
+ * Geographic bounding information derived from an image pair's affine transform.
+ *
+ * - `bbox` — axis-aligned envelope as `[minLng, minLat, maxLng, maxLat]`
+ *   (compatible with Mapbox / Turf / GeoJSON conventions).
+ * - `coordinates` — the four pixel-corner positions in WGS-84, ordered
+ *   **top-left → top-right → bottom-right → bottom-left** as required by the
+ *   Mapbox GL JS `ImageSource` `coordinates` property.
+ * - `sw` / `ne` — convenience south-west and north-east corners as
+ *   `[lng, lat]` pairs, suitable for constructing a `LngLatBounds`.
+ *   @author James Harrison
+ */
 export interface ImageBounds {
 	/** [minLng, minLat, maxLng, maxLat] */
 	bbox: [number, number, number, number];
@@ -106,9 +177,21 @@ export interface ImageBounds {
 }
 
 /**
- * Compute the image bounds from the server-fitted affine transform.
- * Maps the four pixel corners → WGS84 to get the image quad and its
- * axis-aligned envelope.
+ * Derives geographic bounds for a satellite image by projecting its four
+ * pixel corners through the server-fitted affine transform.
+ *
+ * The affine maps pixel `(u, v)` → WGS-84 `(lon, lat)`:
+ * ```
+ * lon = a·u + b·v + c
+ * lat = d·u + e·v + f
+ * ```
+ *
+ * @param props - The {@link ImagePairProperties} for the image, which must
+ *   contain `width`, `height`, and a valid `geo_refine_affine`.
+ * @returns An {@link ImageBounds} object with a bbox, Mapbox-compatible corner
+ *   coordinates, and sw/ne convenience points.
+ *   @author James Harrison
+ *   @author Nishil Jaiswal
  */
 export function computeImageBounds(props: ImagePairProperties): ImageBounds {
 	const { width: w, height: h, geo_refine_affine: r } = props;
@@ -145,6 +228,17 @@ interface ApiFetchOptions {
 	signal?: AbortSignal;
 }
 
+/**
+ * Internal wrapper around `fetch` that prepends {@link BASE_URL}, checks for
+ * non-OK HTTP status codes, and deserialises the JSON response body.
+ *
+ * @param path - API path (must start with `/`).
+ * @param options - Optional fetch options (e.g. an `AbortSignal`).
+ * @returns Parsed response body typed as `T`.
+ * @throws `Error` with status code and status text if the response is not OK.
+ * @author James Harrison
+ * @author Nishil Jaiswal
+ */
 async function apiFetch<T>(
 	path: string,
 	options?: ApiFetchOptions,
@@ -158,15 +252,48 @@ async function apiFetch<T>(
 
 // ─── Public API functions ────────────────────────────────────────────────────
 
+/**
+ * Fetches the list of all disaster events.
+ *
+ * Calls `GET /disasters`.
+ *
+ * @returns A {@link DisastersResponse} GeoJSON FeatureCollection.
+ * @throws `Error` on network failure or a non-OK HTTP response.
+ * @author James Harrison
+ */
 export const fetchDisasters = (): Promise<DisastersResponse> =>
 	apiFetch<DisastersResponse>("/disasters");
 
+/**
+ * Fetches all satellite image pairs associated with a given disaster.
+ *
+ * Calls `GET /disasters/:disasterId/image-pairs`.
+ *
+ * @param disasterId - Numeric ID of the disaster (see {@link DisasterFeature}).
+ * @param options - Optional fetch options (e.g. an `AbortSignal`).
+ * @returns An {@link ImagePairsResponse} GeoJSON FeatureCollection.
+ * @throws `Error` on network failure or a non-OK HTTP response.
+ * @author James Harrison
+ */
 export const fetchImagePairs = (
 	disasterId: number,
 	options?: ApiFetchOptions,
 ): Promise<ImagePairsResponse> =>
 	apiFetch<ImagePairsResponse>(`/disasters/${disasterId}/image-pairs`, options);
 
+/**
+ * Fetches a single satellite image pair by its XBD identifier.
+ *
+ * Calls `GET /disasters/:disasterId/image-pairs/:xbdId`.
+ *
+ * @param disasterId - Numeric ID of the parent disaster.
+ * @param xbdId - Numeric XBD identifier of the image pair
+ *   (see {@link ImagePairProperties.xbd_id}).
+ * @param options - Optional fetch options (e.g. an `AbortSignal`).
+ * @returns The matching {@link ImagePairFeature}.
+ * @throws `Error` on network failure or a non-OK HTTP response.
+ * @author James Harrison
+ */
 export const fetchImagePair = (
 	disasterId: number,
 	xbdId: number,
@@ -177,6 +304,19 @@ export const fetchImagePair = (
 		options,
 	);
 
+/**
+ * Fetches building footprints and damage assessments for a specific image pair.
+ *
+ * Calls `GET /disasters/:disasterId/image-pairs/:xbdId/buildings`.
+ *
+ * @param disasterId - Numeric ID of the parent disaster.
+ * @param xbdId - Numeric XBD identifier of the image pair.
+ * @param options - Optional fetch options (e.g. an `AbortSignal`).
+ * @returns A {@link BuildingsResponse} GeoJSON FeatureCollection where each
+ *   feature is one building polygon with optional damage labels.
+ * @throws `Error` on network failure or a non-OK HTTP response.
+ * @author James Harrison
+ */
 export const fetchBuildings = (
 	disasterId: number,
 	xbdId: number,
@@ -187,6 +327,24 @@ export const fetchBuildings = (
 		options,
 	);
 
+/**
+ * Convenience function that fetches an image pair and its buildings in parallel,
+ * then computes the image's geographic bounds.
+ *
+ * Internally issues two concurrent requests via `Promise.all`:
+ * - {@link fetchImagePair}
+ * - {@link fetchBuildings}
+ *
+ * @param disasterId - Numeric ID of the parent disaster.
+ * @param xbdId - Numeric XBD identifier of the image pair.
+ * @param options - Optional fetch options (e.g. a shared `AbortSignal`).
+ * @returns An object containing:
+ *   - `imagePair` — the {@link ImagePairFeature} with full metadata.
+ *   - `buildings` — the {@link BuildingsResponse} for that pair.
+ *   - `bounds` — pre-computed {@link ImageBounds} derived from the affine transform.
+ * @throws `Error` if either request fails.
+ * @author James Harrison
+ */
 export async function fetchMapData(
 	disasterId: number,
 	xbdId: number,
