@@ -4,9 +4,20 @@
  * All functions throw on non-OK responses so callers can catch and surface errors.
  */
 
-const BASE_URL = "https://hazardly-api.vercel.app";
-const IMAGE_BASE_URL =
-	"https://zbnrjjmqbnqunkjbmsdk.supabase.co/storage/v1/object/public/satellite-images";
+const API_BASE_URL = import.meta.env.VITE_HAZARDLY_API_BASE_URL?.replace(
+	/\/$/,
+	"",
+);
+if (!API_BASE_URL) {
+	throw new Error("Missing VITE_HAZARDLY_API_BASE_URL");
+}
+const IMAGE_BASE_URL = import.meta.env.VITE_HAZARDLY_IMAGE_BASE_URL?.replace(
+	/\/$/,
+	"",
+);
+if (!IMAGE_BASE_URL) {
+	throw new Error("Missing VITE_HAZARDLY_IMAGE_BASE_URL");
+}
 
 // Response shape types
 
@@ -195,6 +206,13 @@ export interface ImageBounds {
  */
 export function computeImageBounds(props: ImagePairProperties): ImageBounds {
 	const { width: w, height: h, geo_refine_affine: r } = props;
+
+	if (!r) {
+		throw new Error(
+			"API response missing geo_refine_affine data - image georeferencing not available",
+		);
+	}
+
 	const corner = (u: number, v: number): [number, number] => [
 		r.a * u + r.b * v + r.c,
 		r.d * u + r.e * v + r.f,
@@ -229,11 +247,12 @@ interface ApiFetchOptions {
 }
 
 /**
- * Internal wrapper around `fetch` that prepends {@link BASE_URL}, checks for
+ * Internal wrapper around `fetch` that prepends {@link API_BASE_URL}, checks for
  * non-OK HTTP status codes, and deserialises the JSON response body.
  *
  * @param path - API path (must start with `/`).
  * @param options - Optional fetch options (e.g. an `AbortSignal`).
+ * @param context - Optional context for error messages.
  * @returns Parsed response body typed as `T`.
  * @throws `Error` with status code and status text if the response is not OK.
  * @author James Harrison
@@ -242,12 +261,18 @@ interface ApiFetchOptions {
 async function apiFetch<T>(
 	path: string,
 	options?: ApiFetchOptions,
+	context?: string,
 ): Promise<T> {
-	const res = await fetch(`${BASE_URL}${path}`, { signal: options?.signal });
+	const res = await fetch(`${API_BASE_URL}${path}`, {
+		signal: options?.signal,
+	});
 	if (!res.ok) {
-		throw new Error(`API error ${res.status} for ${path}: ${res.statusText}`);
+		const message = context
+			? `${context}: API error ${res.status} for ${path}: ${res.statusText}`
+			: `API error ${res.status} for ${path}: ${res.statusText}`;
+		throw new Error(message);
 	}
-	return (await res.json()) as Promise<T>;
+	return (await res.json()) as T;
 }
 
 // ─── Public API functions ────────────────────────────────────────────────────
@@ -262,7 +287,11 @@ async function apiFetch<T>(
  * @author James Harrison
  */
 export const fetchDisasters = (): Promise<DisastersResponse> =>
-	apiFetch<DisastersResponse>("/disasters");
+	apiFetch<DisastersResponse>(
+		"/disasters",
+		undefined,
+		"Failed to fetch disasters",
+	);
 
 /**
  * Fetches all satellite image pairs associated with a given disaster.
@@ -280,7 +309,11 @@ export const fetchImagePairs = (
 	disasterId: number,
 	options?: ApiFetchOptions,
 ): Promise<ImagePairsResponse> =>
-	apiFetch<ImagePairsResponse>(`/disasters/${disasterId}/image-pairs`, options);
+	apiFetch<ImagePairsResponse>(
+		`/disasters/${disasterId}/image-pairs`,
+		options,
+		`Failed to fetch image pairs for disaster ${disasterId}`,
+	);
 
 /**
  * Fetches a single satellite image pair by its XBD identifier.
@@ -303,6 +336,7 @@ export const fetchImagePair = (
 	apiFetch<ImagePairFeature>(
 		`/disasters/${disasterId}/image-pairs/${xbdId}`,
 		options,
+		`Failed to fetch image pair ${xbdId} for disaster ${disasterId}`,
 	);
 
 /**
@@ -326,6 +360,7 @@ export const fetchBuildings = (
 	apiFetch<BuildingsResponse>(
 		`/disasters/${disasterId}/image-pairs/${xbdId}/buildings`,
 		options,
+		`Failed to fetch buildings for image pair ${xbdId}, disaster ${disasterId}`,
 	);
 
 /**
