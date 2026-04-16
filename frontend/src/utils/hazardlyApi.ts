@@ -22,28 +22,18 @@ if (!IMAGE_BASE_URL) {
 // Response shape types
 
 /**
- * A single disaster entry in GeoJSON Feature format.
- * Properties include at minimum a numeric `disaster_id` and a human-readable
- * `name`; additional server-defined fields may be present.
+ * A single disaster entry returned by the `/disasters` endpoint.
  */
-export interface DisasterFeature {
-	type: "Feature";
-	properties: {
-		disaster_id: number;
-		name: string;
-		[key: string]: unknown;
-	};
-	geometry: unknown;
+export interface DisasterSummary {
+	id: number;
+	name: string;
+	type: string;
 }
 
 /**
- * GeoJSON FeatureCollection returned by the `/disasters` endpoint.
- * Each feature describes one disaster event.
+ * Array response returned by `GET /disasters`.
  */
-export interface DisastersResponse {
-	type: "FeatureCollection";
-	features: DisasterFeature[];
-}
+export type DisastersResponse = DisasterSummary[];
 
 /**
  * Affine transform mapping pixel coordinates (u, v) to WGS-84 (lon, lat):
@@ -53,7 +43,7 @@ export interface DisastersResponse {
  * lat = d·u + e·v + f
  * ```
  *
- * The coefficients are fitted server-side from building pixel/latitutde longitude
+ * The coefficients are fitted server-side from building pixel/latitude longitude
  * correspondences, so they are always present and can be used directly in
  * {@link computeImageBounds}.
  */
@@ -248,7 +238,7 @@ interface ApiFetchOptions {
 
 /**
  * Internal wrapper around `fetch` that prepends {@link API_BASE_URL}, checks for
- * non-OK HTTP status codes, and deserialises the JSON response body.
+ * non-OK HTTP status codes, and deserializes the JSON response body.
  *
  * @param path - API path (must start with `/`).
  * @param options - Optional fetch options (e.g. an `AbortSignal`).
@@ -282,7 +272,7 @@ async function apiFetch<T>(
  *
  * Calls `GET /disasters`.
  *
- * @returns A {@link DisastersResponse} GeoJSON FeatureCollection.
+ * @returns A {@link DisastersResponse} array of disasters.
  * @throws `Error` on network failure or a non-OK HTTP response.
  * @author James Harrison
  */
@@ -298,7 +288,7 @@ export const fetchDisasters = (): Promise<DisastersResponse> =>
  *
  * Calls `GET /disasters/:disasterId/image-pairs`.
  *
- * @param disasterId - Numeric ID of the disaster (see {@link DisasterFeature}).
+ * @param disasterId - Numeric ID of the disaster (see {@link DisasterSummary}).
  * @param options - Optional fetch options (e.g. an `AbortSignal`).
  * @returns An {@link ImagePairsResponse} GeoJSON FeatureCollection.
  * @throws `Error` on network failure or a non-OK HTTP response.
