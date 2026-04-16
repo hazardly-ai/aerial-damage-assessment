@@ -154,10 +154,16 @@ export function waitForMapsLoad(
 	beforeMap: mapboxgl.Map,
 	afterMap: mapboxgl.Map,
 ) {
-	return Promise.all([
-		new Promise<void>((resolve) => beforeMap.on("load", () => resolve())),
-		new Promise<void>((resolve) => afterMap.on("load", () => resolve())),
-	]);
+	const waitForMapLoad = (map: mapboxgl.Map) =>
+		new Promise<void>((resolve) => {
+			if (map.loaded()) {
+				resolve();
+				return;
+			}
+			map.once("load", () => resolve());
+		});
+
+	return Promise.all([waitForMapLoad(beforeMap), waitForMapLoad(afterMap)]);
 }
 
 export function addInitialSourcesAndLayers(params: {
