@@ -16,7 +16,7 @@ export default function Header() {
 						{/* Title + subtitle section */}
 						<div className="space-y-2">
 							{/* Main app title with subtle gradient text effect */}
-							<h1 className="text-4xl sm:text-5xl font-bold tracking-tight leading-tight bg-gradient-to-r from-foreground to-foreground/50 bg-clip-text text-transparent font-sans">
+							<h1 className="pb-[0.1525em] text-4xl sm:text-5xl font-bold tracking-tight leading-[1.08] bg-gradient-to-r from-foreground to-foreground/50 bg-clip-text text-transparent font-sans">
 								{TEAM_NAME}
 							</h1>
 
@@ -26,7 +26,7 @@ export default function Header() {
 							</p>
 
 							{/* Decorative gradient divider line under the subtitle */}
-							<div className="h-px bg-gradient-to-r from-border via-border/50 to-transparent" />
+							<div className="header-divider" />
 						</div>
 					</header>
 

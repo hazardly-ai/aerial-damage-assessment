@@ -2,15 +2,19 @@ import React from "react";
 
 interface BuildingPopupProps {
 	uid: string;
-	damage?: string;
-	damageColor: string;
+	predictedDamage?: string;
+	predictedDamageColor: string;
+	actualDamage?: string;
+	actualDamageColor: string;
 	onClose: () => void;
 }
 
 export function BuildingPopup({
 	uid,
-	damage,
-	damageColor,
+	predictedDamage,
+	predictedDamageColor,
+	actualDamage,
+	actualDamageColor,
 	onClose,
 }: BuildingPopupProps) {
 	const [copied, setCopied] = React.useState(false);
@@ -83,9 +87,22 @@ export function BuildingPopup({
 					<div className="popup-label">Predicted Damage</div>
 					<span
 						className="popup-damage"
-						style={{ backgroundColor: damageColor }}
+						style={{ backgroundColor: predictedDamageColor }}
 					>
-						{damage != null && String(damage) !== "" ? String(damage) : "—"}
+						{predictedDamage != null && String(predictedDamage) !== ""
+							? String(predictedDamage)
+							: "—"}
+					</span>
+				</div>
+				<div className="popup-section">
+					<div className="popup-label">Actual Damage</div>
+					<span
+						className="popup-damage"
+						style={{ backgroundColor: actualDamageColor }}
+					>
+						{actualDamage != null && String(actualDamage) !== ""
+							? String(actualDamage)
+							: "—"}
 					</span>
 				</div>
 			</div>
