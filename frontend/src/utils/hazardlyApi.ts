@@ -132,9 +132,14 @@ export interface XbdIdsResponse {
  * - `actual_damage` — ground-truth label when available.
  */
 export interface BuildingProperties {
+	id: number;
 	uid: string;
+	image_pair_id: number;
 	predicted_damage?: string;
 	actual_damage?: string;
+	is_correct?: boolean | null;
+	created_at?: string | null;
+	geom_bbox?: GeoJSON.Geometry | null;
 	[key: string]: unknown;
 }
 
@@ -157,6 +162,42 @@ export interface BuildingFeature {
 export interface BuildingsResponse {
 	type: "FeatureCollection";
 	features: BuildingFeature[];
+}
+
+/** Building features for `GET /disasters/:id/buildings` (no `geom_bbox` in properties). */
+export interface BuildingsNoBoxResponse {
+	type: "FeatureCollection";
+	features: BuildingFeature[];
+}
+
+/** Response from `GET /disasters/:id/buildings/stats`. */
+export interface BuildingStatsResponse {
+	total: number;
+	no_damage: number;
+	unclassified: number;
+	by_damage: Record<string, number>;
+}
+
+export interface PaginatedBuildingListItem {
+	id: number;
+	uid: string;
+	image_pair_id: number;
+	xbd_id: number;
+	actual_damage: string;
+	predicted_damage?: string | null;
+	is_correct?: boolean | null;
+	created_at?: string | null;
+	pre_image_path?: string | null;
+	post_image_path?: string | null;
+}
+
+/** Response from `GET /disasters/:id/buildings/paged`. */
+export interface PaginatedBuildingsResponse {
+	items: PaginatedBuildingListItem[];
+	page: number;
+	page_size: number;
+	total_items: number;
+	total_pages: number;
 }
 
 // ─── Bounds ──────────────────────────────────────────────────────────────────
@@ -249,6 +290,18 @@ interface ApiFetchOptions {
 	signal?: AbortSignal;
 }
 
+export class ApiError extends Error {
+	status: number;
+	path: string;
+
+	constructor(message: string, status: number, path: string) {
+		super(message);
+		this.name = "ApiError";
+		this.status = status;
+		this.path = path;
+	}
+}
+
 /**
  * Internal wrapper around `fetch` that prepends {@link API_BASE_URL}, checks for
  * non-OK HTTP status codes, and deserializes the JSON response body.
@@ -273,7 +326,7 @@ async function apiFetch<T>(
 		const message = context
 			? `${context}: API error ${res.status} for ${path}: ${res.statusText}`
 			: `API error ${res.status} for ${path}: ${res.statusText}`;
-		throw new Error(message);
+		throw new ApiError(message, res.status, path);
 	}
 	return (await res.json()) as T;
 }
@@ -380,6 +433,49 @@ export const fetchBuildings = (
 		options,
 		`Failed to fetch buildings for image pair ${xbdId}, disaster ${disasterId}`,
 	);
+
+export const fetchBuildingsForDisaster = (
+	disasterId: number,
+	options?: ApiFetchOptions,
+): Promise<BuildingsNoBoxResponse> =>
+	apiFetch<BuildingsNoBoxResponse>(
+		`/disasters/${disasterId}/buildings`,
+		options,
+		`Failed to fetch buildings for disaster ${disasterId}`,
+	);
+
+export const fetchBuildingStatsForDisaster = (
+	disasterId: number,
+	options?: ApiFetchOptions,
+): Promise<BuildingStatsResponse> =>
+	apiFetch<BuildingStatsResponse>(
+		`/disasters/${disasterId}/buildings/stats`,
+		options,
+		`Failed to fetch building stats for disaster ${disasterId}`,
+	);
+
+export const fetchPaginatedBuildingsForDisaster = (
+	disasterId: number,
+	params: {
+		page: number;
+		pageSize: number;
+		damage?: string;
+	},
+	options?: ApiFetchOptions,
+): Promise<PaginatedBuildingsResponse> => {
+	const query = new URLSearchParams({
+		page: String(params.page),
+		page_size: String(params.pageSize),
+	});
+	if (params.damage && params.damage !== "all") {
+		query.set("damage", params.damage);
+	}
+	return apiFetch<PaginatedBuildingsResponse>(
+		`/disasters/${disasterId}/buildings/paged?${query.toString()}`,
+		options,
+		`Failed to fetch paginated buildings for disaster ${disasterId}`,
+	);
+};
 
 /**
  * Convenience function that fetches an image pair and its buildings in parallel,

@@ -12,6 +12,19 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { DAMAGE_COLOR_HEX } from "@/constants/app";
+import {
+	ApiError,
+	type BuildingFeature,
+	type BuildingStatsResponse,
+	type DisasterSummary,
+	fetchBuildingStatsForDisaster,
+	fetchBuildingsForDisaster,
+	fetchDisasters,
+	fetchImagePairs,
+	fetchPaginatedBuildingsForDisaster,
+	type ImagePairFeature,
+	resolveImageUrl,
+} from "@/utils/hazardlyApi";
 
 type DamageLevel =
 	| "no-damage"
@@ -19,12 +32,6 @@ type DamageLevel =
 	| "major-damage"
 	| "destroyed"
 	| "un-classified";
-
-type Disaster = {
-	id: number;
-	name: string;
-	type: string;
-};
 
 type BuildingListItem = {
 	id: number;
@@ -39,48 +46,6 @@ type BuildingListItem = {
 	post_image_path?: string | null;
 };
 
-type PaginatedBuildingsResponse = {
-	items: BuildingListItem[];
-	page: number;
-	page_size: number;
-	total_items: number;
-	total_pages: number;
-};
-
-type BuildingStatsResponse = {
-	total: number;
-	no_damage: number;
-	unclassified: number;
-	by_damage: Record<string, number>;
-};
-
-type BuildingFeatureNoBox = {
-	properties: {
-		id: number;
-		uid: string;
-		image_pair_id: number;
-		actual_damage: string;
-		predicted_damage?: string | null;
-		is_correct?: boolean | null;
-		created_at?: string | null;
-	};
-};
-
-type BuildingFeatureCollectionNoBox = {
-	features: BuildingFeatureNoBox[];
-};
-
-type ImagePairFeatureCollection = {
-	features: Array<{
-		properties: {
-			id: number;
-			xbd_id: number;
-			pre_image_path?: string | null;
-			post_image_path?: string | null;
-		};
-	}>;
-};
-
 type ActiveSection = "overview" | "buildings";
 
 const CONFUSION_LABELS: DamageLevel[] = [
@@ -91,10 +56,6 @@ const CONFUSION_LABELS: DamageLevel[] = [
 	"un-classified",
 ];
 
-const API_BASE = "http://localhost:8000";
-const SATELLITE_IMAGE_BASE_URL =
-	(import.meta.env.VITE_SATELLITE_IMAGE_BASE as string | undefined)?.trim() ||
-	"https://zbnrjjmqbnqunkjbmsdk.supabase.co/storage/v1/object/public/satellite-images/";
 const PAGE_SIZE = 25;
 const DAMAGE_FILTERS: Array<{ key: string; label: string }> = [
 	{ key: "all", label: "All" },
@@ -190,7 +151,7 @@ const createEmptyConfusionMatrix = (): Record<
 });
 
 const buildStatsFromFeatures = (
-	features: BuildingFeatureNoBox[],
+	features: BuildingFeature[],
 ): BuildingStatsResponse => {
 	const byDamage: Record<string, number> = {
 		"no-damage": 0,
@@ -215,21 +176,8 @@ const buildStatsFromFeatures = (
 	};
 };
 
-const resolveStorageUrl = (path?: string | null): string | null => {
-	if (!path) return null;
-	if (path.startsWith("http://") || path.startsWith("https://")) return path;
-
-	const base = SATELLITE_IMAGE_BASE_URL.endsWith("/")
-		? SATELLITE_IMAGE_BASE_URL
-		: `${SATELLITE_IMAGE_BASE_URL}/`;
-
-	const normalizedPath = path
-		.replace(/^\/+/, "")
-		.replace(/^storage\/v1\/object\/public\/satellite-images\//, "")
-		.replace(/^satellite-images\//, "");
-
-	return new URL(normalizedPath, base).toString();
-};
+const resolveStorageUrl = (path?: string | null): string | null =>
+	path ? resolveImageUrl(path) : null;
 
 export default function Dashboard() {
 	const [loadingStats, setLoadingStats] = useState(true);
@@ -242,7 +190,7 @@ export default function Dashboard() {
 		null,
 	);
 	const [allBuildingsCache, setAllBuildingsCache] = useState<
-		BuildingFeatureNoBox[] | null
+		BuildingFeature[] | null
 	>(null);
 	const [imagePairMap, setImagePairMap] = useState<
 		Map<
@@ -268,11 +216,7 @@ export default function Dashboard() {
 	const ensureImagePairs = useCallback(
 		async (disasterId: number) => {
 			if (imagePairMap.size > 0) return imagePairMap;
-			const res = await fetch(
-				`${API_BASE}/disasters/${disasterId}/image-pairs`,
-			);
-			if (!res.ok) throw new Error("Failed to load image pairs.");
-			const data = (await res.json()) as ImagePairFeatureCollection;
+			const data = await fetchImagePairs(disasterId);
 			const next = new Map<
 				number,
 				{
@@ -282,7 +226,11 @@ export default function Dashboard() {
 				}
 			>();
 			for (const feature of data.features ?? []) {
-				next.set(feature.properties.id, {
+				const props = feature.properties as ImagePairFeature["properties"] & {
+					id?: number;
+				};
+				if (typeof props.id !== "number") continue;
+				next.set(props.id, {
 					xbd_id: feature.properties.xbd_id,
 					pre_image_path: feature.properties.pre_image_path ?? null,
 					post_image_path: feature.properties.post_image_path ?? null,
@@ -297,9 +245,7 @@ export default function Dashboard() {
 	const ensureAllBuildings = useCallback(
 		async (disasterId: number) => {
 			if (allBuildingsCache) return allBuildingsCache;
-			const res = await fetch(`${API_BASE}/disasters/${disasterId}/buildings`);
-			if (!res.ok) throw new Error("Failed to load building data.");
-			const data = (await res.json()) as BuildingFeatureCollectionNoBox;
+			const data = await fetchBuildingsForDisaster(disasterId);
 			const features = data.features ?? [];
 			setAllBuildingsCache(features);
 			return features;
@@ -313,10 +259,7 @@ export default function Dashboard() {
 				setLoadingStats(true);
 				setError(null);
 
-				const disasterRes = await fetch(`${API_BASE}/disasters`);
-				if (!disasterRes.ok) throw new Error("Failed to load disasters.");
-
-				const disasters = (await disasterRes.json()) as Disaster[];
+				const disasters = (await fetchDisasters()) as DisasterSummary[];
 				if (disasters.length === 0) throw new Error("No disasters available.");
 
 				const currentDisaster = disasters[0];
@@ -326,16 +269,16 @@ export default function Dashboard() {
 				// can be derived even if the stats endpoint is available.
 				void ensureAllBuildings(currentDisaster.id);
 
-				const statsRes = await fetch(
-					`${API_BASE}/disasters/${currentDisaster.id}/buildings/stats`,
-				);
-				if (statsRes.ok) {
-					setStats((await statsRes.json()) as BuildingStatsResponse);
-				} else if (statsRes.status === 404) {
-					const features = await ensureAllBuildings(currentDisaster.id);
-					setStats(buildStatsFromFeatures(features));
-				} else {
-					throw new Error("Failed to load building stats.");
+				try {
+					const stats = await fetchBuildingStatsForDisaster(currentDisaster.id);
+					setStats(stats);
+				} catch (err: unknown) {
+					if (err instanceof ApiError && err.status === 404) {
+						const features = await ensureAllBuildings(currentDisaster.id);
+						setStats(buildStatsFromFeatures(features));
+					} else {
+						throw err;
+					}
 				}
 			} catch (err) {
 				setError(
@@ -414,29 +357,33 @@ export default function Dashboard() {
 				const pairs = await ensureImagePairs(selectedDisasterId);
 
 				if (supportsPagedEndpoint) {
-					const params = new URLSearchParams({
-						page: String(page),
-						page_size: String(PAGE_SIZE),
-					});
-					if (activeDamageFilter !== "all")
-						params.set("damage", activeDamageFilter);
-
-					const res = await fetch(
-						`${API_BASE}/disasters/${selectedDisasterId}/buildings/paged?${params.toString()}`,
-					);
-
-					if (res.ok) {
-						const payload = (await res.json()) as PaginatedBuildingsResponse;
-						setRows(payload.items);
+					try {
+						const payload = await fetchPaginatedBuildingsForDisaster(
+							selectedDisasterId,
+							{
+								page,
+								pageSize: PAGE_SIZE,
+								damage: activeDamageFilter,
+							},
+						);
+						setRows(
+							payload.items.map((item) => ({
+								...item,
+								actual_damage: normalizeDamage(item.actual_damage),
+								predicted_damage: normalizeDamage(
+									item.predicted_damage ?? null,
+								),
+							})),
+						);
 						setTotalPages(payload.total_pages);
 						setTotalItems(payload.total_items);
 						return;
-					}
-
-					if (res.status === 404) {
-						setSupportsPagedEndpoint(false);
-					} else {
-						throw new Error("Failed to load paginated buildings.");
+					} catch (err: unknown) {
+						if (err instanceof ApiError && err.status === 404) {
+							setSupportsPagedEndpoint(false);
+						} else {
+							throw err;
+						}
 					}
 				}
 
