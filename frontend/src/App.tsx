@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from "react-router-dom";
-import DisasterResponsesAssistant from "@/components/features/DisasterResponseAssistant";
+import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant";
 import MapView from "@/components/features/MapView";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
@@ -16,7 +16,7 @@ function HomePage() {
 
 			{/* Chat Widget */}
 			{/*<ChatWidget />*/}
-			<DisasterResponsesAssistant />
+			<DisasterResponseAssistant />
 			{/* Footer */}
 			<Footer />
 		</div>
