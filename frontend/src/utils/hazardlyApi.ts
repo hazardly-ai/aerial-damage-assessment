@@ -174,7 +174,6 @@ export interface BuildingsNoBoxResponse {
 export interface BuildingStatsResponse {
 	total: number;
 	no_damage: number;
-	unclassified: number;
 	by_damage: Record<string, number>;
 }
 

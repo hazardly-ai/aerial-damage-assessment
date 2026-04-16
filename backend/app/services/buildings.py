@@ -184,7 +184,6 @@ def fetch_building_damage_stats_by_disaster(
         "minor-damage": 0,
         "major-damage": 0,
         "destroyed": 0,
-        "un-classified": 0,
     }
     for row in rows:
         key = row["actual_damage"]
@@ -195,6 +194,5 @@ def fetch_building_damage_stats_by_disaster(
     return {
         "total": total,
         "no_damage": by_damage["no-damage"],
-        "unclassified": by_damage["un-classified"],
         "by_damage": by_damage,
     }

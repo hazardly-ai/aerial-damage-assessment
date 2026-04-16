@@ -30,16 +30,17 @@ type DamageLevel =
 	| "no-damage"
 	| "minor-damage"
 	| "major-damage"
-	| "destroyed"
-	| "un-classified";
+	| "destroyed";
+
+type NormalizedDamage = DamageLevel | "un-classified";
 
 type BuildingListItem = {
 	id: number;
 	uid: string;
 	image_pair_id: number;
 	xbd_id: number;
-	actual_damage: DamageLevel;
-	predicted_damage?: DamageLevel | null;
+	actual_damage: NormalizedDamage;
+	predicted_damage?: NormalizedDamage | null;
 	is_correct?: boolean | null;
 	created_at?: string | null;
 	pre_image_path?: string | null;
@@ -53,7 +54,6 @@ const CONFUSION_LABELS: DamageLevel[] = [
 	"minor-damage",
 	"major-damage",
 	"destroyed",
-	"un-classified",
 ];
 
 const PAGE_SIZE = 25;
@@ -63,7 +63,6 @@ const DAMAGE_FILTERS: Array<{ key: string; label: string }> = [
 	{ key: "minor-damage", label: "Minor Damage" },
 	{ key: "major-damage", label: "Major Damage" },
 	{ key: "destroyed", label: "Destroyed" },
-	{ key: "un-classified", label: "Unclassified" },
 ];
 
 const prettyLabel = (value: string): string =>
@@ -72,7 +71,7 @@ const prettyLabel = (value: string): string =>
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join(" ");
 
-const normalizeDamage = (raw?: string | null): DamageLevel => {
+const normalizeDamage = (raw?: string | null): NormalizedDamage => {
 	if (!raw) return "un-classified";
 
 	const normalized = raw
@@ -98,7 +97,7 @@ const normalizeDamage = (raw?: string | null): DamageLevel => {
 		return "un-classified";
 
 	if (DAMAGE_FILTERS.some((item) => item.key === normalized)) {
-		return normalized as DamageLevel;
+		return normalized as NormalizedDamage;
 	}
 
 	return "un-classified";
@@ -118,35 +117,24 @@ const createEmptyConfusionMatrix = (): Record<
 		"minor-damage": 0,
 		"major-damage": 0,
 		destroyed: 0,
-		"un-classified": 0,
 	},
 	"minor-damage": {
 		"no-damage": 0,
 		"minor-damage": 0,
 		"major-damage": 0,
 		destroyed: 0,
-		"un-classified": 0,
 	},
 	"major-damage": {
 		"no-damage": 0,
 		"minor-damage": 0,
 		"major-damage": 0,
 		destroyed: 0,
-		"un-classified": 0,
 	},
 	destroyed: {
 		"no-damage": 0,
 		"minor-damage": 0,
 		"major-damage": 0,
 		destroyed: 0,
-		"un-classified": 0,
-	},
-	"un-classified": {
-		"no-damage": 0,
-		"minor-damage": 0,
-		"major-damage": 0,
-		destroyed: 0,
-		"un-classified": 0,
 	},
 });
 
@@ -158,11 +146,11 @@ const buildStatsFromFeatures = (
 		"minor-damage": 0,
 		"major-damage": 0,
 		destroyed: 0,
-		"un-classified": 0,
 	};
 
 	for (const feature of features) {
 		const key = normalizeDamage(feature.properties.actual_damage);
+		if (key === "un-classified") continue;
 		byDamage[key] = (byDamage[key] ?? 0) + 1;
 	}
 
@@ -171,7 +159,6 @@ const buildStatsFromFeatures = (
 	return {
 		total,
 		no_damage: byDamage["no-damage"] ?? 0,
-		unclassified: byDamage["un-classified"] ?? 0,
 		by_damage: byDamage,
 	};
 };
@@ -205,7 +192,6 @@ export default function Dashboard() {
 	const [stats, setStats] = useState<BuildingStatsResponse>({
 		total: 0,
 		no_damage: 0,
-		unclassified: 0,
 		by_damage: {},
 	});
 	const [rows, setRows] = useState<BuildingListItem[]>([]);
@@ -316,6 +302,7 @@ export default function Dashboard() {
 			if (rawPredicted == null) continue;
 
 			const predicted = normalizeDamage(rawPredicted);
+			if (actual === "un-classified" || predicted === "un-classified") continue;
 			comparedCount += 1;
 			if (actual === predicted) correctCount += 1;
 
@@ -448,7 +435,6 @@ export default function Dashboard() {
 			"minor-damage": 0,
 			"major-damage": 0,
 			destroyed: 0,
-			"un-classified": 0,
 		};
 
 		let predictedTotal = 0;
@@ -456,6 +442,7 @@ export default function Dashboard() {
 			const rawPredicted = feature.properties.predicted_damage;
 			if (rawPredicted == null) continue;
 			const key = normalizeDamage(rawPredicted);
+			if (key === "un-classified") continue;
 			predictedByDamage[key] = (predictedByDamage[key] ?? 0) + 1;
 			predictedTotal += 1;
 		}
