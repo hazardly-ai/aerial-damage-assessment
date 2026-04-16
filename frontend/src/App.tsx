@@ -1,9 +1,12 @@
 import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant";
+import { Navigate, Route, Routes } from "react-router-dom";
+import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant";
 import MapView from "@/components/features/MapView";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import Dashboard from "@/pages/Dashboard";
 
-export default function App() {
+function HomePage() {
 	return (
 		<div className="flex flex-col min-h-screen bg-background text-foreground">
 			<Header />
@@ -21,5 +24,15 @@ export default function App() {
 			{/* Footer */}
 			<Footer />
 		</div>
+	);
+}
+
+export default function App() {
+	return (
+		<Routes>
+			<Route path="/" element={<HomePage />} />
+			<Route path="/dashboard" element={<Dashboard />} />
+			<Route path="*" element={<Navigate to="/" replace />} />
+		</Routes>
 	);
 }
