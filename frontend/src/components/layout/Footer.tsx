@@ -1,4 +1,5 @@
 import { FaEnvelope, FaGithub } from "react-icons/fa";
+import Container from "@/components/layout/Container";
 import {
 	APP_DESCRIPTION,
 	APP_NAME,
@@ -12,7 +13,7 @@ import {
 export default function Footer() {
 	return (
 		<footer className="bg-card text-card-foreground border-t border-border mt-12">
-			<div className="max-w-6xl mx-auto px-6 py-6 flex flex-col gap-3">
+			<Container className="py-6 flex flex-col gap-3">
 				{/* Cards Grid */}
 				<div className="grid md:grid-cols-3 gap-3">
 					{/* About Card */}
@@ -120,7 +121,7 @@ export default function Footer() {
 						<span>View on GitHub</span>
 					</a>
 				</div>
-			</div>
+			</Container>
 		</footer>
 	);
 }

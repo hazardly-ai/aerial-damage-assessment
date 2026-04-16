@@ -388,11 +388,14 @@ export default function MapView() {
 
 	return (
 		<div
-			className={`map-wrapper${compareIdle ? " map-wrapper--compare-idle" : ""}`}
+			className={`map-wrapper w-full relative${
+				compareIdle ? " map-wrapper--compare-idle" : ""
+			}`}
+			style={{ height: "70vh" }}
 			data-imagery-visible={imageryVisible ? "true" : "false"}
 			data-compare-idle={compareIdle ? "true" : "false"}
 		>
-			<div ref={containerRef} className="map-container" />
+			<div ref={containerRef} className="map-container w-full h-full" />
 
 			<MapControls
 				disasterId={DISASTER_ID}
