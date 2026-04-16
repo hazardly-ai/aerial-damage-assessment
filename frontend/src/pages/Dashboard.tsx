@@ -353,9 +353,10 @@ export default function Dashboard() {
 							payload.items.map((item) => ({
 								...item,
 								actual_damage: normalizeDamage(item.actual_damage),
-								predicted_damage: normalizeDamage(
-									item.predicted_damage ?? null,
-								),
+								predicted_damage:
+									item.predicted_damage == null
+										? null
+										: normalizeDamage(item.predicted_damage),
 							})),
 						);
 						setTotalPages(payload.total_pages);
@@ -389,7 +390,10 @@ export default function Dashboard() {
 						image_pair_id: prop.image_pair_id,
 						xbd_id: pair?.xbd_id ?? -1,
 						actual_damage: normalizeDamage(prop.actual_damage),
-						predicted_damage: normalizeDamage(prop.predicted_damage ?? null),
+						predicted_damage:
+							prop.predicted_damage == null
+								? null
+								: normalizeDamage(prop.predicted_damage),
 						is_correct: prop.is_correct ?? null,
 						created_at: prop.created_at ?? null,
 						pre_image_path: pair?.pre_image_path ?? null,
@@ -801,21 +805,23 @@ export default function Dashboard() {
 																</span>
 															</td>
 															<td className="py-3 pr-3">
-																<span
-																	className="inline-flex rounded-md px-2 py-1 text-xs font-medium text-white"
-																	style={{
-																		backgroundColor:
-																			DAMAGE_COLOR_HEX[
-																				normalizeDamage(
-																					building.predicted_damage,
-																				)
-																			],
-																	}}
-																>
-																	{prettyLabel(
-																		normalizeDamage(building.predicted_damage),
-																	)}
-																</span>
+																{building.predicted_damage == null ? (
+																	<span className="text-muted-foreground">
+																		-
+																	</span>
+																) : (
+																	<span
+																		className="inline-flex rounded-md px-2 py-1 text-xs font-medium text-white"
+																		style={{
+																			backgroundColor:
+																				DAMAGE_COLOR_HEX[
+																					building.predicted_damage
+																				],
+																		}}
+																	>
+																		{prettyLabel(building.predicted_damage)}
+																	</span>
+																)}
 															</td>
 															<td className="py-3 pr-3 text-muted-foreground">
 																{typeof building.is_correct === "boolean"
