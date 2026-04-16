@@ -627,10 +627,6 @@ body {
 	background-color: hsl(var(--foreground) / 0.12);
 }
 
-.dark .xbd-selector__arrow:hover:not(:disabled) {
-	background-color: rgba(255, 255, 255, 0.08);
-}
-
 .xbd-selector__arrow:active:not(:disabled) {
 	transform: scale(0.95);
 	background-color: hsl(var(--foreground) / 0.15);
