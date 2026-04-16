@@ -10,10 +10,8 @@
 	},
 	"dependencies": {
 		"@radix-ui/react-slot": "^1.1.0",
-		"@turf/bbox": "^7.3.4",
 		"class-variance-authority": "^0.7.0",
 		"clsx": "^2.1.1",
-		"events": "^3.3.0",
 		"lucide-react": "^0.468.0",
 		"mapbox-gl": "^3.18.1",
 		"mapbox-gl-compare": "^0.4.2",
@@ -22,20 +20,18 @@
 		"react-icons": "^5.5.0",
 		"react-router-dom": "^7.14.0",
 		"tailwind-merge": "^2.5.2",
-		"tailwindcss-animate": "^1.0.7",
-		"wellknown": "^0.5.0"
+		"tailwindcss-animate": "^1.0.7"
 	},
 	"devDependencies": {
 		"@types/mapbox-gl": "^3.4.1",
 		"@types/node": "^25.3.2",
 		"@types/react": "^18.3.12",
 		"@types/react-dom": "^18.3.1",
-		"@types/wellknown": "^0.5.8",
 		"@vitejs/plugin-react": "^4.3.4",
 		"autoprefixer": "^10.4.20",
 		"postcss": "^8.4.49",
 		"tailwindcss": "^3.4.15",
 		"typescript": "^5.6.3",
-		"vite": "^5.4.10"
+		"vite": "^8.0.8"
 	}
 }
