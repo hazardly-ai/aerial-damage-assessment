@@ -8,16 +8,24 @@ const API_BASE_URL = import.meta.env.VITE_HAZARDLY_API_BASE_URL?.replace(
 	/\/$/,
 	"",
 );
-if (!API_BASE_URL) {
-	throw new Error("Missing VITE_HAZARDLY_API_BASE_URL");
-}
 const IMAGE_BASE_URL = import.meta.env.VITE_HAZARDLY_IMAGE_BASE_URL?.replace(
 	/\/$/,
 	"",
 );
-if (!IMAGE_BASE_URL) {
-	throw new Error("Missing VITE_HAZARDLY_IMAGE_BASE_URL");
-}
+
+const getRequiredApiBaseUrl = (): string => {
+	if (!API_BASE_URL) {
+		throw new Error("Missing VITE_HAZARDLY_API_BASE_URL");
+	}
+	return API_BASE_URL;
+};
+
+const getRequiredImageBaseUrl = (): string => {
+	if (!IMAGE_BASE_URL) {
+		throw new Error("Missing VITE_HAZARDLY_IMAGE_BASE_URL");
+	}
+	return IMAGE_BASE_URL;
+};
 
 // Response shape types
 
@@ -90,7 +98,7 @@ export interface ImagePairProperties {
  * ```
  */
 export const resolveImageUrl = (path: string): string =>
-	`${IMAGE_BASE_URL}/${path}`;
+	`${getRequiredImageBaseUrl()}/${path}`;
 
 /**
  * A single pre/post image pair in GeoJSON Feature format.
@@ -258,7 +266,7 @@ async function apiFetch<T>(
 	options?: ApiFetchOptions,
 	context?: string,
 ): Promise<T> {
-	const res = await fetch(`${API_BASE_URL}${path}`, {
+	const res = await fetch(`${getRequiredApiBaseUrl()}${path}`, {
 		signal: options?.signal,
 	});
 	if (!res.ok) {
