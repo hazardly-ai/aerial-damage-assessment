@@ -243,6 +243,9 @@ export default function Dashboard() {
 	const [selectedDisasterId, setSelectedDisasterId] = useState<number | null>(
 		null,
 	);
+	const [selectedDisasterName, setSelectedDisasterName] = useState<
+		string | null
+	>(null);
 	const [allBuildingsCache, setAllBuildingsCache] = useState<
 		BuildingFeatureNoBox[] | null
 	>(null);
@@ -323,6 +326,7 @@ export default function Dashboard() {
 
 				const currentDisaster = disasters[0];
 				setSelectedDisasterId(currentDisaster.id);
+				setSelectedDisasterName(currentDisaster.name);
 
 				// Load full building features so overview metrics (accuracy/confusion matrix)
 				// can be derived even if the stats endpoint is available.
@@ -842,8 +846,9 @@ export default function Dashboard() {
 															key={building.uid}
 															className="border-b border-border/70 align-top cursor-pointer hover:bg-muted/40"
 															onClick={() => {
+																if (!selectedDisasterName) return;
 																navigate(
-																	`/${selectedDisasterId ?? "unknown"}/${building.xbd_id}`,
+																	`/${selectedDisasterName ?? "unknown"}/${building.xbd_id}`,
 																);
 															}}
 														>
