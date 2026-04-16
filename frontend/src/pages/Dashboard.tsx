@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
@@ -232,6 +233,7 @@ const resolveStorageUrl = (path?: string | null): string | null => {
 };
 
 export default function Dashboard() {
+	const navigate = useNavigate();
 	const [loadingStats, setLoadingStats] = useState(true);
 	const [loadingBuildings, setLoadingBuildings] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -838,7 +840,12 @@ export default function Dashboard() {
 													return (
 														<tr
 															key={building.uid}
-															className="border-b border-border/70 align-top"
+															className="border-b border-border/70 align-top cursor-pointer hover:bg-muted/40"
+															onClick={() => {
+																navigate(
+																	`/${selectedDisasterId ?? "unknown"}/${building.xbd_id}`,
+																);
+															}}
 														>
 															<td className="py-3 pr-3">
 																<Item

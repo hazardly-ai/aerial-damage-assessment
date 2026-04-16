@@ -1,4 +1,3 @@
-import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant";
 import { Navigate, Route, Routes } from "react-router-dom";
 import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant";
 import MapView from "@/components/features/MapView";
@@ -10,18 +9,12 @@ function HomePage() {
 	return (
 		<div className="flex flex-col min-h-screen bg-background text-foreground">
 			<Header />
-			{/* Map Section */}
-			<div
-				className="flex-1 relative w-full max-w-[1600px] mx-auto px-6 py-4"
-				style={{ minHeight: "75vh" }}
-			>
+
+			<div className="flex-1 relative w-full max-w-[1600px] mx-auto px-6 py-4 min-h-[75vh]">
 				<MapView />
 			</div>
 
-			{/* Chat Widget */}
-			{/*<ChatWidget />*/}
 			<DisasterResponseAssistant />
-			{/* Footer */}
 			<Footer />
 		</div>
 	);
@@ -30,8 +23,12 @@ function HomePage() {
 export default function App() {
 	return (
 		<Routes>
-			<Route path="/" element={<HomePage />} />
 			<Route path="/dashboard" element={<Dashboard />} />
+
+			<Route path="/:disaster_name/:xbdid" element={<HomePage />} />
+
+			<Route path="/" element={<HomePage />} />
+
 			<Route path="*" element={<Navigate to="/" replace />} />
 		</Routes>
 	);
