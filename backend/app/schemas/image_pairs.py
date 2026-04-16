@@ -3,9 +3,20 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.geojson import GeoJSONFeature, GeoJSONGeometry
+
+
+class GeoRefineAffine(BaseModel):
+    """Maps pixel (u, v) to (lon, lat): lon = a*u + b*v + c, lat = d*u + e*v + f."""
+
+    a: float
+    b: float
+    c: float
+    d: float
+    e: float
+    f: float
 
 
 class ImagePairProperties(BaseModel):
@@ -30,6 +41,7 @@ class ImagePairProperties(BaseModel):
     geo_origin_lat: float | None = None
     geo_pixel_width: float | None = None
     geo_pixel_height: float | None = None
+    geo_refine_affine: GeoRefineAffine | None = None
 
 
 class ImagePairFeature(BaseModel):
@@ -41,3 +53,9 @@ class ImagePairFeature(BaseModel):
 class ImagePairFeatureCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[ImagePairFeature]
+
+
+class XbdIdsResponse(BaseModel):
+    """Sorted XBD identifiers for all image pairs in a disaster (lightweight list)."""
+
+    xbd_ids: list[int]

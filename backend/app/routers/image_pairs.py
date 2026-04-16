@@ -7,10 +7,12 @@ from app.schemas.image_pairs import (
     ImagePairFeature,
     ImagePairFeatureCollection,
     ImagePairProperties,
+    XbdIdsResponse,
 )
 from app.services.image_pairs import (
     fetch_image_pair,
     fetch_image_pairs_by_disaster,
+    fetch_xbd_ids_by_disaster,
 )
 
 router = APIRouter(prefix="/disasters", tags=["image-pairs"])
@@ -37,6 +39,19 @@ def get_image_pairs(
     rows = fetch_image_pairs_by_disaster(conn, disaster_id, limit=limit)
     features = [_map_image_pair_feature(row) for row in rows]
     return ImagePairFeatureCollection(features=features)
+
+
+# Static path `xbd-ids` must be declared before `/{xbd_id}`.
+@router.get(
+    "/{disaster_id}/image-pairs/xbd-ids",
+    response_model=XbdIdsResponse,
+)
+def get_image_pair_xbd_ids(
+    disaster_id: int,
+    conn: psycopg.Connection = Depends(get_conn),
+):
+    xbd_ids = fetch_xbd_ids_by_disaster(conn, disaster_id)
+    return XbdIdsResponse(xbd_ids=xbd_ids)
 
 
 @router.get(
