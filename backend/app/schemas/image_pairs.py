@@ -53,3 +53,9 @@ class ImagePairFeature(BaseModel):
 class ImagePairFeatureCollection(BaseModel):
     type: Literal["FeatureCollection"] = "FeatureCollection"
     features: list[ImagePairFeature]
+
+
+class XbdIdsResponse(BaseModel):
+    """Sorted XBD identifiers for all image pairs in a disaster (lightweight list)."""
+
+    xbd_ids: list[int]

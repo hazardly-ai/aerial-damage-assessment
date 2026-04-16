@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchImagePairs } from "@/utils/hazardlyApi";
+import { fetchImagePairXbdIds } from "@/utils/hazardlyApi";
 
 type XbdSelectorStatus = "loading" | "ready" | "error";
 
@@ -36,12 +36,9 @@ export function useXbdSelectorState({
 	useEffect(() => {
 		setStatus("loading");
 
-		fetchImagePairs(disasterId)
+		fetchImagePairXbdIds(disasterId)
 			.then((res) => {
-				const ids = res.features
-					.map((f) => f.properties.xbd_id)
-					.filter((id): id is number => true)
-					.sort((a, b) => a - b);
+				const ids = res.xbd_ids;
 
 				setXbdIds(ids);
 				setStatus("ready");

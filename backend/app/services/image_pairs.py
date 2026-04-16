@@ -49,6 +49,18 @@ def _image_pair_query(where: str) -> str:
     """
 
 
+def fetch_xbd_ids_by_disaster(conn: psycopg.Connection, disaster_id: int) -> list[int]:
+    sql = """
+    SELECT ip.xbd_id
+    FROM image_pairs ip
+    WHERE ip.disaster_id = %s
+    ORDER BY ip.xbd_id
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, (disaster_id,))
+        return [row["xbd_id"] for row in cur.fetchall()]
+
+
 def fetch_image_pairs_by_disaster(
     conn: psycopg.Connection, disaster_id: int, limit: int | None = None,
 ) -> list[dict]:

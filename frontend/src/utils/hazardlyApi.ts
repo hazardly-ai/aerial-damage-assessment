@@ -111,6 +111,11 @@ export interface ImagePairsResponse {
 	features: ImagePairFeature[];
 }
 
+/** Response from `GET /disasters/:disasterId/image-pairs/xbd-ids`. */
+export interface XbdIdsResponse {
+	xbd_ids: number[];
+}
+
 /**
  * Properties for a single building detected within an image pair.
  *
@@ -303,6 +308,21 @@ export const fetchImagePairs = (
 		`/disasters/${disasterId}/image-pairs`,
 		options,
 		`Failed to fetch image pairs for disaster ${disasterId}`,
+	);
+
+/**
+ * Fetches sorted XBD ids for a disaster (lightweight; no GeoJSON or pair metadata).
+ *
+ * Calls `GET /disasters/:disasterId/image-pairs/xbd-ids`.
+ */
+export const fetchImagePairXbdIds = (
+	disasterId: number,
+	options?: ApiFetchOptions,
+): Promise<XbdIdsResponse> =>
+	apiFetch<XbdIdsResponse>(
+		`/disasters/${disasterId}/image-pairs/xbd-ids`,
+		options,
+		`Failed to fetch image pair ids for disaster ${disasterId}`,
 	);
 
 /**
