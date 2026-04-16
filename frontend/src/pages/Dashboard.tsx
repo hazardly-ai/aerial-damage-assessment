@@ -26,11 +26,7 @@ import {
 	resolveImageUrl,
 } from "@/utils/hazardlyApi";
 
-type DamageLevel =
-	| "no-damage"
-	| "minor-damage"
-	| "major-damage"
-	| "destroyed";
+type DamageLevel = "no-damage" | "minor-damage" | "major-damage" | "destroyed";
 
 type NormalizedDamage = DamageLevel | "un-classified";
 
