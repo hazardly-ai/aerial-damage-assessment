@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
+import Footer from "@/components/layout/Footer.tsx";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
 import Item from "@/components/ui/Item";
@@ -800,7 +801,7 @@ export default function Dashboard() {
 															onClick={() => {
 																if (!selectedDisasterName) return;
 																navigate(
-																	`/${selectedDisasterName ?? "unknown"}/${building.xbd_id}`,
+																	`/map/${selectedDisasterName}/${building.xbd_id}`,
 																);
 															}}
 														>
@@ -881,6 +882,7 @@ export default function Dashboard() {
 					</div>
 				</div>
 			</div>
+			<Footer />
 		</div>
 	);
 }
