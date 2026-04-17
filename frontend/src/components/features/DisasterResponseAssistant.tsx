@@ -15,6 +15,10 @@ interface ResponseMssg {
 }
 
 export default function DisasterResponseAssistant() {
+	const API_BASE_URL = import.meta.env.VITE_HAZARDLY_API_BASE_URL?.replace(
+		/\/$/,
+		"",
+	);
 	const [responseLog, setResponseLog] = useState<ResponseMssg[]>([
 		{
 			id: crypto.randomUUID(),
@@ -46,7 +50,7 @@ export default function DisasterResponseAssistant() {
 		setCurrentQuery("");
 
 		try {
-			const backendResponse = await fetch("http://localhost:8000/chat", {
+			const backendResponse = await fetch(`${API_BASE_URL}/chat`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
