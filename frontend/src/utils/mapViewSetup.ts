@@ -26,6 +26,7 @@ const SATELLITE_FULL_OPACITY = 1;
 
 export interface PopupData {
 	uid: string;
+	address?: string;
 	predictedDamage?: string;
 	predictedDamageColor: string;
 	actualDamage?: string;
@@ -300,12 +301,14 @@ export function bindBuildingInteractions(params: {
 			{ selected: true },
 		);
 
+		const address = asString(feature.properties?.address);
 		const predictedDamage = asString(feature.properties?.predicted_damage);
 		const predictedDamageColor = getBuildingDamageColor(predictedDamage);
 		const actualDamage = asString(feature.properties?.actual_damage);
 		const actualDamageColor = getBuildingDamageColor(actualDamage);
 		onPopupOpen({
 			uid,
+			address,
 			predictedDamage,
 			predictedDamageColor,
 			actualDamage,

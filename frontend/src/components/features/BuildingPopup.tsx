@@ -2,6 +2,7 @@ import React from "react";
 
 interface BuildingPopupProps {
 	uid: string;
+	address?: string;
 	predictedDamage?: string;
 	predictedDamageColor: string;
 	actualDamage?: string;
@@ -11,6 +12,7 @@ interface BuildingPopupProps {
 
 export function BuildingPopup({
 	uid,
+	address,
 	predictedDamage,
 	predictedDamageColor,
 	actualDamage,
@@ -26,16 +28,18 @@ export function BuildingPopup({
 		};
 	}, []);
 
-	const handleCopyUID = React.useCallback(async () => {
+	const copyText = address || uid;
+
+	const handleCopy = React.useCallback(async () => {
 		try {
-			await navigator.clipboard.writeText(uid);
+			await navigator.clipboard.writeText(copyText);
 			setCopied(true);
 			if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
 			copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
 		} catch (err) {
 			console.error("Failed to copy to clipboard:", err);
 		}
-	}, [uid]);
+	}, [copyText]);
 
 	return (
 		<div className="popup-card">
@@ -52,14 +56,14 @@ export function BuildingPopup({
 			</div>
 			<div className="popup-body">
 				<div className="popup-section">
-					<div className="popup-label">Building ID</div>
+					<div className="popup-label">Address</div>
 					<div className="popup-value-container">
-						<span className="popup-value">{uid.length > 0 ? uid : "—"}</span>
-						{uid.length > 0 && (
+						<span className="popup-value">{address || "—"}</span>
+						{address && (
 							<button
 								className="copy-btn"
-								onClick={handleCopyUID}
-								aria-label="Copy building ID"
+								onClick={handleCopy}
+								aria-label="Copy address"
 								type="button"
 							>
 								<svg
@@ -82,6 +86,9 @@ export function BuildingPopup({
 							</button>
 						)}
 					</div>
+					{uid.length > 0 && (
+						<div className="popup-uid-subfield">{uid}</div>
+					)}
 				</div>
 				<div className="popup-section">
 					<div className="popup-label">Predicted Damage</div>

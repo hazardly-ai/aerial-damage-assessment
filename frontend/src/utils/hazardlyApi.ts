@@ -135,6 +135,7 @@ export interface BuildingProperties {
 	id: number;
 	uid: string;
 	image_pair_id: number;
+	address?: string | null;
 	predicted_damage?: string;
 	actual_damage?: string;
 	is_correct?: boolean | null;
@@ -180,6 +181,7 @@ export interface BuildingStatsResponse {
 export interface PaginatedBuildingListItem {
 	id: number;
 	uid: string;
+	address?: string | null;
 	image_pair_id: number;
 	xbd_id: number;
 	actual_damage: string;
