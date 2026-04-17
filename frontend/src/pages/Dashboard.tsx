@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant.tsx";
 import AppSidebar from "@/components/layout/AppSidebar";
 import Container from "@/components/layout/Container";
 import Footer from "@/components/layout/Footer.tsx";
@@ -933,6 +934,7 @@ export default function Dashboard() {
 					</div>
 				</div>
 			</Container>
+			<DisasterResponseAssistant />
 			<Footer />
 		</div>
 	);
