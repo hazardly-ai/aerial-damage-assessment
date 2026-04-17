@@ -181,6 +181,7 @@ export interface BuildingStatsResponse {
 export interface PaginatedBuildingListItem {
 	id: number;
 	uid: string;
+	address?: string | null;
 	image_pair_id: number;
 	xbd_id: number;
 	actual_damage: string;

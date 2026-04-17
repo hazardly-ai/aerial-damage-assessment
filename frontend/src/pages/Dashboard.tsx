@@ -399,7 +399,7 @@ export default function Dashboard() {
 					return {
 						id: prop.id,
 						uid: prop.uid,
-ttttttaddress: typeof prop.address === "string" ? prop.address : null,
+						address: typeof prop.address === "string" ? prop.address : null,
 						disaster_name: selectedDisasterName ?? "Unknown",
 						image_pair_id: prop.image_pair_id,
 						xbd_id: pair?.xbd_id ?? -1,
