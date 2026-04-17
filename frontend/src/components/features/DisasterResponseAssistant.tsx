@@ -4,7 +4,7 @@
  * It sends user questions to the backend and displays responses.
  */
 
-import { Sparkles, X } from "lucide-react";
+import { Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface ResponseMssg {
@@ -19,18 +19,16 @@ export default function DisasterResponseAssistant() {
 		"",
 	);
 
+	const initialMessage: ResponseMssg = {
+		id: crypto.randomUUID(),
+		role: "responseAssistant",
+		content:
+			"Hi, I'm your Disaster Response Assistant. I can help you review damage severity, impacted areas, and assessment insights. What would you like to explore?",
+	};
+
 	const [responseLog, setResponseLog] = useState<ResponseMssg[]>(() => {
 		const saved = localStorage.getItem("chatHistory");
-		return saved
-			? JSON.parse(saved)
-			: [
-					{
-						id: crypto.randomUUID(),
-						role: "responseAssistant",
-						content:
-							"Hi, I'm your Disaster Response Assistant. I can help you review damage severity, impacted areas, and assessment insights. What would you like to explore?",
-					},
-				];
+		return saved ? JSON.parse(saved) : [initialMessage];
 	});
 
 	const [currentQuery, setCurrentQuery] = useState("");
@@ -39,11 +37,16 @@ export default function DisasterResponseAssistant() {
 
 	useEffect(() => {
 		bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, [responseLog]);
+	});
 
 	useEffect(() => {
 		localStorage.setItem("chatHistory", JSON.stringify(responseLog));
 	}, [responseLog]);
+
+	const clearChat = () => {
+		setResponseLog([initialMessage]);
+		localStorage.removeItem("chatHistory");
+	};
 
 	const handleQuery = async () => {
 		if (!currentQuery.trim()) return;
@@ -107,13 +110,24 @@ export default function DisasterResponseAssistant() {
 							</span>
 						</div>
 
-						<button
-							type="button"
-							onClick={() => setIsOpen(false)}
-							className="hover:opacity-80 transition-opacity"
-						>
-							<X className="h-4 w-4" />
-						</button>
+						<div className="flex items-center gap-2">
+							<button
+								type="button"
+								onClick={clearChat}
+								className="p-1 rounded-md hover:bg-white/20 transition"
+								title="Clear chat"
+							>
+								<Trash2 className="h-4 w-4" />
+							</button>
+
+							<button
+								type="button"
+								onClick={() => setIsOpen(false)}
+								className="hover:opacity-80 transition-opacity"
+							>
+								<X className="h-4 w-4" />
+							</button>
+						</div>
 					</div>
 
 					{/* Messages */}
