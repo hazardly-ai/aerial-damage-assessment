@@ -848,8 +848,16 @@ export default function Dashboard() {
 																	imageSrc={thumbnail}
 																	imageAlt={`Building ${building.uid}`}
 																	title={building.address || building.uid}
-																	subtitle={building.address ? building.uid : `xBD: ${building.xbd_id}`}
-																	meta={building.address ? `xBD: ${building.xbd_id}` : `Image Pair ID: ${building.image_pair_id}`}
+																	subtitle={
+																		building.address
+																			? building.uid
+																			: `xBD: ${building.xbd_id}`
+																	}
+																	meta={
+																		building.address
+																			? `xBD: ${building.xbd_id}`
+																			: `Image Pair ID: ${building.image_pair_id}`
+																	}
 																/>
 															</td>
 															<td className="py-3 pr-3 font-medium text-xs whitespace-nowrap">

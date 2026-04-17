@@ -86,9 +86,7 @@ export function BuildingPopup({
 							</button>
 						)}
 					</div>
-					{uid.length > 0 && (
-						<div className="popup-uid-subfield">{uid}</div>
-					)}
+					{uid.length > 0 && <div className="popup-uid-subfield">{uid}</div>}
 				</div>
 				<div className="popup-section">
 					<div className="popup-label">Predicted Damage</div>
