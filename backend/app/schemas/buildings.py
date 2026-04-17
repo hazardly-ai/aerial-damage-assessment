@@ -88,5 +88,4 @@ class PaginatedBuildingListResponse(BaseModel):
 class BuildingDamageStatsResponse(BaseModel):
     total: int
     no_damage: int
-    unclassified: int
     by_damage: dict[str, int]

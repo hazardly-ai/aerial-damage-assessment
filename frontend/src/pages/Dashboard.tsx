@@ -13,73 +13,35 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { DAMAGE_COLOR_HEX } from "@/constants/app";
+import {
+	ApiError,
+	type BuildingFeature,
+	type BuildingStatsResponse,
+	type DisasterSummary,
+	fetchBuildingStatsForDisaster,
+	fetchBuildingsForDisaster,
+	fetchDisasters,
+	fetchImagePairs,
+	fetchPaginatedBuildingsForDisaster,
+	type ImagePairFeature,
+	resolveImageUrl,
+} from "@/utils/hazardlyApi";
 
-type DamageLevel =
-	| "no-damage"
-	| "minor-damage"
-	| "major-damage"
-	| "destroyed"
-	| "un-classified";
+type DamageLevel = "no-damage" | "minor-damage" | "major-damage" | "destroyed";
 
-type Disaster = {
-	id: number;
-	name: string;
-	type: string;
-};
+type NormalizedDamage = DamageLevel | "un-classified";
 
 type BuildingListItem = {
 	id: number;
 	uid: string;
 	image_pair_id: number;
 	xbd_id: number;
-	actual_damage: DamageLevel;
-	predicted_damage?: DamageLevel | null;
+	actual_damage: NormalizedDamage;
+	predicted_damage?: NormalizedDamage | null;
 	is_correct?: boolean | null;
 	created_at?: string | null;
 	pre_image_path?: string | null;
 	post_image_path?: string | null;
-};
-
-type PaginatedBuildingsResponse = {
-	items: BuildingListItem[];
-	page: number;
-	page_size: number;
-	total_items: number;
-	total_pages: number;
-};
-
-type BuildingStatsResponse = {
-	total: number;
-	no_damage: number;
-	unclassified: number;
-	by_damage: Record<string, number>;
-};
-
-type BuildingFeatureNoBox = {
-	properties: {
-		id: number;
-		uid: string;
-		image_pair_id: number;
-		actual_damage: string;
-		predicted_damage?: string | null;
-		is_correct?: boolean | null;
-		created_at?: string | null;
-	};
-};
-
-type BuildingFeatureCollectionNoBox = {
-	features: BuildingFeatureNoBox[];
-};
-
-type ImagePairFeatureCollection = {
-	features: Array<{
-		properties: {
-			id: number;
-			xbd_id: number;
-			pre_image_path?: string | null;
-			post_image_path?: string | null;
-		};
-	}>;
 };
 
 type ActiveSection = "overview" | "buildings";
@@ -89,13 +51,8 @@ const CONFUSION_LABELS: DamageLevel[] = [
 	"minor-damage",
 	"major-damage",
 	"destroyed",
-	"un-classified",
 ];
 
-const API_BASE = "http://localhost:8000";
-const SATELLITE_IMAGE_BASE_URL =
-	(import.meta.env.VITE_SATELLITE_IMAGE_BASE as string | undefined)?.trim() ||
-	"https://zbnrjjmqbnqunkjbmsdk.supabase.co/storage/v1/object/public/satellite-images/";
 const PAGE_SIZE = 25;
 const DAMAGE_FILTERS: Array<{ key: string; label: string }> = [
 	{ key: "all", label: "All" },
@@ -103,7 +60,6 @@ const DAMAGE_FILTERS: Array<{ key: string; label: string }> = [
 	{ key: "minor-damage", label: "Minor Damage" },
 	{ key: "major-damage", label: "Major Damage" },
 	{ key: "destroyed", label: "Destroyed" },
-	{ key: "un-classified", label: "Unclassified" },
 ];
 
 const prettyLabel = (value: string): string =>
@@ -112,7 +68,7 @@ const prettyLabel = (value: string): string =>
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join(" ");
 
-const normalizeDamage = (raw?: string | null): DamageLevel => {
+const normalizeDamage = (raw?: string | null): NormalizedDamage => {
 	if (!raw) return "un-classified";
 
 	const normalized = raw
@@ -138,7 +94,7 @@ const normalizeDamage = (raw?: string | null): DamageLevel => {
 		return "un-classified";
 
 	if (DAMAGE_FILTERS.some((item) => item.key === normalized)) {
-		return normalized as DamageLevel;
+		return normalized as NormalizedDamage;
 	}
 
 	return "un-classified";
@@ -158,51 +114,40 @@ const createEmptyConfusionMatrix = (): Record<
 		"minor-damage": 0,
 		"major-damage": 0,
 		destroyed: 0,
-		"un-classified": 0,
 	},
 	"minor-damage": {
 		"no-damage": 0,
 		"minor-damage": 0,
 		"major-damage": 0,
 		destroyed: 0,
-		"un-classified": 0,
 	},
 	"major-damage": {
 		"no-damage": 0,
 		"minor-damage": 0,
 		"major-damage": 0,
 		destroyed: 0,
-		"un-classified": 0,
 	},
 	destroyed: {
 		"no-damage": 0,
 		"minor-damage": 0,
 		"major-damage": 0,
 		destroyed: 0,
-		"un-classified": 0,
-	},
-	"un-classified": {
-		"no-damage": 0,
-		"minor-damage": 0,
-		"major-damage": 0,
-		destroyed: 0,
-		"un-classified": 0,
 	},
 });
 
 const buildStatsFromFeatures = (
-	features: BuildingFeatureNoBox[],
+	features: BuildingFeature[],
 ): BuildingStatsResponse => {
 	const byDamage: Record<string, number> = {
 		"no-damage": 0,
 		"minor-damage": 0,
 		"major-damage": 0,
 		destroyed: 0,
-		"un-classified": 0,
 	};
 
 	for (const feature of features) {
 		const key = normalizeDamage(feature.properties.actual_damage);
+		if (key === "un-classified") continue;
 		byDamage[key] = (byDamage[key] ?? 0) + 1;
 	}
 
@@ -211,26 +156,12 @@ const buildStatsFromFeatures = (
 	return {
 		total,
 		no_damage: byDamage["no-damage"] ?? 0,
-		unclassified: byDamage["un-classified"] ?? 0,
 		by_damage: byDamage,
 	};
 };
 
-const resolveStorageUrl = (path?: string | null): string | null => {
-	if (!path) return null;
-	if (path.startsWith("http://") || path.startsWith("https://")) return path;
-
-	const base = SATELLITE_IMAGE_BASE_URL.endsWith("/")
-		? SATELLITE_IMAGE_BASE_URL
-		: `${SATELLITE_IMAGE_BASE_URL}/`;
-
-	const normalizedPath = path
-		.replace(/^\/+/, "")
-		.replace(/^storage\/v1\/object\/public\/satellite-images\//, "")
-		.replace(/^satellite-images\//, "");
-
-	return new URL(normalizedPath, base).toString();
-};
+const resolveStorageUrl = (path?: string | null): string | null =>
+	path ? resolveImageUrl(path) : null;
 
 export default function Dashboard() {
 	const navigate = useNavigate();
@@ -247,7 +178,7 @@ export default function Dashboard() {
 		string | null
 	>(null);
 	const [allBuildingsCache, setAllBuildingsCache] = useState<
-		BuildingFeatureNoBox[] | null
+		BuildingFeature[] | null
 	>(null);
 	const [imagePairMap, setImagePairMap] = useState<
 		Map<
@@ -262,7 +193,6 @@ export default function Dashboard() {
 	const [stats, setStats] = useState<BuildingStatsResponse>({
 		total: 0,
 		no_damage: 0,
-		unclassified: 0,
 		by_damage: {},
 	});
 	const [rows, setRows] = useState<BuildingListItem[]>([]);
@@ -273,11 +203,7 @@ export default function Dashboard() {
 	const ensureImagePairs = useCallback(
 		async (disasterId: number) => {
 			if (imagePairMap.size > 0) return imagePairMap;
-			const res = await fetch(
-				`${API_BASE}/disasters/${disasterId}/image-pairs`,
-			);
-			if (!res.ok) throw new Error("Failed to load image pairs.");
-			const data = (await res.json()) as ImagePairFeatureCollection;
+			const data = await fetchImagePairs(disasterId);
 			const next = new Map<
 				number,
 				{
@@ -287,7 +213,11 @@ export default function Dashboard() {
 				}
 			>();
 			for (const feature of data.features ?? []) {
-				next.set(feature.properties.id, {
+				const props = feature.properties as ImagePairFeature["properties"] & {
+					id?: number;
+				};
+				if (typeof props.id !== "number") continue;
+				next.set(props.id, {
 					xbd_id: feature.properties.xbd_id,
 					pre_image_path: feature.properties.pre_image_path ?? null,
 					post_image_path: feature.properties.post_image_path ?? null,
@@ -302,9 +232,7 @@ export default function Dashboard() {
 	const ensureAllBuildings = useCallback(
 		async (disasterId: number) => {
 			if (allBuildingsCache) return allBuildingsCache;
-			const res = await fetch(`${API_BASE}/disasters/${disasterId}/buildings`);
-			if (!res.ok) throw new Error("Failed to load building data.");
-			const data = (await res.json()) as BuildingFeatureCollectionNoBox;
+			const data = await fetchBuildingsForDisaster(disasterId);
 			const features = data.features ?? [];
 			setAllBuildingsCache(features);
 			return features;
@@ -318,10 +246,7 @@ export default function Dashboard() {
 				setLoadingStats(true);
 				setError(null);
 
-				const disasterRes = await fetch(`${API_BASE}/disasters`);
-				if (!disasterRes.ok) throw new Error("Failed to load disasters.");
-
-				const disasters = (await disasterRes.json()) as Disaster[];
+				const disasters = (await fetchDisasters()) as DisasterSummary[];
 				if (disasters.length === 0) throw new Error("No disasters available.");
 
 				const currentDisaster = disasters[0];
@@ -332,16 +257,16 @@ export default function Dashboard() {
 				// can be derived even if the stats endpoint is available.
 				void ensureAllBuildings(currentDisaster.id);
 
-				const statsRes = await fetch(
-					`${API_BASE}/disasters/${currentDisaster.id}/buildings/stats`,
-				);
-				if (statsRes.ok) {
-					setStats((await statsRes.json()) as BuildingStatsResponse);
-				} else if (statsRes.status === 404) {
-					const features = await ensureAllBuildings(currentDisaster.id);
-					setStats(buildStatsFromFeatures(features));
-				} else {
-					throw new Error("Failed to load building stats.");
+				try {
+					const stats = await fetchBuildingStatsForDisaster(currentDisaster.id);
+					setStats(stats);
+				} catch (err: unknown) {
+					if (err instanceof ApiError && err.status === 404) {
+						const features = await ensureAllBuildings(currentDisaster.id);
+						setStats(buildStatsFromFeatures(features));
+					} else {
+						throw err;
+					}
 				}
 			} catch (err) {
 				setError(
@@ -379,6 +304,7 @@ export default function Dashboard() {
 			if (rawPredicted == null) continue;
 
 			const predicted = normalizeDamage(rawPredicted);
+			if (actual === "un-classified" || predicted === "un-classified") continue;
 			comparedCount += 1;
 			if (actual === predicted) correctCount += 1;
 
@@ -420,29 +346,34 @@ export default function Dashboard() {
 				const pairs = await ensureImagePairs(selectedDisasterId);
 
 				if (supportsPagedEndpoint) {
-					const params = new URLSearchParams({
-						page: String(page),
-						page_size: String(PAGE_SIZE),
-					});
-					if (activeDamageFilter !== "all")
-						params.set("damage", activeDamageFilter);
-
-					const res = await fetch(
-						`${API_BASE}/disasters/${selectedDisasterId}/buildings/paged?${params.toString()}`,
-					);
-
-					if (res.ok) {
-						const payload = (await res.json()) as PaginatedBuildingsResponse;
-						setRows(payload.items);
+					try {
+						const payload = await fetchPaginatedBuildingsForDisaster(
+							selectedDisasterId,
+							{
+								page,
+								pageSize: PAGE_SIZE,
+								damage: activeDamageFilter,
+							},
+						);
+						setRows(
+							payload.items.map((item) => ({
+								...item,
+								actual_damage: normalizeDamage(item.actual_damage),
+								predicted_damage:
+									item.predicted_damage == null
+										? null
+										: normalizeDamage(item.predicted_damage),
+							})),
+						);
 						setTotalPages(payload.total_pages);
 						setTotalItems(payload.total_items);
 						return;
-					}
-
-					if (res.status === 404) {
-						setSupportsPagedEndpoint(false);
-					} else {
-						throw new Error("Failed to load paginated buildings.");
+					} catch (err: unknown) {
+						if (err instanceof ApiError && err.status === 404) {
+							setSupportsPagedEndpoint(false);
+						} else {
+							throw err;
+						}
 					}
 				}
 
@@ -465,7 +396,10 @@ export default function Dashboard() {
 						image_pair_id: prop.image_pair_id,
 						xbd_id: pair?.xbd_id ?? -1,
 						actual_damage: normalizeDamage(prop.actual_damage),
-						predicted_damage: normalizeDamage(prop.predicted_damage ?? null),
+						predicted_damage:
+							prop.predicted_damage == null
+								? null
+								: normalizeDamage(prop.predicted_damage),
 						is_correct: prop.is_correct ?? null,
 						created_at: prop.created_at ?? null,
 						pre_image_path: pair?.pre_image_path ?? null,
@@ -507,7 +441,6 @@ export default function Dashboard() {
 			"minor-damage": 0,
 			"major-damage": 0,
 			destroyed: 0,
-			"un-classified": 0,
 		};
 
 		let predictedTotal = 0;
@@ -515,6 +448,7 @@ export default function Dashboard() {
 			const rawPredicted = feature.properties.predicted_damage;
 			if (rawPredicted == null) continue;
 			const key = normalizeDamage(rawPredicted);
+			if (key === "un-classified") continue;
 			predictedByDamage[key] = (predictedByDamage[key] ?? 0) + 1;
 			predictedTotal += 1;
 		}
@@ -883,21 +817,23 @@ export default function Dashboard() {
 																</span>
 															</td>
 															<td className="py-3 pr-3">
-																<span
-																	className="inline-flex rounded-md px-2 py-1 text-xs font-medium text-white"
-																	style={{
-																		backgroundColor:
-																			DAMAGE_COLOR_HEX[
-																				normalizeDamage(
-																					building.predicted_damage,
-																				)
-																			],
-																	}}
-																>
-																	{prettyLabel(
-																		normalizeDamage(building.predicted_damage),
-																	)}
-																</span>
+																{building.predicted_damage == null ? (
+																	<span className="text-muted-foreground">
+																		-
+																	</span>
+																) : (
+																	<span
+																		className="inline-flex rounded-md px-2 py-1 text-xs font-medium text-white"
+																		style={{
+																			backgroundColor:
+																				DAMAGE_COLOR_HEX[
+																					building.predicted_damage
+																				],
+																		}}
+																	>
+																		{prettyLabel(building.predicted_damage)}
+																	</span>
+																)}
 															</td>
 															<td className="py-3 pr-3 text-muted-foreground">
 																{typeof building.is_correct === "boolean"
