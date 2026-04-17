@@ -15,6 +15,7 @@ def fetch_buildings_by_image_pair(
         'actual_damage',    b.actual_damage::text,
         'predicted_damage', b.predicted_damage::text,
         'is_correct',       b.is_correct,
+        'address',          b.address,
         'created_at',       b.created_at,
         'geom_bbox',        ST_AsGeoJSON(ST_Envelope(b.geom))::json
       ) AS properties
@@ -44,6 +45,7 @@ def fetch_building_by_uid(conn: psycopg.Connection, uid: str) -> dict | None:
         'actual_damage',    b.actual_damage::text,
         'predicted_damage', b.predicted_damage::text,
         'is_correct',       b.is_correct,
+        'address',          b.address,
         'created_at',       b.created_at,
         'geom_bbox',        ST_AsGeoJSON(ST_Envelope(b.geom))::json
       ) AS properties
@@ -68,6 +70,7 @@ def fetch_buildings_by_disaster(
         'actual_damage',    b.actual_damage::text,
         'predicted_damage', b.predicted_damage::text,
         'is_correct',       b.is_correct,
+        'address',          b.address,
         'created_at',       b.created_at
       ) AS properties
     FROM buildings b
@@ -93,6 +96,7 @@ def fetch_building_bboxes_by_disaster(
         'actual_damage',    b.actual_damage::text,
         'predicted_damage', b.predicted_damage::text,
         'is_correct',       b.is_correct,
+        'address',          b.address,
         'created_at',       b.created_at
       ) AS properties
     FROM buildings b
