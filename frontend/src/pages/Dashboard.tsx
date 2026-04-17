@@ -249,7 +249,11 @@ export default function Dashboard() {
 				setError(null);
 
 				const disasters = await fetchDisasters();
-				if (disasters.length === 0) throw new Error("No disasters available.");
+				if (disasters.length === 0) {
+					setError("No disasters available.");
+					setLoadingStats(false);
+					return;
+				}
 
 				const currentDisaster = disasters[0];
 				setSelectedDisasterId(currentDisaster.id);
@@ -347,6 +351,7 @@ export default function Dashboard() {
 			try {
 				setLoadingBuildings(true);
 				setError(null);
+
 				const pairs = await ensureImagePairs(selectedDisasterId);
 
 				if (supportsPagedEndpoint) {
@@ -359,6 +364,7 @@ export default function Dashboard() {
 								damage: activeDamageFilter,
 							},
 						);
+
 						setRows(
 							payload.items.map((item) => {
 								const actual = normalizeDamage(item.actual_damage);
@@ -375,10 +381,11 @@ export default function Dashboard() {
 								};
 							}),
 						);
+
 						setTotalPages(payload.total_pages);
 						setTotalItems(payload.total_items);
 						return;
-					} catch (err: unknown) {
+					} catch (err) {
 						if (err instanceof ApiError && err.status === 404) {
 							setSupportsPagedEndpoint(false);
 						} else {
@@ -388,6 +395,7 @@ export default function Dashboard() {
 				}
 
 				const features = await ensureAllBuildings(selectedDisasterId);
+
 				const filtered =
 					activeDamageFilter === "all"
 						? features
@@ -400,6 +408,7 @@ export default function Dashboard() {
 				const mapped: BuildingListItem[] = filtered.map((feature) => {
 					const prop = feature.properties;
 					const pair = pairs.get(prop.image_pair_id);
+
 					const actual = normalizeDamage(prop.actual_damage);
 					const predicted =
 						prop.predicted_damage == null
@@ -414,7 +423,6 @@ export default function Dashboard() {
 						xbd_id: pair?.xbd_id ?? -1,
 						actual_damage: actual,
 						predicted_damage: predicted,
-						// Calculate correctness dynamically here as well
 						is_correct: predicted === null ? null : actual === predicted,
 						created_at: prop.created_at ?? null,
 						pre_image_path: pair?.pre_image_path ?? null,
@@ -422,18 +430,7 @@ export default function Dashboard() {
 					};
 				});
 
-				const total = mapped.length;
-				const pages = total > 0 ? Math.ceil(total / PAGE_SIZE) : 1;
-				const start = (page - 1) * PAGE_SIZE;
-				const end = start + PAGE_SIZE;
-
-				setRows(mapped.slice(start, end));
-				setTotalPages(pages);
-				setTotalItems(total);
-			} catch (err) {
-				setError(
-					err instanceof Error ? err.message : "Unable to load buildings.",
-				);
+				setRows(mapped);
 			} finally {
 				setLoadingBuildings(false);
 			}
