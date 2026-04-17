@@ -528,11 +528,11 @@ export default function Dashboard() {
 
 						{activeSection === "overview" && (
 							<div
-								className={
+								className={`${
 									loadingStats
 										? "opacity-20 pointer-events-none"
 										: "opacity-100 transition-opacity duration-300"
-								}
+								} flex flex-col gap-6`}
 							>
 								<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
 									<div className="rounded-xl border border-border bg-card text-card-foreground p-4 flex min-h-[180px] flex-col">
@@ -776,6 +776,11 @@ export default function Dashboard() {
 									<p className="text-xs text-muted-foreground">
 										{totalItems} total rows
 									</p>
+									<Pagination
+										page={page}
+										totalPages={totalPages}
+										onPageChange={setPage}
+									/>
 								</div>
 
 								{loadingBuildings ? (
