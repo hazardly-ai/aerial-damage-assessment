@@ -45,9 +45,11 @@ export default function ThemeToggle() {
 	};
 
 	return (
-		// Outline button that toggles theme on click
-		<Button variant="outline" onClick={toggleTheme}>
-			{/* Button label reflects the opposite mode */}
+		<Button
+			variant="outline"
+			onClick={toggleTheme}
+			className="w-[115px] justify-center"
+		>
 			{theme === "light" ? "Dark Mode" : "Light Mode"}
 		</Button>
 	);
