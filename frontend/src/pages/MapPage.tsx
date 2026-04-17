@@ -89,7 +89,7 @@ export default function MapPage() {
 			}
 		}
 
-		resolveDisaster();
+		void resolveDisaster();
 	}, [disaster_name, xbdid, isXbdMissing, isXbdMalformed, navigate]);
 
 	if (isLoading || resolvedDisasterId === null) {
