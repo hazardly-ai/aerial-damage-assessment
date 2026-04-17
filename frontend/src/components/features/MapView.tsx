@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 
+import { toast } from "sonner";
 import { BuildingPopup } from "@/components/features/BuildingPopup";
 import { MapControls } from "@/components/features/MapControls";
 import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
@@ -29,11 +30,19 @@ import {
 	waitForMapsLoad,
 } from "@/utils/mapViewSetup";
 
-const DISASTER_ID = 1;
-const XBD_ID = 18;
+interface MapViewProps {
+	initialDisasterId: number;
+	initialXbdId: number;
+	onSceneError?: (message: string) => void;
+}
+
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-export default function MapView() {
+export default function MapView({
+	initialDisasterId,
+	initialXbdId,
+	onSceneError,
+}: MapViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
 	const compareIdleTimerRef = useRef<number | null>(null);
@@ -41,9 +50,10 @@ export default function MapView() {
 	const afterMapRef = useRef<mapboxgl.Map | null>(null);
 	const layersReadyRef = useRef(false);
 
-	const [xbdId, setXbdId] = useState<number>(XBD_ID);
+	const [disasterId, setDisasterId] = useState(initialDisasterId);
+	const [xbdId, setXbdId] = useState<number>(initialXbdId);
 	const [sceneLoading, setSceneLoading] = useState(false);
-	const [retryCount, setRetryCount] = useState(0);
+	const [_retryCount, setRetryCount] = useState(0);
 	const [buildingsVisible, setBuildingsVisible] = useState(true);
 	const [imageryVisible, setImageryVisible] = useState(true);
 	const [compareIdle, setCompareIdle] = useState(false);
@@ -61,6 +71,11 @@ export default function MapView() {
 	const boundsRef = useRef<ImageBounds | null>(null);
 	const scheduleCompareIdleRef = useRef<() => void>(() => {});
 	imageryVisibleRef.current = imageryVisible;
+
+	useEffect(() => {
+		setDisasterId(initialDisasterId);
+		setXbdId(initialXbdId);
+	}, [initialDisasterId, initialXbdId]);
 
 	const updatePopupPos = useCallback(() => {
 		if (popupDataRef.current && afterMapRef.current) {
@@ -163,15 +178,18 @@ export default function MapView() {
 		let beforeMap: mapboxgl.Map | null = null;
 		let afterMap: mapboxgl.Map | null = null;
 
-		void retryCount;
-
 		setStatus("loading");
 		setErrorMessage(null);
 
-		fetchMapData(DISASTER_ID, xbdIdRef.current, {
+		fetchMapData(disasterId, xbdIdRef.current, {
 			signal: abortController.signal,
 		})
 			.then(({ imagePair, buildings, bounds }) => {
+				if (!imagePair || !bounds) {
+					throw new Error(
+						"The requested scene coordinates or imagery could not be found.",
+					);
+				}
 				if (cancelled || !containerRef.current) return;
 				boundsRef.current = bounds;
 
@@ -257,11 +275,21 @@ export default function MapView() {
 			.catch((err: unknown) => {
 				if (cancelled) return;
 				if (err instanceof DOMException && err.name === "AbortError") return;
-				const msg =
-					err instanceof Error
-						? err.message
-						: "Unknown error fetching map data.";
-				setErrorMessage(msg);
+
+				const errorMsg =
+					err instanceof Error ? err.message : "Scene imagery unavailable.";
+
+				// 2. Check if the error is a "not found" (404)
+				if (errorMsg.includes("404") || errorMsg.includes("not found")) {
+					if (onSceneError) {
+						onSceneError(
+							`Scene ${xbdIdRef.current} not found. Returning to default.`,
+						);
+						return; // Stop here so we don't show the local error overlay
+					}
+				}
+
+				setErrorMessage(errorMsg);
 				setStatus("error");
 			});
 
@@ -282,8 +310,7 @@ export default function MapView() {
 			afterMapRef.current = null;
 		};
 		// xbdId is intentionally excluded; scene switches are handled by Effect 2.
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [openPopup, updatePopupPos, retryCount, handleResetView]);
+	}, [openPopup, updatePopupPos, handleResetView, onSceneError, disasterId]);
 
 	useEffect(() => {
 		const before = beforeMapRef.current;
@@ -295,7 +322,7 @@ export default function MapView() {
 		setSceneLoading(true);
 		closePopup();
 
-		fetchMapData(DISASTER_ID, xbdId, { signal: abortController.signal })
+		fetchMapData(disasterId, xbdId, { signal: abortController.signal })
 			.then(({ imagePair, buildings, bounds }) => {
 				if (cancelled || !beforeMapRef.current || !afterMapRef.current) return;
 				boundsRef.current = bounds;
@@ -344,18 +371,33 @@ export default function MapView() {
 			.catch((err: unknown) => {
 				if (cancelled) return;
 				if (err instanceof DOMException && err.name === "AbortError") return;
-				const msg =
-					err instanceof Error ? err.message : "Failed to load scene.";
-				setErrorMessage(msg);
+
+				const errorMsg = err instanceof Error ? err.message : String(err);
+
+				// SPECIFIC CHECK: The Disaster exists, but this specific Scene number does not
+				if (
+					errorMsg.includes("404") ||
+					errorMsg.toLowerCase().includes("not found")
+				) {
+					if (onSceneError) {
+						onSceneError(
+							`Scene #${xbdIdRef.current} is not available for this disaster. Returning to default view.`,
+						);
+						return;
+					}
+				}
+
+				// Generic fallback for network issues/server crashes
+				toast.error("Map Data Error: Unable to fetch satellite imagery.");
+				setErrorMessage(errorMsg);
 				setStatus("error");
-				setSceneLoading(false);
 			});
 
 		return () => {
 			cancelled = true;
 			abortController.abort();
 		};
-	}, [xbdId, closePopup]);
+	}, [xbdId, disasterId, closePopup, onSceneError]);
 
 	useEffect(() => {
 		if (!imageryVisible) {
@@ -398,7 +440,7 @@ export default function MapView() {
 			<div ref={containerRef} className="map-container w-full h-full" />
 
 			<MapControls
-				disasterId={DISASTER_ID}
+				disasterId={disasterId}
 				selectedXbdId={xbdId}
 				onXbdChange={setXbdId}
 				sceneDisabled={status !== "ready"}
