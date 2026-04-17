@@ -35,6 +35,7 @@ type NormalizedDamage = DamageLevel | "un-classified";
 type BuildingListItem = {
 	id: number;
 	uid: string;
+	address?: string | null;
 	image_pair_id: number;
 	xbd_id: number;
 	disaster_name: string;
@@ -398,6 +399,7 @@ export default function Dashboard() {
 					return {
 						id: prop.id,
 						uid: prop.uid,
+ttttttaddress: typeof prop.address === "string" ? prop.address : null,
 						disaster_name: selectedDisasterName ?? "Unknown",
 						image_pair_id: prop.image_pair_id,
 						xbd_id: pair?.xbd_id ?? -1,
@@ -834,9 +836,9 @@ export default function Dashboard() {
 																<Item
 																	imageSrc={thumbnail}
 																	imageAlt={`Building ${building.uid}`}
-																	title={building.uid}
-																	subtitle={`xBD: ${building.xbd_id}`}
-																	meta={`Image Pair ID: ${building.image_pair_id}`}
+																	title={building.address || building.uid}
+																	subtitle={building.address ? building.uid : `xBD: ${building.xbd_id}`}
+																	meta={building.address ? `xBD: ${building.xbd_id}` : `Image Pair ID: ${building.image_pair_id}`}
 																/>
 															</td>
 															<td className="py-3 pr-3 font-medium text-xs whitespace-nowrap">

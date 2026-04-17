@@ -138,6 +138,7 @@ def get_paginated_buildings_for_disaster(
         BuildingListItem(
             id=row["id"],
             uid=row["uid"],
+            address=row["address"],
             image_pair_id=row["image_pair_id"],
             xbd_id=row["xbd_id"],
             actual_damage=row["actual_damage"],

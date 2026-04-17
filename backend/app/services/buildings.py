@@ -135,6 +135,7 @@ def fetch_paginated_buildings_by_disaster(
     SELECT
       b.id,
       b.uid::text,
+      b.address,
       b.image_pair_id,
       ip.xbd_id,
       b.actual_damage::text,

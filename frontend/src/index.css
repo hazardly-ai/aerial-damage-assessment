@@ -835,6 +835,15 @@ body {
 	display: block;
 }
 
+.popup-uid-subfield {
+	font-size: 10px;
+	color: var(--popup-muted, #94a3b8);
+	font-family: monospace;
+	margin-top: 2px;
+	word-break: break-all;
+	opacity: 0.7;
+}
+
 /* =========================
    COPY BUTTON
 ========================= */
