@@ -1,13 +1,8 @@
-/* DisasterResponsesAssistant.tsx
- * Created by Shriya Vetapalem
- * This handles the chatbot UI for disaster related questions.
- * It sends user questions to the backend and displays responses.
- */
-
+/* DisasterResponsesAssistant.tsx */
 import { Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-interface ResponseMssg {
+interface ResponseMessage {
 	id: string;
 	role: "fieldUser" | "responseAssistant";
 	content: string;
@@ -19,29 +14,34 @@ export default function DisasterResponseAssistant() {
 		"",
 	);
 
-	const initialMessage: ResponseMssg = {
+	const initialMessage: ResponseMessage = {
 		id: crypto.randomUUID(),
 		role: "responseAssistant",
 		content:
 			"Hi, I'm your Disaster Response Assistant. I can help you review damage severity, impacted areas, and assessment insights. What would you like to explore?",
 	};
 
-	const [responseLog, setResponseLog] = useState<ResponseMssg[]>(() => {
+	const [responseLog, setResponseLog] = useState<ResponseMessage[]>(() => {
 		const saved = localStorage.getItem("chatHistory");
 		return saved ? JSON.parse(saved) : [initialMessage];
 	});
 
+	// PERSISTENCE: Hydrate open state from localStorage
+	const [isOpen, setIsOpen] = useState(() => {
+		return localStorage.getItem("chatOpen") === "true";
+	});
+
 	const [currentQuery, setCurrentQuery] = useState("");
-	const [isOpen, setIsOpen] = useState(false);
 	const bottomRef = useRef<HTMLDivElement | null>(null);
 
 	useEffect(() => {
 		bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-	});
+	}, []);
 
 	useEffect(() => {
 		localStorage.setItem("chatHistory", JSON.stringify(responseLog));
-	}, [responseLog]);
+		localStorage.setItem("chatOpen", isOpen.toString());
+	}, [responseLog, isOpen]);
 
 	const clearChat = () => {
 		setResponseLog([initialMessage]);
@@ -50,35 +50,28 @@ export default function DisasterResponseAssistant() {
 
 	const handleQuery = async () => {
 		if (!currentQuery.trim()) return;
-
-		const userEntry: ResponseMssg = {
+		const userEntry: ResponseMessage = {
 			id: crypto.randomUUID(),
 			role: "fieldUser",
 			content: currentQuery,
 		};
-
 		setResponseLog((prev) => [...prev, userEntry]);
-
 		const queryToSend = currentQuery;
 		setCurrentQuery("");
-
 		try {
 			const backendResponse = await fetch(`${API_BASE_URL}/chat`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ query: queryToSend }),
 			});
-
 			const data = await backendResponse.json();
-
-			const assistantEntry: ResponseMssg = {
+			const assistantEntry: ResponseMessage = {
 				id: crypto.randomUUID(),
 				role: "responseAssistant",
 				content:
 					data.response ||
 					"Your request has been received. Results will appear here.",
 			};
-
 			setResponseLog((prev) => [...prev, assistantEntry]);
 		} catch {
 			setResponseLog((prev) => [
@@ -95,86 +88,84 @@ export default function DisasterResponseAssistant() {
 
 	return (
 		<div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-3">
-			{/* Chat Panel */}
-			{isOpen && (
-				<div className="w-[380px] h-[600px] bg-card text-card-foreground border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden">
-					{/* Header */}
-					<div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-primary to-indigo-500 text-white">
-						<div className="flex flex-col">
-							<span className="flex items-center gap-2 font-semibold">
-								<Sparkles className="h-4 w-4" />
-								Disaster Response Assistant
-							</span>
-							<span className="text-[11px] opacity-80">
-								Chat history persists in session
-							</span>
-						</div>
-
-						<div className="flex items-center gap-2">
-							<button
-								type="button"
-								onClick={clearChat}
-								className="p-1 rounded-md hover:bg-white/20 transition"
-								title="Clear chat"
-							>
-								<Trash2 className="h-4 w-4" />
-							</button>
-
-							<button
-								type="button"
-								onClick={() => setIsOpen(false)}
-								className="hover:opacity-80 transition-opacity"
-							>
-								<X className="h-4 w-4" />
-							</button>
-						</div>
+			<div
+				className={`chat-panel-container w-[380px] h-[600px] bg-card text-card-foreground border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden ${
+					isOpen ? "chat-panel-open" : "chat-panel-closed"
+				}`}
+			>
+				{/* Header */}
+				<div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-primary to-indigo-500 text-white">
+					<div className="flex flex-col">
+						<span className="flex items-center gap-2 font-semibold">
+							<Sparkles className="h-4 w-4" />
+							Disaster Response Assistant
+						</span>
+						<span className="text-[11px] opacity-80">
+							Chat history persists in session
+						</span>
 					</div>
-
-					{/* Messages */}
-					<div className="flex-1 p-4 overflow-y-auto text-sm space-y-4 bg-background">
-						{responseLog.map((entry) => (
-							<div
-								key={entry.id}
-								className={`p-3 rounded-xl max-w-[85%] border ${
-									entry.role === "fieldUser"
-										? "ml-auto bg-primary text-primary-foreground border-primary"
-										: "bg-card text-foreground border-border shadow-sm"
-								}`}
-							>
-								{entry.content}
-							</div>
-						))}
-						<div ref={bottomRef} />
-					</div>
-
-					{/* Input */}
-					<div className="border-t border-border p-3 bg-card">
-						<div className="flex gap-2">
-							<input
-								type="text"
-								value={currentQuery}
-								onChange={(e) => setCurrentQuery(e.target.value)}
-								onKeyDown={(e) => e.key === "Enter" && handleQuery()}
-								className="flex-1 bg-background text-foreground border border-border rounded-md px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-								placeholder="Ask Disaster Response Assistant..."
-							/>
-							<button
-								type="button"
-								onClick={handleQuery}
-								className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm hover:opacity-90"
-							>
-								Send
-							</button>
-						</div>
+					<div className="flex items-center gap-2">
+						<button
+							type="button"
+							onClick={clearChat}
+							className="p-1 rounded-md hover:bg-white/20 transition"
+						>
+							<Trash2 className="h-4 w-4" />
+						</button>
+						<button
+							type="button"
+							onClick={() => setIsOpen(false)}
+							className="hover:opacity-80 transition-opacity"
+						>
+							<X className="h-4 w-4" />
+						</button>
 					</div>
 				</div>
-			)}
 
-			{/* Floating Button */}
+				{/* Messages */}
+				<div className="flex-1 p-4 overflow-y-auto text-sm space-y-4 bg-background">
+					{responseLog.map((entry) => (
+						<div
+							key={entry.id}
+							className={`p-3 rounded-xl max-w-[85%] border transition-all duration-300 ${
+								entry.role === "fieldUser"
+									? "ml-auto bg-primary text-primary-foreground border-primary"
+									: "bg-card text-foreground border-border shadow-sm"
+							}`}
+						>
+							{entry.content}
+						</div>
+					))}
+					<div ref={bottomRef} />
+				</div>
+
+				{/* Input */}
+				<div className="border-t border-border p-3 bg-card">
+					<div className="flex gap-2">
+						<input
+							type="text"
+							value={currentQuery}
+							onChange={(e) => setCurrentQuery(e.target.value)}
+							onKeyDown={(e) => e.key === "Enter" && handleQuery()}
+							className="flex-1 bg-background text-foreground border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+							placeholder="Ask Disaster Response Assistant..."
+						/>
+						<button
+							type="button"
+							onClick={handleQuery}
+							className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm hover:opacity-90"
+						>
+							Send
+						</button>
+					</div>
+				</div>
+			</div>
+
+			{/* Floating Button with Restored AI Badge */}
 			<button
 				type="button"
 				onClick={() => setIsOpen((prev) => !prev)}
-				className="relative flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-br from-primary to-indigo-500 text-white shadow-xl hover:scale-105 transition-all"
+				className="relative flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-br from-primary to-indigo-500 text-white shadow-xl hover:scale-105 active:scale-95 transition-all"
 			>
 				{isOpen ? (
 					<X className="h-5 w-5" />
