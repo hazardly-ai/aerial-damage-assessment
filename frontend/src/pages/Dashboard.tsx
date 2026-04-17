@@ -360,15 +360,20 @@ export default function Dashboard() {
 							},
 						);
 						setRows(
-							payload.items.map((item) => ({
-								...item,
-								disaster_name: selectedDisasterName ?? "Unknown",
-								actual_damage: normalizeDamage(item.actual_damage),
-								predicted_damage:
+							payload.items.map((item) => {
+								const actual = normalizeDamage(item.actual_damage);
+								const predicted =
 									item.predicted_damage == null
 										? null
-										: normalizeDamage(item.predicted_damage),
-							})),
+										: normalizeDamage(item.predicted_damage);
+								return {
+									...item,
+									disaster_name: selectedDisasterName ?? "Unknown",
+									actual_damage: actual,
+									predicted_damage: predicted,
+									is_correct: predicted === null ? null : actual === predicted,
+								};
+							}),
 						);
 						setTotalPages(payload.total_pages);
 						setTotalItems(payload.total_items);
@@ -395,18 +400,22 @@ export default function Dashboard() {
 				const mapped: BuildingListItem[] = filtered.map((feature) => {
 					const prop = feature.properties;
 					const pair = pairs.get(prop.image_pair_id);
+					const actual = normalizeDamage(prop.actual_damage);
+					const predicted =
+						prop.predicted_damage == null
+							? null
+							: normalizeDamage(prop.predicted_damage);
+
 					return {
 						id: prop.id,
 						uid: prop.uid,
 						disaster_name: selectedDisasterName ?? "Unknown",
 						image_pair_id: prop.image_pair_id,
 						xbd_id: pair?.xbd_id ?? -1,
-						actual_damage: normalizeDamage(prop.actual_damage),
-						predicted_damage:
-							prop.predicted_damage == null
-								? null
-								: normalizeDamage(prop.predicted_damage),
-						is_correct: prop.is_correct ?? null,
+						actual_damage: actual,
+						predicted_damage: predicted,
+						// Calculate correctness dynamically here as well
+						is_correct: predicted === null ? null : actual === predicted,
 						created_at: prop.created_at ?? null,
 						pre_image_path: pair?.pre_image_path ?? null,
 						post_image_path: pair?.post_image_path ?? null,
