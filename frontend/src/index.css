@@ -53,6 +53,8 @@
 	--toggle-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 	--toggle-track-off: rgba(0, 0, 0, 0.18);
 	--toggle-track-on: hsl(var(--primary));
+
+	--popup-muted: hsl(215 16% 47%);
 }
 
 html {
@@ -118,6 +120,8 @@ html {
 	--toggle-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 	--toggle-track-off: rgba(255, 255, 255, 0.2);
 	--toggle-track-on: hsl(var(--primary));
+
+	--popup-muted: hsl(215 15% 70%);
 }
 
 /* =========================
