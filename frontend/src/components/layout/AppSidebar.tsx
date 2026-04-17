@@ -12,6 +12,7 @@ type AppSidebarProps = {
 	filters: FilterOption[];
 	onOverview: () => void;
 	onSelectFilter: (filter: string) => void;
+	disabled?: boolean; // New Prop
 };
 
 export default function AppSidebar({
@@ -20,12 +21,17 @@ export default function AppSidebar({
 	filters,
 	onOverview,
 	onSelectFilter,
+	disabled = false, // Default to false
 }: AppSidebarProps) {
 	const [buildingsOpen, setBuildingsOpen] = useState(true);
 
 	useEffect(() => {
 		if (activeSection === "buildings") setBuildingsOpen(true);
 	}, [activeSection]);
+
+	// Common classes for all buttons to handle the disabled state visually
+	const buttonBase =
+		"block w-full text-left px-3 py-2 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent";
 
 	return (
 		<div
@@ -36,25 +42,27 @@ export default function AppSidebar({
 				<div className="w-full">
 					<button
 						type="button"
+						disabled={disabled}
 						onClick={onOverview}
-						className={
+						className={`${buttonBase} ${
 							activeSection === "overview"
-								? "block w-full border-b border-primary/30 bg-primary/10 text-left px-3 py-2 text-sm"
-								: "block w-full border-b border-border bg-background/50 text-left px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-						}
+								? "border-b border-primary/30 bg-primary/10"
+								: "border-b border-border bg-background/50 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+						}`}
 					>
 						Overview
 					</button>
 
 					<button
 						type="button"
+						disabled={disabled}
 						onClick={() => setBuildingsOpen((prev) => !prev)}
 						aria-expanded={buildingsOpen}
-						className={
+						className={`flex w-full items-center justify-between px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
 							activeSection === "buildings"
-								? "flex w-full items-center justify-between bg-primary/10 text-left px-3 py-2 text-sm font-medium"
-								: "flex w-full items-center justify-between text-left px-3 py-2 text-sm font-medium"
-						}
+								? "bg-primary/10"
+								: "hover:bg-accent/50"
+						}`}
 					>
 						<span>Buildings</span>
 						<ChevronDown
@@ -68,18 +76,21 @@ export default function AppSidebar({
 			</aside>
 
 			{buildingsOpen && (
-				<div className="mt-3 overflow-hidden rounded-xl border border-border bg-card">
+				<div
+					className={`mt-3 overflow-hidden rounded-xl border border-border bg-card ${disabled ? "opacity-50 pointer-events-none" : ""}`}
+				>
 					{filters.map((filter) => (
 						<button
 							type="button"
 							key={filter.key}
+							disabled={disabled}
 							onClick={() => onSelectFilter(filter.key)}
-							className={
+							className={`${buttonBase} ${
 								activeSection === "buildings" &&
 								activeDamageFilter === filter.key
-									? "block w-full border-b border-border border-l-2 border-l-primary bg-accent text-accent-foreground text-left px-3 py-2 text-sm font-medium last:border-b-0"
-									: "block w-full border-b border-border bg-background text-left px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground last:border-b-0"
-							}
+									? "border-b border-border border-l-2 border-l-primary bg-accent text-accent-foreground font-medium last:border-b-0"
+									: "border-b border-border bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground last:border-b-0"
+							}`}
 						>
 							{filter.label}
 						</button>

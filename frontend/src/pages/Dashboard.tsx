@@ -19,7 +19,6 @@ import {
 	ApiError,
 	type BuildingFeature,
 	type BuildingStatsResponse,
-	type DisasterSummary,
 	fetchBuildingStatsForDisaster,
 	fetchBuildingsForDisaster,
 	fetchDisasters,
@@ -249,28 +248,30 @@ export default function Dashboard() {
 				setLoadingStats(true);
 				setError(null);
 
-				const disasters = (await fetchDisasters()) as DisasterSummary[];
+				const disasters = await fetchDisasters();
 				if (disasters.length === 0) throw new Error("No disasters available.");
 
 				const currentDisaster = disasters[0];
 				setSelectedDisasterId(currentDisaster.id);
 				setSelectedDisasterName(currentDisaster.name);
 
-				// Load full building features so overview metrics (accuracy/confusion matrix)
-				// can be derived even if the stats endpoint is available.
-				void ensureAllBuildings(currentDisaster.id);
-
-				try {
-					const stats = await fetchBuildingStatsForDisaster(currentDisaster.id);
-					setStats(stats);
-				} catch (err: unknown) {
-					if (err instanceof ApiError && err.status === 404) {
-						const features = await ensureAllBuildings(currentDisaster.id);
-						setStats(buildStatsFromFeatures(features));
-					} else {
-						throw err;
-					}
-				}
+				// Wait for BOTH the stats and the full features before turning off the loader
+				await Promise.allSettled([
+					ensureAllBuildings(currentDisaster.id),
+					(async () => {
+						try {
+							const stats = await fetchBuildingStatsForDisaster(
+								currentDisaster.id,
+							);
+							setStats(stats);
+						} catch (err) {
+							if (err instanceof ApiError && err.status === 404) {
+								const features = await ensureAllBuildings(currentDisaster.id);
+								setStats(buildStatsFromFeatures(features));
+							}
+						}
+					})(),
+				]);
 			} catch (err) {
 				setError(
 					err instanceof Error ? err.message : "Unexpected dashboard error.",
@@ -505,15 +506,16 @@ export default function Dashboard() {
 						filters={DAMAGE_FILTERS}
 						onOverview={() => setActiveSection("overview")}
 						onSelectFilter={setDamageFilter}
+						disabled={loadingStats}
 					/>
 
-					<div className="space-y-6 min-w-0 flex-1">
+					<div className="space-y-6 min-w-0 flex-1 relative">
 						{loadingStats && (
-							<div className="rounded-xl border border-border bg-card p-4">
+							<div className="absolute inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm rounded-xl">
 								<SpinnerEmpty
-									title="Preparing dashboard"
-									description="Fetching disaster metadata and damage statistics to populate the overview cards."
-									className="min-h-[180px] border-0 p-0"
+									title="Loading Dashboard"
+									description="Syncing disaster data..."
+									className="border-0"
 								/>
 							</div>
 						)}
@@ -525,7 +527,13 @@ export default function Dashboard() {
 						)}
 
 						{activeSection === "overview" && (
-							<>
+							<div
+								className={
+									loadingStats
+										? "opacity-20 pointer-events-none"
+										: "opacity-100 transition-opacity duration-300"
+								}
+							>
 								<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
 									<div className="rounded-xl border border-border bg-card text-card-foreground p-4 flex min-h-[180px] flex-col">
 										<p className="text-sm text-muted-foreground">
@@ -652,7 +660,9 @@ export default function Dashboard() {
 									</div>
 
 									{predictionMetrics.available ? (
-										<div className="overflow-x-auto">
+										<div
+											className={`overflow-x-auto ${loadingBuildings ? "opacity-50" : "opacity-100"}`}
+										>
 											<table className="w-full min-w-[760px] text-sm">
 												<thead>
 													<tr className="border-b border-border/60 text-left text-muted-foreground bg-muted/30">
@@ -756,11 +766,11 @@ export default function Dashboard() {
 										</div>
 									)}
 								</div>
-							</>
+							</div>
 						)}
 
 						{activeSection === "buildings" && (
-							<div className="rounded-xl border border-border bg-card text-card-foreground p-5">
+							<div className="rounded-xl border border-border bg-card p-5 overflow-hidden relative">
 								<div className="flex items-center justify-between mb-4 gap-3">
 									<h3 className="text-lg font-semibold">Buildings</h3>
 									<p className="text-xs text-muted-foreground">
@@ -770,11 +780,15 @@ export default function Dashboard() {
 
 								{loadingBuildings ? (
 									<div className="rounded-md border border-border bg-background p-4">
-										<SpinnerEmpty
-											title="Loading building records"
-											description={`Retrieving building rows for page ${page} with the ${prettyLabel(activeDamageFilter)} filter.`}
-											className="min-h-[280px] border-0 p-0"
-										/>
+										{loadingBuildings && (
+											<div className="absolute inset-0 z-10 flex items-center justify-center bg-card/40 backdrop-blur-[2px]">
+												<SpinnerEmpty
+													title="Loading building records"
+													description={`Retrieving building rows for page ${page} with the ${prettyLabel(activeDamageFilter)} filter.`}
+													className="min-h-[280px] border-0 p-0"
+												/>
+											</div>
+										)}
 									</div>
 								) : (
 									<div className="overflow-x-auto">
@@ -881,11 +895,13 @@ export default function Dashboard() {
 									</div>
 								)}
 
-								<Pagination
-									page={page}
-									totalPages={totalPages}
-									onPageChange={setPage}
-								/>
+								<div className="p-4 border-t border-border">
+									<Pagination
+										page={page}
+										totalPages={totalPages}
+										onPageChange={setPage}
+									/>
+								</div>
 							</div>
 						)}
 					</div>
