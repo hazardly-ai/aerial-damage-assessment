@@ -1,38 +1,55 @@
+import { Link, useLocation } from "react-router-dom";
 import Container from "@/components/layout/Container";
-
-// Theme toggle button (light/dark mode switch)
 import ThemeToggle from "@/components/ui/ThemeToggle";
-
-// Team name constant so we can easily change branding in one place
 import { TEAM_NAME } from "@/constants/app";
 
 export default function Header() {
+	const location = useLocation();
+
+	const navItems = [
+		{ name: "Map", path: "/" },
+		{ name: "Dashboard", path: "/dashboard" },
+	];
+
 	return (
-		// Main header container
-		// Slight background blur + border to separate it from the page content
 		<div className="z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
-			<Container className="py-8">
-				{/* Flex layout to keep title on the left and theme toggle on the right */}
-				<div className="flex justify-between items-start gap-6">
-					<header>
-						{/* Title + subtitle section */}
-						<div className="space-y-2">
-							{/* Main app title with subtle gradient text effect */}
-							<h1 className="pb-[0.1525em] text-4xl sm:text-5xl font-bold tracking-tight leading-[1.08] bg-gradient-to-r from-foreground to-foreground/50 bg-clip-text text-transparent font-sans">
-								{TEAM_NAME}
-							</h1>
+			<Container className="py-6">
+				<div className="flex justify-between items-center gap-6">
+					{/* LEFT SIDE */}
+					<div className="space-y-2">
+						<h1 className="pb-[0.1525em] text-3xl sm:text-4xl font-bold tracking-tight leading-[1.08] bg-gradient-to-r from-foreground to-foreground/50 bg-clip-text text-transparent font-sans">
+							{TEAM_NAME}
+						</h1>
 
-							{/* Small uppercase subtitle describing the app */}
-							<p className="text-sm uppercase tracking-[0.3em] text-muted-foreground font-semibold font-sans">
-								AI-Powered Disaster Assessment
-							</p>
+						<p className="text-xs uppercase tracking-[0.3em] text-muted-foreground font-semibold font-sans">
+							AI-Powered Disaster Assessment
+						</p>
 
-							{/* Decorative gradient divider line under the subtitle */}
-							<div className="header-divider" />
-						</div>
-					</header>
+						<div className="header-divider" />
+					</div>
 
-					{/* Light/Dark mode toggle */}
+					{/* CENTER NAV */}
+					<nav className="flex items-center gap-6">
+						{navItems.map((item) => {
+							const isActive = location.pathname === item.path;
+
+							return (
+								<Link
+									key={item.path}
+									to={item.path}
+									className={`text-sm font-medium transition-colors ${
+										isActive
+											? "text-foreground"
+											: "text-muted-foreground hover:text-foreground"
+									}`}
+								>
+									{item.name}
+								</Link>
+							);
+						})}
+					</nav>
+
+					{/* RIGHT SIDE */}
 					<ThemeToggle />
 				</div>
 			</Container>
