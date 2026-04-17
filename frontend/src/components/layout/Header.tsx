@@ -7,8 +7,8 @@ export default function Header() {
 	const location = useLocation();
 
 	const navItems = [
-		{ name: "Map", path: "/" },
 		{ name: "Dashboard", path: "/dashboard" },
+		{ name: "Map", path: "/map" },
 	];
 
 	return (
