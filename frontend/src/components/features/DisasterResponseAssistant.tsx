@@ -14,7 +14,7 @@ interface ResponseMssg {
 	content: string;
 }
 
-export default function DisasterResponseAssistant() {
+export default function DisasterResponsesAssistant() {
 	const [responseLog, setResponseLog] = useState<ResponseMssg[]>([
 		{
 			id: crypto.randomUUID(),
@@ -90,7 +90,7 @@ export default function DisasterResponseAssistant() {
 						<button
 							type="button"
 							onClick={() => setIsOpen(false)}
-							className="hover:opacity-80 transition-opacity duration-theme ease-theme"
+							className="hover:opacity-80 transition"
 						>
 							<X className="h-4 w-4" />
 						</button>
@@ -132,7 +132,7 @@ export default function DisasterResponseAssistant() {
 								focus:outline-none
 								focus:ring-2
 								focus:ring-primary
-								transition-colors duration-theme ease-theme
+								transition-colors
 							"
 							placeholder="Ask Disaster Response Assistant..."
 						/>
@@ -146,7 +146,7 @@ export default function DisasterResponseAssistant() {
 								rounded-md
 								text-sm
 								hover:opacity-90
-								transition-colors duration-theme ease-theme
+								transition
 							"
 						>
 							Send
@@ -165,7 +165,7 @@ export default function DisasterResponseAssistant() {
 					bg-gradient-to-br from-primary to-indigo-500
 					text-white
 					shadow-xl
-					transition-all duration-theme ease-theme
+					transition-all duration-300
 					hover:scale-105
 				"
 			>

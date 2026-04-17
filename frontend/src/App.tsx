@@ -1,4 +1,4 @@
-import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant";
+import DisasterResponsesAssistant from "@/components/features/DisasterResponseAssistant";
 import MapView from "@/components/features/MapView";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
@@ -14,7 +14,7 @@ export default function App() {
 
 			{/* Chat Widget */}
 			{/*<ChatWidget />*/}
-			<DisasterResponseAssistant />
+			<DisasterResponsesAssistant />
 			{/* Footer */}
 			<Footer />
 		</div>

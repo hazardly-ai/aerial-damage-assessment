@@ -16,7 +16,7 @@ export default function Footer() {
 				{/* Cards Grid */}
 				<div className="grid md:grid-cols-3 gap-3">
 					{/* About Card */}
-					<div className="p-3 rounded-lg bg-background/50 hover:bg-background transition-colors duration-theme ease-theme">
+					<div className="p-3 rounded-lg bg-background/50 hover:bg-background transition">
 						<h3 className="text-lg font-semibold mb-2">{APP_NAME}</h3>
 						<p className="text-muted-foreground leading-relaxed text-sm">
 							{APP_DESCRIPTION}
@@ -24,14 +24,14 @@ export default function Footer() {
 					</div>
 
 					{/* Course Info Card */}
-					<div className="p-3 rounded-lg bg-background/50 hover:bg-background transition-colors duration-theme ease-theme">
+					<div className="p-3 rounded-lg bg-background/50 hover:bg-background transition">
 						<h4 className="font-semibold mb-2 text-sm">Course Information</h4>
 						<p className="text-muted-foreground leading-relaxed text-sm">
 							This project was developed for CS 4485 Computer Science Project at{" "}
 							<a
 								target="_blank"
 								rel="noopener noreferrer"
-								className="hover:text-primary transition-colors duration-theme ease-theme"
+								className="hover:text-primary transition"
 								href={"https://utdallas.edu"}
 							>
 								The University of Texas at Dallas
@@ -41,7 +41,7 @@ export default function Footer() {
 					</div>
 
 					{/* Data Card */}
-					<div className="p-3 rounded-lg bg-background/50 hover:bg-background transition-colors duration-theme ease-theme">
+					<div className="p-3 rounded-lg bg-background/50 hover:bg-background transition">
 						<h4 className="font-semibold mb-2 text-sm">Data</h4>
 						<p className="text-muted-foreground leading-relaxed text-sm">
 							Imagery sourced from the{" "}
@@ -49,7 +49,7 @@ export default function Footer() {
 								href={DATASET_URL}
 								target="_blank"
 								rel="noopener noreferrer"
-								className="text-primary hover:underline transition-colors duration-theme ease-theme"
+								className="text-primary hover:underline transition"
 							>
 								{DATASET_NAME}
 							</a>
@@ -66,7 +66,7 @@ export default function Footer() {
 						{CONTRIBUTORS.map((person) => (
 							<div
 								key={person.name}
-								className="p-2 rounded-md bg-background hover:bg-foreground/5 transition-colors duration-theme ease-theme flex flex-col gap-1"
+								className="p-2 rounded-md bg-background hover:bg-foreground/5 transition flex flex-col gap-1"
 							>
 								{/* Name */}
 								<div className="text-sm">
@@ -82,7 +82,7 @@ export default function Footer() {
 								<div className="flex items-center gap-2">
 									<a
 										href={`mailto:${person.email}`}
-										className="text-muted-foreground hover:text-primary transition-colors duration-theme ease-theme"
+										className="text-muted-foreground hover:text-primary transition"
 										title="Send Email"
 									>
 										<FaEnvelope className="text-xs" />
@@ -92,7 +92,7 @@ export default function Footer() {
 										href={person.github}
 										target="_blank"
 										rel="noopener noreferrer"
-										className="text-muted-foreground hover:text-primary transition-colors duration-theme ease-theme"
+										className="text-muted-foreground hover:text-primary transition"
 										title="GitHub Profile"
 									>
 										<FaGithub className="text-xs" />
@@ -114,7 +114,7 @@ export default function Footer() {
 						href={GITHUB_URL}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="inline-flex items-center gap-2 text-xs text-foreground hover:text-primary transition-colors duration-theme ease-theme font-medium"
+						className="inline-flex items-center gap-2 text-xs text-foreground hover:text-primary transition font-medium"
 					>
 						<FaGithub />
 						<span>View on GitHub</span>

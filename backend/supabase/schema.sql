@@ -41,7 +41,6 @@ CREATE TABLE public.image_pairs (
   geo_origin_lat double precision,
   geo_pixel_width double precision,
   geo_pixel_height double precision,
-  geo_refine_affine jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (disaster_id, xbd_id)
 );

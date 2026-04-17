@@ -70,23 +70,6 @@ def test_get_image_pairs(client):
         assert "properties" in feat
 
 
-def test_get_image_pair_xbd_ids(client):
-    disasters = client.get("/disasters").json()
-    if not disasters:
-        pytest.skip("No disasters in DB")
-
-    did = disasters[0]["id"]
-    r = client.get(f"/disasters/{did}/image-pairs/xbd-ids")
-    assert r.status_code == 200
-    data = r.json()
-    assert "xbd_ids" in data
-    assert isinstance(data["xbd_ids"], list)
-    fc = client.get(f"/disasters/{did}/image-pairs").json()
-    if fc["features"]:
-        expected = sorted(f["properties"]["xbd_id"] for f in fc["features"])
-        assert data["xbd_ids"] == expected
-
-
 def test_get_image_pair_by_id(client):
     disasters = client.get("/disasters").json()
     if not disasters:

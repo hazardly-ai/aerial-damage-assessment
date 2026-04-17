@@ -6,4 +6,3 @@ pytest>=8.0
 psycopg[binary]>=3.2
 python-dotenv>=1.0
 supabase>=2.0
-numpy>=1.26
