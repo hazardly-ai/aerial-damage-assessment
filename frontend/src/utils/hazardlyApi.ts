@@ -349,6 +349,29 @@ export const fetchDisasters = (): Promise<DisastersResponse> =>
 	);
 
 /**
+ * Maps disaster name → disaster id (based on API /disasters response).
+ * This is a lightweight helper for routing.
+ * @param name - The name of the disaster
+ * @example getDisasterIdByName("hurricane_harvey")
+ * @author James Harrison
+ */
+export async function getDisasterIdByName(
+	name: string,
+): Promise<number | null> {
+	if (!name) return null;
+
+	const normalized = name.toLowerCase().trim();
+
+	const disasters = await fetchDisasters();
+
+	const match = disasters.find(
+		(d) => d.name.toLowerCase().trim() === normalized,
+	);
+
+	return match ? match.id : null;
+}
+
+/**
  * Fetches all satellite image pairs associated with a given disaster.
  *
  * Calls `GET /disasters/:disasterId/image-pairs`.
