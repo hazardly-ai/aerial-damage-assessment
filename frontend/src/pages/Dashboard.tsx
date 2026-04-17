@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
+import Container from "@/components/layout/Container";
 import Footer from "@/components/layout/Footer.tsx";
 import Header from "@/components/layout/Header";
 import { Button } from "@/components/ui/Button";
@@ -37,6 +38,7 @@ type BuildingListItem = {
 	uid: string;
 	image_pair_id: number;
 	xbd_id: number;
+	disaster_name: string;
 	actual_damage: NormalizedDamage;
 	predicted_damage?: NormalizedDamage | null;
 	is_correct?: boolean | null;
@@ -359,6 +361,7 @@ export default function Dashboard() {
 						setRows(
 							payload.items.map((item) => ({
 								...item,
+								disaster_name: selectedDisasterName ?? "Unknown",
 								actual_damage: normalizeDamage(item.actual_damage),
 								predicted_damage:
 									item.predicted_damage == null
@@ -394,6 +397,7 @@ export default function Dashboard() {
 					return {
 						id: prop.id,
 						uid: prop.uid,
+						disaster_name: selectedDisasterName ?? "Unknown",
 						image_pair_id: prop.image_pair_id,
 						xbd_id: pair?.xbd_id ?? -1,
 						actual_damage: normalizeDamage(prop.actual_damage),
@@ -434,6 +438,7 @@ export default function Dashboard() {
 		supportsPagedEndpoint,
 		ensureAllBuildings,
 		ensureImagePairs,
+		selectedDisasterName,
 	]);
 
 	const overviewDamageRows = useMemo(() => {
@@ -492,7 +497,7 @@ export default function Dashboard() {
 	return (
 		<div className="min-h-screen bg-background text-foreground">
 			<Header />
-			<div className="mx-auto w-full max-w-7xl px-6 py-8">
+			<Container className="w-full py-8">
 				<div className="flex flex-row gap-6 items-start">
 					<AppSidebar
 						activeSection={activeSection}
@@ -777,6 +782,7 @@ export default function Dashboard() {
 											<thead>
 												<tr className="border-b border-border/60 text-left text-muted-foreground bg-muted/30">
 													<th className="py-2 pr-3 font-medium">Building</th>
+													<th className="py-2 pr-3 font-medium">Disaster</th>
 													<th className="py-2 pr-3 font-medium">ID</th>
 													<th className="py-2 pr-3 font-medium">Image Pair</th>
 													<th className="py-2 pr-3 font-medium">Actual</th>
@@ -814,6 +820,9 @@ export default function Dashboard() {
 																	meta={`Image Pair ID: ${building.image_pair_id}`}
 																/>
 															</td>
+															<td className="py-3 pr-3 font-medium text-xs whitespace-nowrap">
+																{building.disaster_name}
+															</td>
 															<td className="py-3 pr-3 text-muted-foreground">
 																{building.id}
 															</td>
@@ -822,7 +831,7 @@ export default function Dashboard() {
 															</td>
 															<td className="py-3 pr-3">
 																<span
-																	className="inline-flex rounded-md px-2 py-1 text-xs font-medium text-white"
+																	className="inline-flex whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-white"
 																	style={{
 																		backgroundColor:
 																			DAMAGE_COLOR_HEX[
@@ -842,7 +851,7 @@ export default function Dashboard() {
 																	</span>
 																) : (
 																	<span
-																		className="inline-flex rounded-md px-2 py-1 text-xs font-medium text-white"
+																		className="inline-flex whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-white"
 																		style={{
 																			backgroundColor:
 																				DAMAGE_COLOR_HEX[
@@ -881,7 +890,7 @@ export default function Dashboard() {
 						)}
 					</div>
 				</div>
-			</div>
+			</Container>
 			<Footer />
 		</div>
 	);
