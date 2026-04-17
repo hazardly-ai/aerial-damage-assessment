@@ -237,7 +237,8 @@ body {
 	left: 16px;
 	z-index: 20;
 
-	width: min(188px, calc(100% - 32px));
+	width: fit-content;
+	min-width: 44px;
 	padding: 8px;
 
 	border: 1px solid rgba(15, 23, 42, 0.14);
@@ -252,6 +253,10 @@ body {
 		background-color var(--theme-transition-duration)
 		var(--theme-transition-easing),
 		border-color var(--theme-transition-duration) var(--theme-transition-easing);
+}
+
+.map-controls[data-collapsed="false"] {
+	width: 188px;
 }
 
 .map-controls[data-collapsed="true"] {
@@ -726,8 +731,12 @@ body {
 	.map-controls {
 		top: 12px;
 		left: 12px;
-		right: 12px;
-		width: auto;
+		right: auto;
+	}
+
+	.map-controls[data-collapsed="false"] {
+		width: calc(100% - 24px);
+		max-width: 240px;
 	}
 }
 /* =========================
