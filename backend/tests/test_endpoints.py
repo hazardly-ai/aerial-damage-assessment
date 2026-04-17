@@ -138,6 +138,7 @@ def test_get_buildings_for_image_pair(client):
         props = feat["properties"]
         assert "uid" in props
         assert "geom_bbox" in props
+        assert "address" in props
 
 
 def test_get_building_by_uid(client):
@@ -160,7 +161,9 @@ def test_get_building_by_uid(client):
     uid = buildings[0]["properties"]["uid"]
     r = client.get(f"/buildings/{uid}")
     assert r.status_code == 200
-    assert r.json()["properties"]["uid"] == uid
+    props = r.json()["properties"]
+    assert props["uid"] == uid
+    assert "address" in props
 
 
 def test_get_building_not_found(client):
@@ -181,6 +184,7 @@ def test_get_buildings_for_disaster(client):
     if fc["features"]:
         props = fc["features"][0]["properties"]
         assert "uid" in props
+        assert "address" in props
         # This endpoint should NOT have geom_bbox
         assert "geom_bbox" not in props
 
@@ -198,5 +202,6 @@ def test_get_building_bboxes_for_disaster(client):
     if fc["features"]:
         props = fc["features"][0]["properties"]
         assert "uid" in props
+        assert "address" in props
         # This endpoint should NOT have pixel_coords
         assert "pixel_coords" not in props
