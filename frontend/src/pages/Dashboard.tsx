@@ -649,7 +649,7 @@ export default function Dashboard() {
 										<div className="overflow-x-auto">
 											<table className="w-full min-w-[760px] text-sm">
 												<thead>
-													<tr className="border-b border-border text-left text-muted-foreground">
+													<tr className="border-b border-border/60 text-left text-muted-foreground bg-muted/30">
 														<th className="px-2 py-2 font-medium">
 															Actual \ Predicted
 														</th>
@@ -661,7 +661,7 @@ export default function Dashboard() {
 																{prettyLabel(predictedLabel)}
 															</th>
 														))}
-														<th className="px-2 py-2 font-medium text-center">
+														<th className="px-2 py-2 font-semibold text-center text-foreground">
 															Total
 														</th>
 													</tr>
@@ -696,19 +696,37 @@ export default function Dashboard() {
 																		predictionMetrics.matrixMax > 0
 																			? value / predictionMetrics.matrixMax
 																			: 0;
-																	const alpha =
-																		value > 0 ? 0.15 + intensity * 0.55 : 0.06;
-																	const backgroundColor = isDiagonal
-																		? `rgba(16, 185, 129, ${alpha})`
-																		: `rgba(239, 68, 68, ${alpha})`;
+																	const isDark =
+																		document.documentElement.classList.contains(
+																			"dark",
+																		);
 
+																	const baseAlpha = isDark ? 0.25 : 0.15;
+																	const scale = isDark ? 0.65 : 0.55;
+
+																	const alpha =
+																		value > 0
+																			? baseAlpha + intensity * scale
+																			: isDark
+																				? 0.08
+																				: 0.06;
+																	const isTopLeft =
+																		actualLabel === "no-damage" &&
+																		predictedLabel === "no-damage";
+																	const backgroundColor = isTopLeft
+																		? isDark
+																			? `rgba(5, 150, 105, ${Math.min(0.95, alpha + 0.25)})`
+																			: `rgba(16, 185, 129, ${alpha})`
+																		: isDiagonal
+																			? `rgba(16, 185, 129, ${alpha})`
+																			: `rgba(239, 68, 68, ${alpha})`;
 																	return (
 																		<td
 																			key={`cell-${actualLabel}-${predictedLabel}`}
 																			className={`px-2 py-2 text-center font-medium ${
 																				isDiagonal
-																					? "text-emerald-900"
-																					: "text-rose-900"
+																					? "text-emerald-900 dark:text-emerald-300"
+																					: "text-rose-700 dark:text-rose-300"
 																			}`}
 																			style={{ backgroundColor }}
 																		>
@@ -756,7 +774,7 @@ export default function Dashboard() {
 									<div className="overflow-x-auto">
 										<table className="w-full min-w-[980px] text-sm">
 											<thead>
-												<tr className="border-b border-border text-left text-muted-foreground">
+												<tr className="border-b border-border/60 text-left text-muted-foreground bg-muted/30">
 													<th className="py-2 pr-3 font-medium">Building</th>
 													<th className="py-2 pr-3 font-medium">ID</th>
 													<th className="py-2 pr-3 font-medium">Image Pair</th>
