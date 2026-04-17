@@ -31,7 +31,10 @@ export default function Header() {
 					{/* CENTER NAV */}
 					<nav className="flex items-center gap-6">
 						{navItems.map((item) => {
-							const isActive = location.pathname === item.path;
+							const isActive =
+								item.path === "/"
+									? location.pathname === "/"
+									: location.pathname.startsWith(item.path);
 
 							return (
 								<Link
@@ -39,7 +42,7 @@ export default function Header() {
 									to={item.path}
 									className={`text-sm font-medium transition-colors ${
 										isActive
-											? "text-foreground"
+											? "text-foreground underline underline-offset-4" // Optional: added underline for better visibility
 											: "text-muted-foreground hover:text-foreground"
 									}`}
 								>
