@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant.tsx";
+import MapMetricsPanel from "@/components/features/MapMetricsPanel.tsx";
 import MapView from "@/components/features/MapView.tsx";
 import Footer from "@/components/layout/Footer.tsx";
 import Header from "@/components/layout/Header.tsx";
+import type { SceneMetrics } from "@/types/map";
 import { getDisasterIdByName } from "@/utils/hazardlyApi.ts";
 
 export default function MapPage() {
@@ -18,6 +20,7 @@ export default function MapPage() {
 		null,
 	);
 	const [isLoading, setIsLoading] = useState(true);
+	const [sceneMetrics, setSceneMetrics] = useState<SceneMetrics | null>(null);
 
 	// 1. Validate XBD ID: If it's garbage text or missing, fallback to 18
 	const isXbdMissing = xbdid === undefined || xbdid.trim() === "";
@@ -92,6 +95,14 @@ export default function MapPage() {
 		void resolveDisaster();
 	}, [disaster_name, xbdid, isXbdMissing, isXbdMalformed, navigate]);
 
+	const handleInvalidScene = useCallback(
+		(message: string) => {
+			toast.error(message);
+			navigate("/map", { replace: true });
+		},
+		[navigate],
+	);
+
 	if (isLoading || resolvedDisasterId === null) {
 		return (
 			<div className="flex h-screen items-center justify-center bg-background">
@@ -100,21 +111,27 @@ export default function MapPage() {
 		);
 	}
 
-	const handleInvalidScene = (message: string) => {
-		toast.error(message);
-		navigate("/map", { replace: true });
-	};
-
 	return (
 		<div className="flex flex-col min-h-screen bg-background text-foreground">
 			<Header />
-			<div className="flex-1 relative w-full max-w-[1600px] mx-auto px-6 py-4 min-h-[75vh]">
-				<MapView
-					key={`${resolvedDisasterId}-${parsedXbdId}`}
-					initialDisasterId={resolvedDisasterId}
-					initialXbdId={parsedXbdId}
-					onSceneError={handleInvalidScene}
-				/>
+			<div className="flex-1 relative w-full max-w-[1700px] mx-auto px-4 md:px-6 py-4 min-h-[75vh]">
+				<div className="grid h-full grid-cols-1 gap-4 xl:grid-cols-10">
+					<div className="xl:col-span-7">
+						<MapView
+							key={`${resolvedDisasterId}-${parsedXbdId}`}
+							initialDisasterId={resolvedDisasterId}
+							initialXbdId={parsedXbdId}
+							onSceneError={handleInvalidScene}
+							onMetricsChange={setSceneMetrics}
+						/>
+					</div>
+					<div className="xl:col-span-3 h-[70vh]">
+						<MapMetricsPanel
+							metrics={sceneMetrics}
+							isLoading={sceneMetrics === null}
+						/>
+					</div>
+				</div>
 			</div>
 			<DisasterResponseAssistant />
 			<Footer />

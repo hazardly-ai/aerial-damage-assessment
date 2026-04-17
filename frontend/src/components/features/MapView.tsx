@@ -9,8 +9,9 @@ import { BuildingPopup } from "@/components/features/BuildingPopup";
 import { MapControls } from "@/components/features/MapControls";
 import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
 import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
-import type { MapStatus } from "@/types/map.ts";
+import type { MapStatus, SceneMetrics } from "@/types/map.ts";
 import { BUILDINGS_SOURCE_ID } from "@/utils/addBuildingLayer";
+import type { BuildingFeature, BuildingsResponse } from "@/utils/hazardlyApi";
 import {
 	fetchMapData,
 	type ImageBounds,
@@ -34,6 +35,123 @@ interface MapViewProps {
 	initialDisasterId: number;
 	initialXbdId: number;
 	onSceneError?: (message: string) => void;
+	onMetricsChange?: (metrics: SceneMetrics | null) => void;
+}
+
+function computeSceneMetrics(
+	xbdId: number,
+	buildings: BuildingsResponse,
+): SceneMetrics {
+	const features = buildings.features;
+	type DamageLevel =
+		| "no-damage"
+		| "minor-damage"
+		| "major-damage"
+		| "destroyed";
+	type NormalizedDamage = DamageLevel | "un-classified";
+	const DAMAGE_CLASSES = [
+		"no-damage",
+		"minor-damage",
+		"major-damage",
+		"destroyed",
+	] as const;
+
+	const predictedDistribution: Record<string, number> = {
+		"no-damage": 0,
+		"minor-damage": 0,
+		"major-damage": 0,
+		destroyed: 0,
+	};
+	const actualDistribution: Record<string, number> = {
+		"no-damage": 0,
+		"minor-damage": 0,
+		"major-damage": 0,
+		destroyed: 0,
+	};
+	let evaluatedPredictions = 0;
+	let correctPredictions = 0;
+
+	const normalizeDamageLabel = (value: unknown): NormalizedDamage => {
+		if (typeof value !== "string" || value.trim().length === 0) {
+			return "un-classified";
+		}
+		const normalized = value
+			.trim()
+			.toLowerCase()
+			.replace(/[_\s]+/g, "-")
+			.replace(/-+/g, "-");
+
+		if (normalized === "no-damage" || normalized === "no-damages") {
+			return "no-damage";
+		}
+		if (normalized === "minor-damage" || normalized === "minor-damages") {
+			return "minor-damage";
+		}
+		if (normalized === "major-damage" || normalized === "major-damages") {
+			return "major-damage";
+		}
+		if (normalized === "destroyed" || normalized === "destroy") {
+			return "destroyed";
+		}
+		if (
+			normalized === "un-classified" ||
+			normalized === "unclassified" ||
+			normalized === "unknown" ||
+			normalized === "uncertain"
+		) {
+			return "un-classified";
+		}
+
+		return "un-classified";
+	};
+
+	for (const feature of features) {
+		const building = feature as BuildingFeature;
+		const predictedDamageValue = normalizeDamageLabel(
+			building.properties.predicted_damage,
+		);
+		const actualDamageValue = normalizeDamageLabel(
+			building.properties.actual_damage,
+		);
+
+		if (
+			predictedDamageValue !== "un-classified" &&
+			DAMAGE_CLASSES.includes(predictedDamageValue)
+		) {
+			predictedDistribution[predictedDamageValue] += 1;
+		}
+		if (
+			actualDamageValue !== "un-classified" &&
+			DAMAGE_CLASSES.includes(actualDamageValue)
+		) {
+			actualDistribution[actualDamageValue] += 1;
+		}
+
+		if (
+			predictedDamageValue !== "un-classified" &&
+			actualDamageValue !== "un-classified"
+		) {
+			evaluatedPredictions += 1;
+			if (predictedDamageValue === actualDamageValue) {
+				correctPredictions += 1;
+			}
+		}
+	}
+
+	const accuracy =
+		evaluatedPredictions > 0
+			? (correctPredictions / evaluatedPredictions) * 100
+			: null;
+
+	return {
+		xbdId,
+		totalBuildings: features.length,
+		damageDistribution: predictedDistribution,
+		actualDamageDistribution: actualDistribution,
+		evaluatedPredictions,
+		correctPredictions,
+		accuracy,
+	};
 }
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
@@ -42,6 +160,7 @@ export default function MapView({
 	initialDisasterId,
 	initialXbdId,
 	onSceneError,
+	onMetricsChange,
 }: MapViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
@@ -180,6 +299,7 @@ export default function MapView({
 
 		setStatus("loading");
 		setErrorMessage(null);
+		onMetricsChange?.(null);
 
 		fetchMapData(disasterId, xbdIdRef.current, {
 			signal: abortController.signal,
@@ -250,6 +370,9 @@ export default function MapView({
 					});
 
 					setStatus("ready");
+					onMetricsChange?.(
+						computeSceneMetrics(imagePair.properties.xbd_id, buildings),
+					);
 					bindBuildingInteractions({
 						beforeMap: _before,
 						afterMap: _after,
@@ -291,6 +414,7 @@ export default function MapView({
 
 				setErrorMessage(errorMsg);
 				setStatus("error");
+				onMetricsChange?.(null);
 			});
 
 		return () => {
@@ -310,7 +434,14 @@ export default function MapView({
 			afterMapRef.current = null;
 		};
 		// xbdId is intentionally excluded; scene switches are handled by Effect 2.
-	}, [openPopup, updatePopupPos, handleResetView, onSceneError, disasterId]);
+	}, [
+		openPopup,
+		updatePopupPos,
+		handleResetView,
+		onSceneError,
+		onMetricsChange,
+		disasterId,
+	]);
 
 	useEffect(() => {
 		const before = beforeMapRef.current;
@@ -321,6 +452,7 @@ export default function MapView({
 		const abortController = new AbortController();
 		setSceneLoading(true);
 		closePopup();
+		onMetricsChange?.(null);
 
 		fetchMapData(disasterId, xbdId, { signal: abortController.signal })
 			.then(({ imagePair, buildings, bounds }) => {
@@ -366,7 +498,9 @@ export default function MapView({
 				_before.fitBounds([sw, ne], { padding: 0, animate: true });
 				setErrorMessage(null);
 				setStatus("ready");
-				setSceneLoading(false);
+				onMetricsChange?.(
+					computeSceneMetrics(imagePair.properties.xbd_id, buildings),
+				);
 			})
 			.catch((err: unknown) => {
 				if (cancelled) return;
@@ -391,13 +525,19 @@ export default function MapView({
 				toast.error("Map Data Error: Unable to fetch satellite imagery.");
 				setErrorMessage(errorMsg);
 				setStatus("error");
+				onMetricsChange?.(null);
+			})
+			.finally(() => {
+				if (!cancelled) {
+					setSceneLoading(false);
+				}
 			});
 
 		return () => {
 			cancelled = true;
 			abortController.abort();
 		};
-	}, [xbdId, disasterId, closePopup, onSceneError]);
+	}, [xbdId, disasterId, closePopup, onSceneError, onMetricsChange]);
 
 	useEffect(() => {
 		if (!imageryVisible) {

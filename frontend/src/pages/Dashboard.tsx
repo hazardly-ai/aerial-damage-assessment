@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppSidebar from "@/components/layout/AppSidebar";
 import Container from "@/components/layout/Container";
@@ -201,48 +201,53 @@ export default function Dashboard() {
 	const [page, setPage] = useState(1);
 	const [totalPages, setTotalPages] = useState(1);
 	const [totalItems, setTotalItems] = useState(0);
+	const imagePairMapRef = useRef(imagePairMap);
+	const allBuildingsCacheRef = useRef(allBuildingsCache);
+	const hasLoadedInitialStatsRef = useRef(false);
 
-	const ensureImagePairs = useCallback(
-		async (disasterId: number) => {
-			if (imagePairMap.size > 0) return imagePairMap;
-			const data = await fetchImagePairs(disasterId);
-			const next = new Map<
-				number,
-				{
-					xbd_id: number;
-					pre_image_path?: string | null;
-					post_image_path?: string | null;
-				}
-			>();
-			for (const feature of data.features ?? []) {
-				const props = feature.properties as ImagePairFeature["properties"] & {
-					id?: number;
-				};
-				if (typeof props.id !== "number") continue;
-				next.set(props.id, {
-					xbd_id: feature.properties.xbd_id,
-					pre_image_path: feature.properties.pre_image_path ?? null,
-					post_image_path: feature.properties.post_image_path ?? null,
-				});
+	imagePairMapRef.current = imagePairMap;
+	allBuildingsCacheRef.current = allBuildingsCache;
+
+	const ensureImagePairs = useCallback(async (disasterId: number) => {
+		if (imagePairMapRef.current.size > 0) return imagePairMapRef.current;
+		const data = await fetchImagePairs(disasterId);
+		const next = new Map<
+			number,
+			{
+				xbd_id: number;
+				pre_image_path?: string | null;
+				post_image_path?: string | null;
 			}
-			setImagePairMap(next);
-			return next;
-		},
-		[imagePairMap],
-	);
+		>();
+		for (const feature of data.features ?? []) {
+			const props = feature.properties as ImagePairFeature["properties"] & {
+				id?: number;
+			};
+			if (typeof props.id !== "number") continue;
+			next.set(props.id, {
+				xbd_id: feature.properties.xbd_id,
+				pre_image_path: feature.properties.pre_image_path ?? null,
+				post_image_path: feature.properties.post_image_path ?? null,
+			});
+		}
+		imagePairMapRef.current = next;
+		setImagePairMap(next);
+		return next;
+	}, []);
 
-	const ensureAllBuildings = useCallback(
-		async (disasterId: number) => {
-			if (allBuildingsCache) return allBuildingsCache;
-			const data = await fetchBuildingsForDisaster(disasterId);
-			const features = data.features ?? [];
-			setAllBuildingsCache(features);
-			return features;
-		},
-		[allBuildingsCache],
-	);
+	const ensureAllBuildings = useCallback(async (disasterId: number) => {
+		if (allBuildingsCacheRef.current) return allBuildingsCacheRef.current;
+		const data = await fetchBuildingsForDisaster(disasterId);
+		const features = data.features ?? [];
+		allBuildingsCacheRef.current = features;
+		setAllBuildingsCache(features);
+		return features;
+	}, []);
 
 	useEffect(() => {
+		if (hasLoadedInitialStatsRef.current) return;
+		hasLoadedInitialStatsRef.current = true;
+
 		const loadStats = async () => {
 			try {
 				setLoadingStats(true);
