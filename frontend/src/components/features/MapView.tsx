@@ -483,6 +483,7 @@ export default function MapView({
 				>
 					<BuildingPopup
 						uid={popupData.uid}
+						address={popupData.address}
 						predictedDamage={popupData.predictedDamage}
 						predictedDamageColor={popupData.predictedDamageColor}
 						actualDamage={popupData.actualDamage}

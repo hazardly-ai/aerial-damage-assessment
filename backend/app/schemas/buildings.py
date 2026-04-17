@@ -69,6 +69,7 @@ class BuildingFeatureCollectionBboxOnly(BaseModel):
 class BuildingListItem(BaseModel):
     id: int
     uid: str
+    address: str | None = None
     image_pair_id: int
     xbd_id: int
     actual_damage: str
