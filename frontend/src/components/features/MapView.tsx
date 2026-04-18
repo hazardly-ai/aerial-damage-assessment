@@ -1,345 +1,451 @@
 import mapboxgl from "mapbox-gl";
-import Compare from "mapbox-gl-compare";
-import { useEffect, useRef } from "react";
-import { createRoot } from "react-dom/client";
+import type Compare from "mapbox-gl-compare";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
-import bbox from "@turf/bbox";
 
-import buildings from "@/assets/hurricane-harvey_00000018_post_disaster.json";
-import postImage from "@/assets/hurricane-harvey_00000018_post_disaster.png";
-import preImage from "@/assets/hurricane-harvey_00000018_pre_disaster.png";
-
+import { BuildingPopup } from "@/components/features/BuildingPopup";
+import { MapControls } from "@/components/features/MapControls";
+import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
+import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
+import type { MapStatus } from "@/types/map.ts";
+import { BUILDINGS_SOURCE_ID } from "@/utils/addBuildingLayer";
 import {
-	addBuildingLayer,
-	BUILDINGS_FILL_LAYER_ID,
-	BUILDINGS_SOURCE_ID,
-	getBuildingDamageColor,
-} from "@/utils/addBuildingLayer";
-import { convertWKTToFeatureCollection } from "@/utils/convertWktToFeatureCollection";
-import { BuildingPopup } from "./BuildingPopup";
+	fetchMapData,
+	type ImageBounds,
+	resolveImageUrl,
+} from "@/utils/hazardlyApi";
+import {
+	addInitialSourcesAndLayers,
+	bindBuildingInteractions,
+	createCompareInstance,
+	createMapInstance,
+	POST_IMAGE_LAYER_ID,
+	type PopupData,
+	PRE_IMAGE_LAYER_ID,
+	setBuildingVisibility,
+	setImageryVisibility,
+	setSatelliteOpacity,
+	waitForMapsLoad,
+} from "@/utils/mapViewSetup";
 
-// Set Mapbox access token from environment variable
+const DISASTER_ID = 1;
+const XBD_ID = 18;
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
-
-function createBuildingPopupElement(
-	uid: string | number,
-	damage: string | undefined,
-	damageColor: string,
-	onClose: () => void,
-): { element: HTMLElement; root: ReturnType<typeof createRoot> } {
-	const container = document.createElement("div");
-	const root = createRoot(container);
-
-	root.render(
-		<BuildingPopup
-			uid={uid}
-			damage={damage}
-			damageColor={damageColor}
-			onClose={onClose}
-		/>,
-	);
-
-	return { element: container, root };
-}
-
-function attachBuildingHover(
-	map: mapboxgl.Map,
-	sourceId: string,
-	fillLayerId: string,
-): () => void {
-	let hoveredId: number | null = null;
-
-	const handleMouseMove = (e: mapboxgl.MapMouseEvent) => {
-		const feature = e.features?.[0];
-		if (!feature) return;
-
-		map.getCanvas().style.cursor = "pointer";
-
-		if (hoveredId !== null) {
-			map.setFeatureState(
-				{ source: sourceId, id: hoveredId },
-				{ hover: false },
-			);
-		}
-
-		hoveredId = feature.id as number;
-		map.setFeatureState({ source: sourceId, id: hoveredId }, { hover: true });
-	};
-
-	const handleMouseLeave = () => {
-		map.getCanvas().style.cursor = "";
-
-		if (hoveredId !== null) {
-			map.setFeatureState(
-				{ source: sourceId, id: hoveredId },
-				{ hover: false },
-			);
-		}
-
-		hoveredId = null;
-	};
-
-	map.on("mousemove", fillLayerId, handleMouseMove);
-	map.on("mouseleave", fillLayerId, handleMouseLeave);
-
-	// Return cleanup function
-	return () => {
-		map.off("mousemove", fillLayerId, handleMouseMove);
-		map.off("mouseleave", fillLayerId, handleMouseLeave);
-	};
-}
-
-function attachBuildingClick(
-	map: mapboxgl.Map,
-	fillLayerId: string,
-	popupHolder: { current: mapboxgl.Popup | null },
-): () => void {
-	const handleClick = (e: mapboxgl.MapMouseEvent) => {
-		const feature = e.features?.[0];
-		if (!feature) return;
-
-		const uid = feature.properties?.uid;
-		const damage = feature.properties?.predicted_damage;
-		const damageColor = getBuildingDamageColor(
-			typeof damage === "string" ? damage : undefined,
-		);
-
-		popupHolder.current?.remove();
-		popupHolder.current = null;
-
-		const popup = new mapboxgl.Popup({ offset: 10, closeButton: false });
-		const close = () => {
-			popup.remove();
-			popupHolder.current = null;
-		};
-
-		const { element: popupElement, root } = createBuildingPopupElement(
-			uid,
-			damage,
-			damageColor,
-			close,
-		);
-		popup.setDOMContent(popupElement);
-		popup.setLngLat(e.lngLat).addTo(map);
-		popupHolder.current = popup;
-
-		// Clean up React root when popup is removed
-		popup.on("close", () => {
-			root.unmount();
-		});
-	};
-
-	map.on("click", fillLayerId, handleClick);
-
-	// Return cleanup function
-	return () => {
-		map.off("click", fillLayerId, handleClick);
-	};
-}
 
 export default function MapView() {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
+	const compareIdleTimerRef = useRef<number | null>(null);
+	const beforeMapRef = useRef<mapboxgl.Map | null>(null);
+	const afterMapRef = useRef<mapboxgl.Map | null>(null);
+	const layersReadyRef = useRef(false);
+
+	const [xbdId, setXbdId] = useState<number>(XBD_ID);
+	const [sceneLoading, setSceneLoading] = useState(false);
+	const [retryCount, setRetryCount] = useState(0);
+	const [buildingsVisible, setBuildingsVisible] = useState(true);
+	const [imageryVisible, setImageryVisible] = useState(true);
+	const [compareIdle, setCompareIdle] = useState(false);
+	const [status, setStatus] = useState<MapStatus>("idle");
+	const [errorMessage, setErrorMessage] = useState<string | null>(null);
+	const [popupData, setPopupData] = useState<PopupData | null>(null);
+	const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
+		null,
+	);
+
+	const loadingOverlay = useLoadingOverlay(status);
+	const popupDataRef = useRef<PopupData | null>(null);
+	const selectedBuildingIdRef = useRef<string | number | null>(null);
+	const imageryVisibleRef = useRef(imageryVisible);
+	const boundsRef = useRef<ImageBounds | null>(null);
+	const scheduleCompareIdleRef = useRef<() => void>(() => {});
+	imageryVisibleRef.current = imageryVisible;
+
+	const updatePopupPos = useCallback(() => {
+		if (popupDataRef.current && afterMapRef.current) {
+			const { x, y } = afterMapRef.current.project(popupDataRef.current.lngLat);
+			setPopupPos({ x, y });
+		}
+	}, []);
+
+	const scheduleCompareIdle = useCallback(() => {
+		if (compareIdleTimerRef.current !== null) {
+			window.clearTimeout(compareIdleTimerRef.current);
+		}
+		setCompareIdle(false);
+		compareIdleTimerRef.current = window.setTimeout(() => {
+			setCompareIdle(true);
+		}, 2000);
+	}, []);
+	scheduleCompareIdleRef.current = scheduleCompareIdle;
+
+	const closePopup = useCallback(() => {
+		const id = selectedBuildingIdRef.current;
+		const before = beforeMapRef.current;
+		const after = afterMapRef.current;
+		if (id !== null && before && after) {
+			before.setFeatureState(
+				{ source: BUILDINGS_SOURCE_ID, id },
+				{ selected: false },
+			);
+			after.setFeatureState(
+				{ source: BUILDINGS_SOURCE_ID, id },
+				{ selected: false },
+			);
+		}
+		selectedBuildingIdRef.current = null;
+		popupDataRef.current = null;
+		setPopupData(null);
+		setPopupPos(null);
+	}, []);
+
+	const openPopup = useCallback(
+		(data: PopupData) => {
+			popupDataRef.current = data;
+			setPopupData(data);
+			updatePopupPos();
+		},
+		[updatePopupPos],
+	);
+
+	const handleToggle = useCallback(() => {
+		closePopup();
+		setBuildingsVisible((prev) => {
+			const next = !prev;
+			if (
+				layersReadyRef.current &&
+				beforeMapRef.current &&
+				afterMapRef.current
+			) {
+				setBuildingVisibility(beforeMapRef.current, next);
+				setBuildingVisibility(afterMapRef.current, next);
+			}
+			return next;
+		});
+	}, [closePopup]);
+
+	const handleImageryToggle = useCallback(() => {
+		setImageryVisible((prev) => {
+			const next = !prev;
+			if (
+				layersReadyRef.current &&
+				beforeMapRef.current &&
+				afterMapRef.current
+			) {
+				setImageryVisibility(beforeMapRef.current, PRE_IMAGE_LAYER_ID, next);
+				setImageryVisibility(afterMapRef.current, POST_IMAGE_LAYER_ID, next);
+				setSatelliteOpacity(beforeMapRef.current, next);
+				setSatelliteOpacity(afterMapRef.current, next);
+			}
+			return next;
+		});
+	}, []);
+
+	const handleResetView = useCallback(() => {
+		const before = beforeMapRef.current;
+		const after = afterMapRef.current;
+		const bounds = boundsRef.current;
+		if (!before || !after || !bounds) return;
+
+		before.fitBounds([bounds.sw, bounds.ne], { padding: 0, animate: true });
+		after.fitBounds([bounds.sw, bounds.ne], { padding: 0, animate: true });
+	}, []);
+
+	const xbdIdRef = useRef(xbdId);
+	xbdIdRef.current = xbdId;
 
 	useEffect(() => {
 		if (!containerRef.current) return;
 
-		let buildingCleanups: (() => void)[] = [];
+		let cancelled = false;
+		const abortController = new AbortController();
+		let beforeMap: mapboxgl.Map | null = null;
+		let afterMap: mapboxgl.Map | null = null;
 
-		// Clear container (important for React Strict Mode)
-		containerRef.current.innerHTML = "";
+		void retryCount;
 
-		// Create two divs — one for each map (before/after)
-		const beforeDiv = document.createElement("div");
-		const afterDiv = document.createElement("div");
+		setStatus("loading");
+		setErrorMessage(null);
 
-		// Make both maps fill the container
-		Object.assign(beforeDiv.style, { position: "absolute", inset: "0" });
-		Object.assign(afterDiv.style, { position: "absolute", inset: "0" });
+		fetchMapData(DISASTER_ID, xbdIdRef.current, {
+			signal: abortController.signal,
+		})
+			.then(({ imagePair, buildings, bounds }) => {
+				if (cancelled || !containerRef.current) return;
+				boundsRef.current = bounds;
 
-		containerRef.current.appendChild(beforeDiv);
-		containerRef.current.appendChild(afterDiv);
+				containerRef.current.innerHTML = "";
+				const beforeDiv = document.createElement("div");
+				const afterDiv = document.createElement("div");
+				Object.assign(beforeDiv.style, { position: "absolute", inset: "0" });
+				Object.assign(afterDiv.style, { position: "absolute", inset: "0" });
+				containerRef.current.appendChild(beforeDiv);
+				containerRef.current.appendChild(afterDiv);
 
-		// Convert WKT → GeoJSON (coordinates are already in lng/lat)
-		const geojson = convertWKTToFeatureCollection(buildings.features.lng_lat);
+				beforeMap = createMapInstance(beforeDiv, imageryVisibleRef, {
+					withResetBoundsControl: true,
+					onResetView: handleResetView,
+				});
+				beforeMapRef.current = beforeMap;
+				afterMap = createMapInstance(afterDiv, imageryVisibleRef, {
+					withResetBoundsControl: true,
+					onResetView: handleResetView,
+				});
+				afterMapRef.current = afterMap;
 
-		// Mock predicted_damage for testing (if API not ready)
-		geojson.features.forEach((feature, i) => {
-			const damageClasses = [
-				"no-damage",
-				"minor-damage",
-				"major-damage",
-				"destroyed",
-				"un-classified",
-			];
-			if (feature.properties) {
-				feature.properties.predicted_damage =
-					damageClasses[i % damageClasses.length]; // loop through classes
-			}
-		});
-
-		// Derive image bounds from the actual polygon extents.
-		// This ensures the raster overlay is anchored to the same
-		// coordinate space as the building polygons.
-		const [minLng, minLat, maxLng, maxLat] = bbox(geojson);
-
-		const bounds: [
-			[number, number],
-			[number, number],
-			[number, number],
-			[number, number],
-		] = [
-			[minLng, maxLat], // top-left
-			[maxLng, maxLat], // top-right
-			[maxLng, minLat], // bottom-right
-			[minLng, minLat], // bottom-left
-		];
-
-		const sw: [number, number] = [minLng, minLat];
-		const ne: [number, number] = [maxLng, maxLat];
-
-		const createMap = (container: HTMLElement) => {
-			const map = new mapboxgl.Map({
-				container,
-				style: "mapbox://styles/mapbox/satellite-v9",
-				renderWorldCopies: false,
-			});
-
-			map.on("style.load", () => {
-				map.setPaintProperty("satellite", "raster-opacity", 0.4);
-			});
-
-			map.on("error", (e) => {
-				console.error("Mapbox error:", e);
-			});
-
-			// Add zoom and compass controls to the top-right
-			map.addControl(new mapboxgl.NavigationControl(), "top-right");
-
-			return map;
-		};
-
-		// Initialize the "before" map
-		const beforeMap = createMap(beforeDiv);
-
-		// Initialize the "after" map
-		const afterMap = createMap(afterDiv);
-
-		/**
-		 * This runs only after BOTH maps finish loading.
-		 * We must wait for load before adding sources/layers.
-		 */
-		const onMapsLoaded = () => {
-			// Add Pre-Disaster Image Layer
-			beforeMap.addSource("pre-image", {
-				type: "image",
-				url: preImage,
-				coordinates: bounds,
-			});
-
-			beforeMap.addLayer({
-				id: "pre-layer",
-				type: "raster",
-				source: "pre-image",
-			});
-
-			// Add Post-Disaster Image Layer
-			afterMap.addSource("post-image", {
-				type: "image",
-				url: postImage,
-				coordinates: bounds,
-			});
-
-			afterMap.addLayer({
-				id: "post-layer",
-				type: "raster",
-				source: "post-image",
-			});
-
-			// Add building overlays to BOTH maps
-			addBuildingLayer(beforeMap, geojson);
-			addBuildingLayer(afterMap, geojson);
-
-			const beforePopup: { current: mapboxgl.Popup | null } = { current: null };
-			const afterPopup: { current: mapboxgl.Popup | null } = { current: null };
-
-			buildingCleanups = [
-				attachBuildingHover(
-					beforeMap,
-					BUILDINGS_SOURCE_ID,
-					BUILDINGS_FILL_LAYER_ID,
-				),
-				attachBuildingHover(
-					afterMap,
-					BUILDINGS_SOURCE_ID,
-					BUILDINGS_FILL_LAYER_ID,
-				),
-				attachBuildingClick(beforeMap, BUILDINGS_FILL_LAYER_ID, beforePopup),
-				attachBuildingClick(afterMap, BUILDINGS_FILL_LAYER_ID, afterPopup),
-			];
-
-			// Enable Swipe Comparison
-			if (containerRef.current) {
-				compareRef.current = new Compare(
-					beforeMap,
-					afterMap,
-					containerRef.current,
+				const { coordinates, sw, ne } = bounds;
+				const preImageUrl = resolveImageUrl(
+					imagePair.properties.pre_image_path,
+				);
+				const postImageUrl = resolveImageUrl(
+					imagePair.properties.post_image_path,
 				);
 
-				// Override the default _getX method to ensure the swipe handle stays within bounds, even if the container is resized or has padding.
-				// This fixes a long-term bug where the slider shifts/teleports when re-sizing the browser. -JH
-				(
-					compareRef.current as Compare & {
-						_mapB: mapboxgl.Map;
-						_getX: (e: MouseEvent | TouchEvent) => number;
+				const _before = beforeMap;
+				const _after = afterMap;
+
+				const onMapsLoaded = () => {
+					if (cancelled) return;
+
+					addInitialSourcesAndLayers({
+						beforeMap: _before,
+						afterMap: _after,
+						preImageUrl,
+						postImageUrl,
+						coordinates,
+						buildings,
+					});
+
+					layersReadyRef.current = true;
+					setBuildingsVisible((current) => {
+						setBuildingVisibility(_before, current);
+						setBuildingVisibility(_after, current);
+						return current;
+					});
+					setImageryVisible((current) => {
+						setImageryVisibility(_before, PRE_IMAGE_LAYER_ID, current);
+						setImageryVisibility(_after, POST_IMAGE_LAYER_ID, current);
+						setSatelliteOpacity(_before, current);
+						setSatelliteOpacity(_after, current);
+						return current;
+					});
+
+					setStatus("ready");
+					bindBuildingInteractions({
+						beforeMap: _before,
+						afterMap: _after,
+						onPopupOpen: openPopup,
+						onPopupPositionUpdate: updatePopupPos,
+						selectedBuildingIdRef,
+					});
+
+					if (containerRef.current) {
+						compareRef.current = createCompareInstance({
+							beforeMap: _before,
+							afterMap: _after,
+							container: containerRef.current,
+						});
+						scheduleCompareIdleRef.current();
 					}
-				)._getX = function (e) {
-					const touch = (e as TouchEvent).touches;
-					const ev = touch ? touch[0] : (e as MouseEvent);
-					const freshBounds = this._mapB.getContainer().getBoundingClientRect();
-					let x = ev.clientX - freshBounds.left;
-					if (x < 0) x = 0;
-					if (x > freshBounds.width) x = freshBounds.width;
-					return x;
+
+					_before.fitBounds([sw, ne], { padding: 0, animate: false });
 				};
-			}
 
-			// Fit map to image bounds
-			beforeMap.fitBounds([sw, ne], {
-				padding: 0,
-				animate: false,
+				waitForMapsLoad(_before, _after).then(onMapsLoaded);
+			})
+			.catch((err: unknown) => {
+				if (cancelled) return;
+				if (err instanceof DOMException && err.name === "AbortError") return;
+				const msg =
+					err instanceof Error
+						? err.message
+						: "Unknown error fetching map data.";
+				setErrorMessage(msg);
+				setStatus("error");
 			});
-		};
 
-		// Wait for both maps to fully load
-		Promise.all([
-			new Promise<void>((resolve) => beforeMap.on("load", () => resolve())),
-			new Promise<void>((resolve) => afterMap.on("load", () => resolve())),
-		]).then(onMapsLoaded);
-
-		// Cleanup on component unmount
 		return () => {
-			for (const cleanup of buildingCleanups) {
-				cleanup();
+			cancelled = true;
+			abortController.abort();
+			if (compareIdleTimerRef.current !== null) {
+				window.clearTimeout(compareIdleTimerRef.current);
+				compareIdleTimerRef.current = null;
 			}
-
+			selectedBuildingIdRef.current = null;
+			boundsRef.current = null;
+			layersReadyRef.current = false;
 			compareRef.current?.remove();
-			beforeMap.remove();
-			afterMap.remove();
+			beforeMap?.remove();
+			afterMap?.remove();
+			beforeMapRef.current = null;
+			afterMapRef.current = null;
 		};
-	}, []);
+		// xbdId is intentionally excluded; scene switches are handled by Effect 2.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [openPopup, updatePopupPos, retryCount, handleResetView]);
+
+	useEffect(() => {
+		const before = beforeMapRef.current;
+		const after = afterMapRef.current;
+		if (!before || !after || !layersReadyRef.current) return;
+
+		let cancelled = false;
+		const abortController = new AbortController();
+		setSceneLoading(true);
+		closePopup();
+
+		fetchMapData(DISASTER_ID, xbdId, { signal: abortController.signal })
+			.then(({ imagePair, buildings, bounds }) => {
+				if (cancelled || !beforeMapRef.current || !afterMapRef.current) return;
+				boundsRef.current = bounds;
+
+				const _before = beforeMapRef.current;
+				const _after = afterMapRef.current;
+				const preImageUrl = resolveImageUrl(
+					imagePair.properties.pre_image_path,
+				);
+				const postImageUrl = resolveImageUrl(
+					imagePair.properties.post_image_path,
+				);
+				const { coordinates, sw, ne } = bounds;
+
+				(_before.getSource("pre-image") as mapboxgl.ImageSource).updateImage({
+					url: preImageUrl,
+					coordinates,
+				});
+				(_after.getSource("post-image") as mapboxgl.ImageSource).updateImage({
+					url: postImageUrl,
+					coordinates,
+				});
+
+				selectedBuildingIdRef.current = null;
+				popupDataRef.current = null;
+				setPopupData(null);
+				setPopupPos(null);
+
+				const beforeSource = _before.getSource(
+					BUILDINGS_SOURCE_ID,
+				) as mapboxgl.GeoJSONSource;
+				const afterSource = _after.getSource(
+					BUILDINGS_SOURCE_ID,
+				) as mapboxgl.GeoJSONSource;
+
+				beforeSource.setData({ type: "FeatureCollection", features: [] });
+				afterSource.setData({ type: "FeatureCollection", features: [] });
+				beforeSource.setData(buildings);
+				afterSource.setData(buildings);
+
+				_before.fitBounds([sw, ne], { padding: 0, animate: true });
+				setErrorMessage(null);
+				setStatus("ready");
+				setSceneLoading(false);
+			})
+			.catch((err: unknown) => {
+				if (cancelled) return;
+				if (err instanceof DOMException && err.name === "AbortError") return;
+				const msg =
+					err instanceof Error ? err.message : "Failed to load scene.";
+				setErrorMessage(msg);
+				setStatus("error");
+				setSceneLoading(false);
+			});
+
+		return () => {
+			cancelled = true;
+			abortController.abort();
+		};
+	}, [xbdId, closePopup]);
+
+	useEffect(() => {
+		if (!imageryVisible) {
+			if (compareIdleTimerRef.current !== null) {
+				window.clearTimeout(compareIdleTimerRef.current);
+				compareIdleTimerRef.current = null;
+			}
+			setCompareIdle(false);
+			return;
+		}
+
+		scheduleCompareIdle();
+		const container = containerRef.current;
+		if (!container) return;
+
+		const handleActivity = () => {
+			scheduleCompareIdle();
+		};
+
+		container.addEventListener("pointerdown", handleActivity);
+		container.addEventListener("pointermove", handleActivity);
+		container.addEventListener("touchstart", handleActivity);
+
+		return () => {
+			container.removeEventListener("pointerdown", handleActivity);
+			container.removeEventListener("pointermove", handleActivity);
+			container.removeEventListener("touchstart", handleActivity);
+		};
+	}, [imageryVisible, scheduleCompareIdle]);
 
 	return (
 		<div
-			ref={containerRef}
-			style={{
-				position: "relative",
-				width: "100%",
-				height: "600px",
-				borderRadius: "16px",
-				overflow: "hidden",
-			}}
-		/>
+			className={`map-wrapper${compareIdle ? " map-wrapper--compare-idle" : ""}`}
+			data-imagery-visible={imageryVisible ? "true" : "false"}
+			data-compare-idle={compareIdle ? "true" : "false"}
+		>
+			<div ref={containerRef} className="map-container" />
+
+			<MapControls
+				disasterId={DISASTER_ID}
+				selectedXbdId={xbdId}
+				onXbdChange={setXbdId}
+				sceneDisabled={status !== "ready"}
+				sceneLoading={sceneLoading}
+				imageryVisible={imageryVisible}
+				onImageryToggle={handleImageryToggle}
+				buildingsVisible={buildingsVisible}
+				onBuildingsToggle={handleToggle}
+				visible={status === "ready"}
+			/>
+
+			<MapLoadingOverlay {...loadingOverlay} />
+
+			{status === "error" && errorMessage && (
+				<div
+					className="map-status-overlay map-status-overlay--error"
+					role="alert"
+				>
+					<p>
+						<strong>Failed to load map.</strong>
+					</p>
+					<p>{errorMessage}</p>
+					<button
+						type="button"
+						onClick={() => {
+							setStatus("loading");
+							setErrorMessage(null);
+							setRetryCount((c) => c + 1);
+						}}
+					>
+						Retry
+					</button>
+				</div>
+			)}
+
+			{popupData && popupPos && (
+				<div
+					className="popup-overlay"
+					style={{ left: popupPos.x, top: popupPos.y }}
+				>
+					<BuildingPopup
+						uid={popupData.uid}
+						predictedDamage={popupData.predictedDamage}
+						predictedDamageColor={popupData.predictedDamageColor}
+						actualDamage={popupData.actualDamage}
+						actualDamageColor={popupData.actualDamageColor}
+						onClose={closePopup}
+					/>
+				</div>
+			)}
+		</div>
 	);
 }

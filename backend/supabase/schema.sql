@@ -41,6 +41,7 @@ CREATE TABLE public.image_pairs (
   geo_origin_lat double precision,
   geo_pixel_width double precision,
   geo_pixel_height double precision,
+  geo_refine_affine jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (disaster_id, xbd_id)
 );
@@ -52,6 +53,7 @@ CREATE TABLE public.buildings (
   actual_damage damage_level NOT NULL DEFAULT 'un-classified',
   predicted_damage damage_level,
   is_correct boolean,
+  address text,
   geom geometry(Polygon, 4326) NOT NULL,
   pixel_coords jsonb,
   created_at timestamptz NOT NULL DEFAULT now()

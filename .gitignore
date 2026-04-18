@@ -2,6 +2,7 @@
 .idea/
 .vscode/
 .cursor/
+data/
 
 # macOS
 .DS_Store
@@ -21,10 +22,19 @@ node_modules/
 
 # Build tools
 .vite/
+dist/
+*.tsbuildinfo
 
 # Python
 *.pyc
+.venv/
 
 # Project specific
 /vlm/checkpoints
 /vlm/imagery
+
+# Generated frontend config outputs
+frontend/tailwind.config.d.ts
+frontend/tailwind.config.js
+frontend/vite.config.d.ts
+frontend/vite.config.js
