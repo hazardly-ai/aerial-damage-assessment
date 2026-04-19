@@ -32,8 +32,21 @@ def load_buildings_by_uid(json_path):
         }
     return buildings
 
+
+def clamp_crop_bounds(polygon, img_w, img_h):
+    minx, miny, maxx, maxy = map(int, polygon.bounds)
+    minx = max(0, minx)
+    miny = max(0, miny)
+    maxx = min(img_w, maxx)
+    maxy = min(img_h, maxy)
+    return minx, miny, maxx, maxy
+
+
 # ========= MAIN LOOP =========
 processed = 0
+total_written = 0
+total_skip_unclassified = 0
+total_skip_small = 0
 
 for file in sorted(os.listdir(LABEL_DIR)):
     if not file.endswith("_post_disaster.json"):
@@ -61,24 +74,29 @@ for file in sorted(os.listdir(LABEL_DIR)):
     common_uids = sorted(set(pre_buildings) & set(post_buildings))
 
     n_written = 0
+    n_skip_unclassified = 0
+    n_skip_small = 0
     for uid in common_uids:
+        pre_poly = pre_buildings[uid]["polygon"]
         post_poly = post_buildings[uid]["polygon"]
         damage = post_buildings[uid]["damage"]
         if str(damage).strip() == "un-classified":
+            n_skip_unclassified += 1
             continue
 
-        minx, miny, maxx, maxy = map(int, post_poly.bounds)
+        pre_bounds = clamp_crop_bounds(pre_poly, pre_img.width, pre_img.height)
+        post_bounds = clamp_crop_bounds(post_poly, post_img.width, post_img.height)
 
-        minx = max(0, minx)
-        miny = max(0, miny)
-        maxx = min(post_img.width, maxx)
-        maxy = min(post_img.height, maxy)
-
-        if maxx - minx < 5 or maxy - miny < 5:
+        pre_w = pre_bounds[2] - pre_bounds[0]
+        pre_h = pre_bounds[3] - pre_bounds[1]
+        post_w = post_bounds[2] - post_bounds[0]
+        post_h = post_bounds[3] - post_bounds[1]
+        if min(pre_w, pre_h, post_w, post_h) < 5:
+            n_skip_small += 1
             continue
 
-        pre_crop = pre_img.crop((minx, miny, maxx, maxy))
-        post_crop = post_img.crop((minx, miny, maxx, maxy))
+        pre_crop = pre_img.crop(pre_bounds)
+        post_crop = post_img.crop(post_bounds)
 
         pair_id = f"{base}_{uid}"
 
@@ -86,8 +104,20 @@ for file in sorted(os.listdir(LABEL_DIR)):
         post_crop.save(os.path.join(OUT_DIR, f"{pair_id}_post_{damage}.png"))
         n_written += 1
 
-    print(f"{base}: {n_written} paired buildings")
+    total_written += n_written
+    total_skip_unclassified += n_skip_unclassified
+    total_skip_small += n_skip_small
+
+    print(
+        f"{base}: {n_written} paired | "
+        f"skipped un-classified={n_skip_unclassified} | skipped <5px={n_skip_small}"
+    )
     processed += 1
 
     if processed >= MAX_IMAGES:
         break
+
+print(
+    f"TOTAL: {total_written} paired | "
+    f"skipped un-classified={total_skip_unclassified} | skipped <5px={total_skip_small}"
+)
