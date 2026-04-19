@@ -4,7 +4,7 @@ import json
 import os
 import random
 from collections import Counter
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Optional
 
 import open_clip
 import torch
@@ -36,22 +36,35 @@ def set_seed(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
-def split_disasters(
-    disasters: List[str],
-    val_count: int,
-    test_count: int,
-    seed: int,
-) -> Tuple[List[str], List[str], List[str]]:
-    if val_count + test_count >= len(disasters):
-        raise ValueError("val_count + test_count must be less than number of disasters.")
+def _validate_split_blocks(split_cfg: Dict[str, Any]) -> None:
+    errors: List[str] = []
+    for key in ("train", "val", "test"):
+        block = split_cfg.get(key)
+        if not isinstance(block, dict):
+            errors.append(
+                f'split.{key} must be a dict with "paired_crops_root" and optional "disasters".'
+            )
+        elif "paired_crops_root" not in block:
+            errors.append(f"split.{key}.paired_crops_root is required.")
+    if errors:
+        raise ValueError("Invalid split configuration: " + " ".join(errors))
 
-    rng = random.Random(seed)
-    shuffled = disasters[:]
-    rng.shuffle(shuffled)
-    val_disasters = sorted(shuffled[:val_count])
-    test_disasters = sorted(shuffled[val_count : val_count + test_count])
-    train_disasters = sorted(shuffled[val_count + test_count :])
-    return train_disasters, val_disasters, test_disasters
+
+def _discover_from_split_block(
+    block: Dict[str, Any],
+    max_pairs: Optional[int],
+    subsample_seed: int,
+) -> List[Any]:
+    root = block["paired_crops_root"]
+    disasters = block.get("disasters")
+    include_disasters = disasters if disasters else None
+    return discover_paired_samples(
+        paired_crops_root=root,
+        label_map=DEFAULT_LABEL_MAP,
+        include_disasters=include_disasters,
+        max_pairs_per_disaster=int(max_pairs) if max_pairs is not None else None,
+        subsample_seed=subsample_seed,
+    )
 
 
 def build_loader(samples, transform, batch_size: int, shuffle: bool, num_workers: int) -> DataLoader:
@@ -122,61 +135,41 @@ def main():
     os.makedirs(cfg["output_dir"], exist_ok=True)
     os.makedirs(cfg["checkpoint_dir"], exist_ok=True)
 
-    train_include_disasters = cfg["split"].get("train_include_disasters", [])
-    val_disasters_cfg = cfg["split"].get("val_disasters", [])
-    test_disasters_cfg = cfg["split"].get("test_disasters", [])
+    split_cfg = cfg["split"]
+    _validate_split_blocks(split_cfg)
+    max_pairs = split_cfg.get("max_pairs_per_disaster")
+    subsample_seed = int(cfg["seed"])
 
-    max_pairs = cfg["split"].get("max_pairs_per_disaster")
-    all_samples = discover_paired_samples(
-        paired_crops_root=cfg["paired_crops_root"],
-        label_map=DEFAULT_LABEL_MAP,
-        include_disasters=train_include_disasters if train_include_disasters else None,
-        max_pairs_per_disaster=int(max_pairs) if max_pairs is not None else None,
-        subsample_seed=int(cfg["seed"]),
-    )
-    if not all_samples:
-        raise ValueError("No paired samples found. Check paired_crops_root and file naming.")
-
-    disasters = sorted({s.disaster for s in all_samples})
-    if val_disasters_cfg or test_disasters_cfg:
-        val_disasters = sorted(val_disasters_cfg)
-        test_disasters = sorted(test_disasters_cfg)
-        val_set = set(val_disasters)
-        test_set = set(test_disasters)
-        overlap = val_set & test_set
-        if overlap:
-            raise ValueError(f"val_disasters and test_disasters overlap: {sorted(overlap)}")
-
-        known = set(disasters)
-        unknown_val = sorted(val_set - known)
-        unknown_test = sorted(test_set - known)
-        if unknown_val or unknown_test:
-            raise ValueError(
-                f"Unknown disasters in split config. val unknown={unknown_val}, test unknown={unknown_test}"
-            )
-        train_disasters = sorted(known - val_set - test_set)
-    else:
-        train_disasters, val_disasters, test_disasters = split_disasters(
-            disasters=disasters,
-            val_count=int(cfg["split"]["val_disaster_count"]),
-            test_count=int(cfg["split"]["test_disaster_count"]),
-            seed=int(cfg["seed"]),
+    train_samples = _discover_from_split_block(split_cfg["train"], max_pairs, subsample_seed)
+    val_samples = _discover_from_split_block(split_cfg["val"], max_pairs, subsample_seed)
+    test_samples = _discover_from_split_block(split_cfg["test"], max_pairs, subsample_seed)
+    if not train_samples:
+        raise ValueError(
+            "No paired samples found for train split. Check split.train.paired_crops_root, "
+            "split.train.disasters, and file naming."
         )
-
-    if not train_disasters:
-        raise ValueError("No disasters left for training after applying split settings.")
-
-    train_samples = [s for s in all_samples if s.disaster in train_disasters]
-    val_samples = [s for s in all_samples if s.disaster in val_disasters]
-    test_samples = [s for s in all_samples if s.disaster in test_disasters]
-
+    train_disasters = sorted({s.disaster for s in train_samples})
+    val_disasters = sorted({s.disaster for s in val_samples})
+    test_disasters = sorted({s.disaster for s in test_samples})
     split_manifest = {
-        "train_disasters": train_disasters,
-        "val_disasters": val_disasters,
-        "test_disasters": test_disasters,
-        "train_count": len(train_samples),
-        "val_count": len(val_samples),
-        "test_count": len(test_samples),
+        "train": {
+            "paired_crops_root": split_cfg["train"]["paired_crops_root"],
+            "disasters": split_cfg["train"].get("disasters"),
+            "disasters_in_data": train_disasters,
+            "count": len(train_samples),
+        },
+        "val": {
+            "paired_crops_root": split_cfg["val"]["paired_crops_root"],
+            "disasters": split_cfg["val"].get("disasters"),
+            "disasters_in_data": val_disasters,
+            "count": len(val_samples),
+        },
+        "test": {
+            "paired_crops_root": split_cfg["test"]["paired_crops_root"],
+            "disasters": split_cfg["test"].get("disasters"),
+            "disasters_in_data": test_disasters,
+            "count": len(test_samples),
+        },
         "max_pairs_per_disaster": max_pairs,
     }
     with open(os.path.join(cfg["output_dir"], "split_manifest.json"), "w", encoding="utf-8") as f:

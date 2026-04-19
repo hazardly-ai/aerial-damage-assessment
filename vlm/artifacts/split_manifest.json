@@ -1,13 +1,43 @@
 {
-	"train_disasters": [
-		"hurricane-florence",
-		"hurricane-michael",
-		"midwest-flooding"
-	],
-	"val_disasters": ["hurricane-matthew"],
-	"test_disasters": ["hurricane-harvey"],
-	"train_count": 3000,
-	"val_count": 1000,
-	"test_count": 1000,
-	"max_pairs_per_disaster": 1000
+	"train": {
+		"paired_crops_root": "vlm/imagery/train/paired_crops",
+		"disasters": [],
+		"disasters_in_data": [
+			"guatemala-volcano",
+			"hurricane-florence",
+			"hurricane-harvey",
+			"hurricane-matthew",
+			"hurricane-michael",
+			"mexico-earthquake",
+			"midwest-flooding",
+			"palu-tsunami",
+			"santa-rosa-wildfire",
+			"socal-fire"
+		],
+		"count": 1000
+	},
+	"val": {
+		"paired_crops_root": "vlm/imagery/hold/paired_crops",
+		"disasters": [],
+		"disasters_in_data": [
+			"guatemala-volcano",
+			"hurricane-florence",
+			"hurricane-harvey",
+			"hurricane-matthew",
+			"hurricane-michael",
+			"mexico-earthquake",
+			"midwest-flooding",
+			"palu-tsunami",
+			"santa-rosa-wildfire",
+			"socal-fire"
+		],
+		"count": 1000
+	},
+	"test": {
+		"paired_crops_root": "vlm/imagery/test/paired_crops",
+		"disasters": ["hurricane-harvey"],
+		"disasters_in_data": ["hurricane-harvey"],
+		"count": 100
+	},
+	"max_pairs_per_disaster": 100
 }

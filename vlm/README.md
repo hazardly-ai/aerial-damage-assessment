@@ -4,9 +4,9 @@ This folder supports **supervised training** and **inference** using a trained R
 
 ## Data format
 
-Training expects disaster folders under:
+Training expects disaster folders under each split’s `paired_crops_root`:
 
-`imagery/paired_crops/{disaster_name}`
+`{paired_crops_root}/{disaster_name}`
 
 Each building pair should follow:
 - `{pair_id}_pre.png`
@@ -26,30 +26,21 @@ Edit config in `vlm/configs/train_damage.yaml`, then run:
 python vlm/train_damage_classifier.py --config vlm/configs/train_damage.yaml
 ```
 
-To train only specific disasters, set:
+Configure train, validation, and test data separately. Each split has its own `paired_crops_root` (they may all point at the same folder) and optional `disasters` list (omit or `[]` to use every disaster subfolder under that root):
 
 ```yaml
 split:
-  train_include_disasters:
-    - hurricane-harvey
-    - hurricane-michael
+  max_pairs_per_disaster: 1000
+  train:
+    paired_crops_root: vlm/imagery/paired_crops
+    disasters: [hurricane-harvey, hurricane-michael]
+  val:
+    paired_crops_root: vlm/imagery/paired_crops_val
+    disasters: [santa-rosa-wildfire]
+  test:
+    paired_crops_root: vlm/imagery/paired_crops_test
+    disasters: [hurricane-michael]
 ```
-
-You can also explicitly pin val/test disasters:
-
-```yaml
-split:
-  train_include_disasters:
-    - hurricane-harvey
-    - hurricane-michael
-    - santa-rosa-wildfire
-  val_disasters:
-    - santa-rosa-wildfire
-  test_disasters:
-    - hurricane-michael
-```
-
-When `val_disasters` or `test_disasters` are set, random split counts are ignored.
 
 Outputs:
 - split manifest: `vlm/artifacts/split_manifest.json`
