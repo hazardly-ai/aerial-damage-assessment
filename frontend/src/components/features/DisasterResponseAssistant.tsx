@@ -89,7 +89,7 @@ export default function DisasterResponseAssistant() {
 	return (
 		<div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-3">
 			<div
-				className={`chat-panel-container w-[380px] h-[600px] bg-card text-card-foreground border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden ${
+				className={`chat-panel-container w-[min(380px,calc(100vw-3rem))] h-[min(calc(100dvh-7.5rem),900px)] bg-card text-card-foreground border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden ${
 					isOpen ? "chat-panel-open" : "chat-panel-closed"
 				}`}
 			>
