@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant";
 import Container from "@/components/layout/Container";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
@@ -168,7 +169,7 @@ export default function VlmEvaluationPage() {
 					)}
 				</Container>
 			</main>
-
+			<DisasterResponseAssistant />
 			<Footer />
 		</div>
 	);
