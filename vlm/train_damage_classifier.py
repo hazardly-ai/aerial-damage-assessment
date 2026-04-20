@@ -50,6 +50,16 @@ def _validate_split_blocks(split_cfg: Dict[str, Any]) -> None:
         raise ValueError("Invalid split configuration: " + " ".join(errors))
 
 
+def _resolve_max_pairs_per_disaster(split_cfg: Dict[str, Any], split_key: str) -> Optional[int]:
+    """Per-split max_pairs_per_disaster overrides split.max_pairs_per_disaster when present."""
+    block = split_cfg[split_key]
+    if "max_pairs_per_disaster" in block:
+        v = block["max_pairs_per_disaster"]
+        return int(v) if v is not None else None
+    fallback = split_cfg.get("max_pairs_per_disaster")
+    return int(fallback) if fallback is not None else None
+
+
 def _discover_from_split_block(
     block: Dict[str, Any],
     max_pairs: Optional[int],
@@ -137,12 +147,14 @@ def main():
 
     split_cfg = cfg["split"]
     _validate_split_blocks(split_cfg)
-    max_pairs = split_cfg.get("max_pairs_per_disaster")
+    train_max_pairs = _resolve_max_pairs_per_disaster(split_cfg, "train")
+    val_max_pairs = _resolve_max_pairs_per_disaster(split_cfg, "val")
+    test_max_pairs = _resolve_max_pairs_per_disaster(split_cfg, "test")
     subsample_seed = int(cfg["seed"])
 
-    train_samples = _discover_from_split_block(split_cfg["train"], max_pairs, subsample_seed)
-    val_samples = _discover_from_split_block(split_cfg["val"], max_pairs, subsample_seed)
-    test_samples = _discover_from_split_block(split_cfg["test"], max_pairs, subsample_seed)
+    train_samples = _discover_from_split_block(split_cfg["train"], train_max_pairs, subsample_seed)
+    val_samples = _discover_from_split_block(split_cfg["val"], val_max_pairs, subsample_seed)
+    test_samples = _discover_from_split_block(split_cfg["test"], test_max_pairs, subsample_seed)
     if not train_samples:
         raise ValueError(
             "No paired samples found for train split. Check split.train.paired_crops_root, "
@@ -155,22 +167,24 @@ def main():
         "train": {
             "paired_crops_root": split_cfg["train"]["paired_crops_root"],
             "disasters": split_cfg["train"].get("disasters"),
+            "max_pairs_per_disaster": train_max_pairs,
             "disasters_in_data": train_disasters,
             "count": len(train_samples),
         },
         "val": {
             "paired_crops_root": split_cfg["val"]["paired_crops_root"],
             "disasters": split_cfg["val"].get("disasters"),
+            "max_pairs_per_disaster": val_max_pairs,
             "disasters_in_data": val_disasters,
             "count": len(val_samples),
         },
         "test": {
             "paired_crops_root": split_cfg["test"]["paired_crops_root"],
             "disasters": split_cfg["test"].get("disasters"),
+            "max_pairs_per_disaster": test_max_pairs,
             "disasters_in_data": test_disasters,
             "count": len(test_samples),
         },
-        "max_pairs_per_disaster": max_pairs,
     }
     with open(os.path.join(cfg["output_dir"], "split_manifest.json"), "w", encoding="utf-8") as f:
         json.dump(split_manifest, f, indent=2)

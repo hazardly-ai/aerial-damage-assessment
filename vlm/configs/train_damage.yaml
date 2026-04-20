@@ -6,17 +6,21 @@ checkpoint_dir: vlm/checkpoints
 split:
   # Per-split data roots. Under each root: <disaster_name>/*.png (paired pre/post files).
   # Optional disasters: whitelist of subfolder names; omit or [] for all subfolders under that root.
-  max_pairs_per_disaster: 100
+  # max_pairs_per_disaster: optional default cap per disaster when a split omits its own.
+  max_pairs_per_disaster: 500
 
   train:
     paired_crops_root: vlm/imagery/train/paired_crops
-    disasters: []
+    disasters: [hurricane-harvey]
+    max_pairs_per_disaster: 2500
   val:
     paired_crops_root: vlm/imagery/hold/paired_crops
-    disasters: []
+    disasters: [hurricane-harvey]
+    max_pairs_per_disaster: 500
   test:
     paired_crops_root: vlm/imagery/test/paired_crops
     disasters: [hurricane-harvey]
+    max_pairs_per_disaster: 500
 
 model:
   name: ViT-L-14
@@ -26,7 +30,7 @@ model:
   head_hidden_dim: 1024
 
 training:
-  epochs: 5
+  epochs: 10
   batch_size: 100
   num_workers: 8
   lr: 0.001
