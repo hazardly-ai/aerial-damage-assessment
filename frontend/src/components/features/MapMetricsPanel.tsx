@@ -117,10 +117,10 @@ export default function MapMetricsPanel({
 						</span>
 					</div>
 				</div>
-				<div className="flex h-[calc(100%-24px)] flex-col justify-evenly gap-2">
+				<div className="space-y-3">
 					{damageEntries.map((row) => {
 						return (
-							<div key={row.label} className="flex-1 space-y-1">
+							<div key={row.label} className="space-y-1">
 								<div className="flex items-center justify-between text-xs">
 									<span className="font-medium text-foreground">
 										{formatDamageLabel(row.label)}
