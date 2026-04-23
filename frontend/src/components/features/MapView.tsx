@@ -1,6 +1,6 @@
 import mapboxgl from "mapbox-gl";
 import type Compare from "mapbox-gl-compare";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 
@@ -294,11 +294,15 @@ export default function MapView({
 
 	const xbdIdRef = useRef(xbdId);
 	xbdIdRef.current = xbdId;
+	const normalizedInitialBuildingUid = useMemo(
+		() => initialBuildingUid?.trim() || undefined,
+		[initialBuildingUid],
+	);
 
 	useEffect(() => {
 		if (!containerRef.current) return;
 
-		const buildingUidForInitialSelect = initialBuildingUid?.trim() || undefined;
+		const buildingUidForInitialSelect = normalizedInitialBuildingUid;
 
 		let cancelled = false;
 		const abortController = new AbortController();
@@ -463,6 +467,8 @@ export default function MapView({
 		onSceneError,
 		onMetricsChange,
 		disasterId,
+		normalizedInitialBuildingUid,
+		onInitialBuildingHandled,
 	]);
 
 	useEffect(() => {

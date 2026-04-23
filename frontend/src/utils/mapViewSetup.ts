@@ -108,13 +108,8 @@ export function selectBuildingByUid(params: {
 	selectedBuildingIdRef: MutableRefObject<string | number | null>;
 	onPopupOpen: (data: PopupData) => void;
 }): boolean {
-	const {
-		beforeMap,
-		afterMap,
-		uid,
-		selectedBuildingIdRef,
-		onPopupOpen,
-	} = params;
+	const { beforeMap, afterMap, uid, selectedBuildingIdRef, onPopupOpen } =
+		params;
 
 	const features = beforeMap.querySourceFeatures(BUILDINGS_SOURCE_ID, {
 		filter: ["==", ["get", "uid"], uid],
@@ -123,7 +118,8 @@ export function selectBuildingByUid(params: {
 	if (!feature?.geometry) return false;
 
 	let ring: number[][] | undefined;
-	if (feature.geometry.type === "Polygon") ring = feature.geometry.coordinates[0];
+	if (feature.geometry.type === "Polygon")
+		ring = feature.geometry.coordinates[0];
 	else if (feature.geometry.type === "MultiPolygon") {
 		ring = feature.geometry.coordinates[0]?.[0];
 	}
