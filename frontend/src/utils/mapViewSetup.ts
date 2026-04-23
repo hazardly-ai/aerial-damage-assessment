@@ -37,6 +37,112 @@ export interface PopupData {
 export const asString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.length > 0 ? value : undefined;
 
+function applyBuildingFeatureSelection(params: {
+	beforeMap: mapboxgl.Map;
+	afterMap: mapboxgl.Map;
+	feature: Feature;
+	lngLat: mapboxgl.LngLat;
+	selectedBuildingIdRef: MutableRefObject<string | number | null>;
+	onPopupOpen: (data: PopupData) => void;
+}): boolean {
+	const {
+		beforeMap,
+		afterMap,
+		feature,
+		lngLat,
+		selectedBuildingIdRef,
+		onPopupOpen,
+	} = params;
+
+	const uid = asString(feature.properties?.uid);
+	if (!uid) return false;
+	if (typeof feature.id !== "string" && typeof feature.id !== "number") {
+		return false;
+	}
+
+	const featureId = feature.id;
+	const prev = selectedBuildingIdRef.current;
+	if (prev !== null && prev !== featureId) {
+		beforeMap.setFeatureState(
+			{ source: BUILDINGS_SOURCE_ID, id: prev },
+			{ selected: false },
+		);
+		afterMap.setFeatureState(
+			{ source: BUILDINGS_SOURCE_ID, id: prev },
+			{ selected: false },
+		);
+	}
+
+	selectedBuildingIdRef.current = featureId;
+	beforeMap.setFeatureState(
+		{ source: BUILDINGS_SOURCE_ID, id: featureId },
+		{ selected: true },
+	);
+	afterMap.setFeatureState(
+		{ source: BUILDINGS_SOURCE_ID, id: featureId },
+		{ selected: true },
+	);
+
+	const address = asString(feature.properties?.address);
+	const predictedDamage = asString(feature.properties?.predicted_damage);
+	const predictedDamageColor = getBuildingDamageColor(predictedDamage);
+	const actualDamage = asString(feature.properties?.actual_damage);
+	const actualDamageColor = getBuildingDamageColor(actualDamage);
+	onPopupOpen({
+		uid,
+		address,
+		predictedDamage,
+		predictedDamageColor,
+		actualDamage,
+		actualDamageColor,
+		lngLat,
+	});
+	return true;
+}
+
+/** Select by `properties.uid` and open the popup (uses ring mean for anchor lngLat). */
+export function selectBuildingByUid(params: {
+	beforeMap: mapboxgl.Map;
+	afterMap: mapboxgl.Map;
+	uid: string;
+	selectedBuildingIdRef: MutableRefObject<string | number | null>;
+	onPopupOpen: (data: PopupData) => void;
+}): boolean {
+	const { beforeMap, afterMap, uid, selectedBuildingIdRef, onPopupOpen } =
+		params;
+
+	const features = beforeMap.querySourceFeatures(BUILDINGS_SOURCE_ID, {
+		filter: ["==", ["get", "uid"], uid],
+	});
+	const feature = features[0] as Feature | undefined;
+	if (!feature?.geometry) return false;
+
+	let ring: number[][] | undefined;
+	if (feature.geometry.type === "Polygon")
+		ring = feature.geometry.coordinates[0];
+	else if (feature.geometry.type === "MultiPolygon") {
+		ring = feature.geometry.coordinates[0]?.[0];
+	}
+	if (!ring?.length) return false;
+
+	let lng = 0;
+	let lat = 0;
+	for (const c of ring) {
+		lng += c[0];
+		lat += c[1];
+	}
+	const lngLat = new mapboxgl.LngLat(lng / ring.length, lat / ring.length);
+
+	return applyBuildingFeatureSelection({
+		beforeMap,
+		afterMap,
+		feature,
+		lngLat,
+		selectedBuildingIdRef,
+		onPopupOpen,
+	});
+}
+
 export const setBuildingVisibility = (map: mapboxgl.Map, visible: boolean) => {
 	const visibility = visible ? "visible" : "none";
 	map.setLayoutProperty(BUILDINGS_FILL_LAYER_ID, "visibility", visibility);
@@ -275,45 +381,13 @@ export function bindBuildingInteractions(params: {
 			return;
 		}
 
-		const uid = asString(feature.properties?.uid);
-		if (!uid) return;
-
-		const featureId = feature.id;
-		const prev = selectedBuildingIdRef.current;
-		if (prev !== null && prev !== featureId) {
-			beforeMap.setFeatureState(
-				{ source: BUILDINGS_SOURCE_ID, id: prev },
-				{ selected: false },
-			);
-			afterMap.setFeatureState(
-				{ source: BUILDINGS_SOURCE_ID, id: prev },
-				{ selected: false },
-			);
-		}
-
-		selectedBuildingIdRef.current = featureId;
-		beforeMap.setFeatureState(
-			{ source: BUILDINGS_SOURCE_ID, id: featureId },
-			{ selected: true },
-		);
-		afterMap.setFeatureState(
-			{ source: BUILDINGS_SOURCE_ID, id: featureId },
-			{ selected: true },
-		);
-
-		const address = asString(feature.properties?.address);
-		const predictedDamage = asString(feature.properties?.predicted_damage);
-		const predictedDamageColor = getBuildingDamageColor(predictedDamage);
-		const actualDamage = asString(feature.properties?.actual_damage);
-		const actualDamageColor = getBuildingDamageColor(actualDamage);
-		onPopupOpen({
-			uid,
-			address,
-			predictedDamage,
-			predictedDamageColor,
-			actualDamage,
-			actualDamageColor,
+		applyBuildingFeatureSelection({
+			beforeMap,
+			afterMap,
+			feature,
 			lngLat: e.lngLat,
+			selectedBuildingIdRef,
+			onPopupOpen,
 		});
 	};
 

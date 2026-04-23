@@ -22,13 +22,13 @@ export default function DisasterResponseAssistant() {
 	};
 
 	const [responseLog, setResponseLog] = useState<ResponseMessage[]>(() => {
-		const saved = localStorage.getItem("chatHistory");
+		const saved = sessionStorage.getItem("chatHistory");
 		return saved ? JSON.parse(saved) : [initialMessage];
 	});
 
-	// PERSISTENCE: Hydrate open state from localStorage
+	// Persist only for the current browser tab/session.
 	const [isOpen, setIsOpen] = useState(() => {
-		return localStorage.getItem("chatOpen") === "true";
+		return sessionStorage.getItem("chatOpen") === "true";
 	});
 
 	const [currentQuery, setCurrentQuery] = useState("");
@@ -39,13 +39,13 @@ export default function DisasterResponseAssistant() {
 	}, []);
 
 	useEffect(() => {
-		localStorage.setItem("chatHistory", JSON.stringify(responseLog));
-		localStorage.setItem("chatOpen", isOpen.toString());
+		sessionStorage.setItem("chatHistory", JSON.stringify(responseLog));
+		sessionStorage.setItem("chatOpen", isOpen.toString());
 	}, [responseLog, isOpen]);
 
 	const clearChat = () => {
 		setResponseLog([initialMessage]);
-		localStorage.removeItem("chatHistory");
+		sessionStorage.removeItem("chatHistory");
 	};
 
 	const handleQuery = async () => {
@@ -87,9 +87,9 @@ export default function DisasterResponseAssistant() {
 	};
 
 	return (
-		<div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-3">
+		<div className="pointer-events-none fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-3">
 			<div
-				className={`chat-panel-container w-[min(360px,calc(100vw-3rem))] h-[min(calc(100dvh-12rem),700px)] bg-card text-card-foreground border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden ${
+				className={`chat-panel-container pointer-events-auto w-[min(360px,calc(100vw-3rem))] h-[min(calc(100dvh-12rem),700px)] bg-card text-card-foreground border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden ${
 					isOpen ? "chat-panel-open" : "chat-panel-closed"
 				}`}
 			>
@@ -165,7 +165,7 @@ export default function DisasterResponseAssistant() {
 			<button
 				type="button"
 				onClick={() => setIsOpen((prev) => !prev)}
-				className="relative flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-br from-primary to-indigo-500 text-white shadow-xl hover:scale-105 active:scale-95 transition-all"
+				className="pointer-events-auto relative flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-br from-primary to-indigo-500 text-white shadow-xl hover:scale-105 active:scale-95 transition-all"
 			>
 				{isOpen ? (
 					<X className="h-5 w-5" />

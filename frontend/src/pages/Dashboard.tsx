@@ -10,6 +10,16 @@ import Item from "@/components/ui/Item";
 import Pagination from "@/components/ui/Pagination";
 import { SpinnerEmpty } from "@/components/ui/SpinnerEmpty";
 import {
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectLabel,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import {
 	Tooltip,
 	TooltipContent,
 	TooltipProvider,
@@ -24,7 +34,6 @@ import {
 	fetchBuildingsForDisaster,
 	fetchDisasters,
 	fetchImagePairs,
-	fetchPaginatedBuildingsForDisaster,
 	type ImagePairFeature,
 	resolveImageUrl,
 } from "@/utils/hazardlyApi";
@@ -172,9 +181,9 @@ export default function Dashboard() {
 	const [loadingStats, setLoadingStats] = useState(true);
 	const [loadingBuildings, setLoadingBuildings] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [supportsPagedEndpoint, setSupportsPagedEndpoint] = useState(true);
 	const [activeSection, setActiveSection] = useState<ActiveSection>("overview");
 	const [activeDamageFilter, setActiveDamageFilter] = useState<string>("all");
+	const [showCorrectOnly, setShowCorrectOnly] = useState(false);
 	const [selectedDisasterId, setSelectedDisasterId] = useState<number | null>(
 		null,
 	);
@@ -361,49 +370,9 @@ export default function Dashboard() {
 
 				const pairs = await ensureImagePairs(selectedDisasterId);
 
-				if (supportsPagedEndpoint) {
-					try {
-						const payload = await fetchPaginatedBuildingsForDisaster(
-							selectedDisasterId,
-							{
-								page,
-								pageSize: PAGE_SIZE,
-								damage: activeDamageFilter,
-							},
-						);
-
-						setRows(
-							payload.items.map((item) => {
-								const actual = normalizeDamage(item.actual_damage);
-								const predicted =
-									item.predicted_damage == null
-										? null
-										: normalizeDamage(item.predicted_damage);
-								return {
-									...item,
-									disaster_name: selectedDisasterName ?? "Unknown",
-									actual_damage: actual,
-									predicted_damage: predicted,
-									is_correct: predicted === null ? null : actual === predicted,
-								};
-							}),
-						);
-
-						setTotalPages(payload.total_pages);
-						setTotalItems(payload.total_items);
-						return;
-					} catch (err) {
-						if (err instanceof ApiError && err.status === 404) {
-							setSupportsPagedEndpoint(false);
-						} else {
-							throw err;
-						}
-					}
-				}
-
 				const features = await ensureAllBuildings(selectedDisasterId);
 
-				const filtered =
+				const damageFiltered =
 					activeDamageFilter === "all"
 						? features
 						: features.filter(
@@ -412,7 +381,38 @@ export default function Dashboard() {
 									activeDamageFilter,
 							);
 
-				const mapped: BuildingListItem[] = filtered.map((feature) => {
+				const filtered = showCorrectOnly
+					? damageFiltered.filter((feature) => {
+							const actual = normalizeDamage(feature.properties.actual_damage);
+							const rawPredicted = feature.properties.predicted_damage;
+							if (rawPredicted == null) return false;
+
+							const predicted = normalizeDamage(rawPredicted);
+							if (actual === "un-classified" || predicted === "un-classified") {
+								return false;
+							}
+
+							return actual === predicted;
+						})
+					: damageFiltered;
+
+				const nextTotalItems = filtered.length;
+				const nextTotalPages = Math.max(
+					1,
+					Math.ceil(nextTotalItems / PAGE_SIZE),
+				);
+				const clampedPage = Math.min(page, nextTotalPages);
+
+				// Keep page in range when filters reduce total result size.
+				if (clampedPage !== page) {
+					setPage(clampedPage);
+					return;
+				}
+
+				const start = (clampedPage - 1) * PAGE_SIZE;
+				const pagedFeatures = filtered.slice(start, start + PAGE_SIZE);
+
+				const mapped: BuildingListItem[] = pagedFeatures.map((feature) => {
 					const prop = feature.properties;
 					const pair = pairs.get(prop.image_pair_id);
 
@@ -439,6 +439,15 @@ export default function Dashboard() {
 				});
 
 				setRows(mapped);
+				setTotalItems(nextTotalItems);
+				setTotalPages(nextTotalPages);
+			} catch (err) {
+				setError(
+					err instanceof Error
+						? err.message
+						: "Unexpected dashboard error while loading buildings.",
+				);
+				setRows([]);
 			} finally {
 				setLoadingBuildings(false);
 			}
@@ -450,7 +459,7 @@ export default function Dashboard() {
 		selectedDisasterId,
 		page,
 		activeDamageFilter,
-		supportsPagedEndpoint,
+		showCorrectOnly,
 		ensureAllBuildings,
 		ensureImagePairs,
 		selectedDisasterName,
@@ -516,10 +525,8 @@ export default function Dashboard() {
 				<div className="flex flex-row gap-6 items-start">
 					<AppSidebar
 						activeSection={activeSection}
-						activeDamageFilter={activeDamageFilter}
-						filters={DAMAGE_FILTERS}
 						onOverview={() => setActiveSection("overview")}
-						onSelectFilter={setDamageFilter}
+						onBuildings={() => setActiveSection("buildings")}
 						disabled={loadingStats}
 					/>
 
@@ -785,16 +792,55 @@ export default function Dashboard() {
 
 						{activeSection === "buildings" && (
 							<div className="rounded-xl border border-border bg-card p-5 overflow-hidden relative">
-								<div className="flex items-center justify-between mb-4 gap-3">
+								<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
 									<h3 className="text-lg font-semibold">Buildings</h3>
-									<p className="text-xs text-muted-foreground">
-										{totalItems} total rows
-									</p>
-									<Pagination
-										page={page}
-										totalPages={totalPages}
-										onPageChange={setPage}
-									/>
+									<div className="flex items-center gap-3">
+										<p className="text-xs text-muted-foreground">
+											{totalItems} total rows
+										</p>
+									</div>
+								</div>
+
+								<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+									<Select
+										value={
+											activeDamageFilter === "all"
+												? undefined
+												: activeDamageFilter
+										}
+										onValueChange={(value) => {
+											setActiveDamageFilter(value);
+											setPage(1);
+										}}
+									>
+										<SelectTrigger className="w-full max-w-48">
+											<SelectValue placeholder="Damages" />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectGroup>
+												<SelectLabel>Damages</SelectLabel>
+												{DAMAGE_FILTERS.map((filter) => (
+													<SelectItem key={filter.key} value={filter.key}>
+														{filter.label}
+													</SelectItem>
+												))}
+											</SelectGroup>
+										</SelectContent>
+									</Select>
+
+									<div className="flex items-center gap-2">
+										<label
+											htmlFor="align-item"
+											className="text-sm text-muted-foreground"
+										>
+											Correct
+										</label>
+										<Switch
+											id="align-item"
+											checked={showCorrectOnly}
+											onCheckedChange={setShowCorrectOnly}
+										/>
+									</div>
 								</div>
 
 								{loadingBuildings ? (
@@ -810,18 +856,16 @@ export default function Dashboard() {
 										)}
 									</div>
 								) : (
-									<div className="overflow-x-auto">
+									<div className="relative z-0 overflow-x-auto">
 										<table className="w-full min-w-[980px] text-sm">
 											<thead>
 												<tr className="border-b border-border/60 text-left text-muted-foreground bg-muted/30">
 													<th className="py-2 pr-3 font-medium">Building</th>
 													<th className="py-2 pr-3 font-medium">Disaster</th>
-													<th className="py-2 pr-3 font-medium">ID</th>
-													<th className="py-2 pr-3 font-medium">Image Pair</th>
+													<th className="py-2 pr-3 font-medium">xBD</th>
 													<th className="py-2 pr-3 font-medium">Actual</th>
 													<th className="py-2 pr-3 font-medium">Predicted</th>
 													<th className="py-2 pr-3 font-medium">Correct</th>
-													<th className="py-2 pr-0 font-medium">Created</th>
 												</tr>
 											</thead>
 											<tbody>
@@ -829,9 +873,6 @@ export default function Dashboard() {
 													const thumbnail = resolveStorageUrl(
 														building.post_image_path ?? building.pre_image_path,
 													);
-													const created = building.created_at
-														? new Date(building.created_at).toLocaleString()
-														: "-";
 
 													return (
 														<tr
@@ -839,8 +880,9 @@ export default function Dashboard() {
 															className="border-b border-border/70 align-top cursor-pointer hover:bg-muted/40"
 															onClick={() => {
 																if (!selectedDisasterName) return;
+																const buildingQuery = `building=${encodeURIComponent(building.uid)}`;
 																navigate(
-																	`/map/${selectedDisasterName}/${building.xbd_id}`,
+																	`/map/${selectedDisasterName}/${building.xbd_id}?${buildingQuery}`,
 																);
 															}}
 														>
@@ -850,14 +892,7 @@ export default function Dashboard() {
 																	imageAlt={`Building ${building.uid}`}
 																	title={building.address || building.uid}
 																	subtitle={
-																		building.address
-																			? building.uid
-																			: `xBD: ${building.xbd_id}`
-																	}
-																	meta={
-																		building.address
-																			? `xBD: ${building.xbd_id}`
-																			: `Image Pair ID: ${building.image_pair_id}`
+																		building.address ? building.uid : undefined
 																	}
 																/>
 															</td>
@@ -865,10 +900,7 @@ export default function Dashboard() {
 																{building.disaster_name}
 															</td>
 															<td className="py-3 pr-3 text-muted-foreground">
-																{building.id}
-															</td>
-															<td className="py-3 pr-3 text-muted-foreground">
-																{building.image_pair_id}
+																{building.xbd_id}
 															</td>
 															<td className="py-3 pr-3">
 																<span
@@ -911,9 +943,6 @@ export default function Dashboard() {
 																		: "No"
 																	: "-"}
 															</td>
-															<td className="py-3 pr-0 text-muted-foreground">
-																{created}
-															</td>
 														</tr>
 													);
 												})}
@@ -922,7 +951,7 @@ export default function Dashboard() {
 									</div>
 								)}
 
-								<div className="p-4 border-t border-border">
+								<div className="relative z-20 border-t border-border bg-card px-4 pb-4 pt-2">
 									<Pagination
 										page={page}
 										totalPages={totalPages}

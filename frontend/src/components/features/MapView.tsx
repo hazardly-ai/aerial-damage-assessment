@@ -1,6 +1,6 @@
 import mapboxgl from "mapbox-gl";
 import type Compare from "mapbox-gl-compare";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 
@@ -25,6 +25,7 @@ import {
 	POST_IMAGE_LAYER_ID,
 	type PopupData,
 	PRE_IMAGE_LAYER_ID,
+	selectBuildingByUid,
 	setBuildingVisibility,
 	setImageryVisibility,
 	setSatelliteOpacity,
@@ -34,6 +35,9 @@ import {
 interface MapViewProps {
 	initialDisasterId: number;
 	initialXbdId: number;
+	/** When set (e.g. from `?building=` on first load), selects that footprint and opens the popup. */
+	initialBuildingUid?: string;
+	onInitialBuildingHandled?: () => void;
 	onSceneError?: (message: string) => void;
 	onMetricsChange?: (metrics: SceneMetrics | null) => void;
 }
@@ -159,6 +163,8 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 export default function MapView({
 	initialDisasterId,
 	initialXbdId,
+	initialBuildingUid,
+	onInitialBuildingHandled,
 	onSceneError,
 	onMetricsChange,
 }: MapViewProps) {
@@ -288,9 +294,15 @@ export default function MapView({
 
 	const xbdIdRef = useRef(xbdId);
 	xbdIdRef.current = xbdId;
+	const normalizedInitialBuildingUid = useMemo(
+		() => initialBuildingUid?.trim() || undefined,
+		[initialBuildingUid],
+	);
 
 	useEffect(() => {
 		if (!containerRef.current) return;
+
+		const buildingUidForInitialSelect = normalizedInitialBuildingUid;
 
 		let cancelled = false;
 		const abortController = new AbortController();
@@ -391,6 +403,26 @@ export default function MapView({
 					}
 
 					_before.fitBounds([sw, ne], { padding: 0, animate: false });
+
+					_after.once("idle", () => {
+						if (cancelled) return;
+						if (buildingUidForInitialSelect) {
+							const buildingSelected = selectBuildingByUid({
+								beforeMap: _before,
+								afterMap: _after,
+								uid: buildingUidForInitialSelect,
+								selectedBuildingIdRef,
+								onPopupOpen: openPopup,
+							});
+							if (!buildingSelected) {
+								toast.warning(
+									`"${buildingUidForInitialSelect}" is not a valid building ID.`,
+									{ id: "invalid-building-id" },
+								);
+							}
+							onInitialBuildingHandled?.();
+						}
+					});
 				};
 
 				waitForMapsLoad(_before, _after).then(onMapsLoaded);
@@ -441,6 +473,8 @@ export default function MapView({
 		onSceneError,
 		onMetricsChange,
 		disasterId,
+		normalizedInitialBuildingUid,
+		onInitialBuildingHandled,
 	]);
 
 	useEffect(() => {
