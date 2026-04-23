@@ -22,13 +22,13 @@ export default function DisasterResponseAssistant() {
 	};
 
 	const [responseLog, setResponseLog] = useState<ResponseMessage[]>(() => {
-		const saved = localStorage.getItem("chatHistory");
+		const saved = sessionStorage.getItem("chatHistory");
 		return saved ? JSON.parse(saved) : [initialMessage];
 	});
 
-	// PERSISTENCE: Hydrate open state from localStorage
+	// Persist only for the current browser tab/session.
 	const [isOpen, setIsOpen] = useState(() => {
-		return localStorage.getItem("chatOpen") === "true";
+		return sessionStorage.getItem("chatOpen") === "true";
 	});
 
 	const [currentQuery, setCurrentQuery] = useState("");
@@ -39,13 +39,13 @@ export default function DisasterResponseAssistant() {
 	}, []);
 
 	useEffect(() => {
-		localStorage.setItem("chatHistory", JSON.stringify(responseLog));
-		localStorage.setItem("chatOpen", isOpen.toString());
+		sessionStorage.setItem("chatHistory", JSON.stringify(responseLog));
+		sessionStorage.setItem("chatOpen", isOpen.toString());
 	}, [responseLog, isOpen]);
 
 	const clearChat = () => {
 		setResponseLog([initialMessage]);
-		localStorage.removeItem("chatHistory");
+		sessionStorage.removeItem("chatHistory");
 	};
 
 	const handleQuery = async () => {
