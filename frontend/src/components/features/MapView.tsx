@@ -407,13 +407,19 @@ export default function MapView({
 					_after.once("idle", () => {
 						if (cancelled) return;
 						if (buildingUidForInitialSelect) {
-							selectBuildingByUid({
+							const buildingSelected = selectBuildingByUid({
 								beforeMap: _before,
 								afterMap: _after,
 								uid: buildingUidForInitialSelect,
 								selectedBuildingIdRef,
 								onPopupOpen: openPopup,
 							});
+							if (!buildingSelected) {
+								toast.warning(
+									`"${buildingUidForInitialSelect}" is not a valid building ID.`,
+									{ id: "invalid-building-id" },
+								);
+							}
 							onInitialBuildingHandled?.();
 						}
 					});
