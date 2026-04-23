@@ -17,11 +17,11 @@ export default function MapPage() {
 	const navigate = useNavigate();
 	const [searchParams] = useSearchParams();
 	const buildingFromUrl = searchParams.get("building")?.trim() ?? undefined;
+	const normalizedDisasterParam = disaster_name?.trim();
+	const requiresDisasterResolution = Boolean(normalizedDisasterParam);
 
-	const [resolvedDisasterId, setResolvedDisasterId] = useState<number | null>(
-		null,
-	);
-	const [isLoading, setIsLoading] = useState(true);
+	const [resolvedDisasterId, setResolvedDisasterId] = useState<number | null>(1);
+	const [isLoading, setIsLoading] = useState(requiresDisasterResolution);
 	const [sceneMetrics, setSceneMetrics] = useState<SceneMetrics | null>(null);
 
 	// 1. Validate XBD ID: If it's garbage text or missing, fallback to 18
@@ -35,25 +35,30 @@ export default function MapPage() {
 
 	useEffect(() => {
 		hasRedirected.current = false;
-	}, []);
+	}, [normalizedDisasterParam, xbdid]);
 
 	useEffect(() => {
 		async function resolveDisaster() {
 			if (hasRedirected.current) return;
+			if (!requiresDisasterResolution) {
+				setResolvedDisasterId(1);
+				setIsLoading(false);
+				return;
+			}
 
 			setIsLoading(true);
 			try {
 				let disasterId = 1;
 
-				if (disaster_name) {
-					const id = await getDisasterIdByName(disaster_name);
+				if (normalizedDisasterParam) {
+					const id = await getDisasterIdByName(normalizedDisasterParam);
 
 					if (!id) {
 						hasRedirected.current = true;
-						// Adding a unique ID prevents duplicates
-						toast.error(`Disaster "${disaster_name}" not recognized.`, {
-							id: "disaster-not-found",
-						});
+						toast.error(
+							`"${normalizedDisasterParam}" is not a valid disaster name.`,
+							{ id: "disaster-not-found" },
+						);
 						navigate("/map", { replace: true });
 						return;
 					}
@@ -61,16 +66,16 @@ export default function MapPage() {
 				}
 
 				if (isXbdMissing || isXbdMalformed) {
-					if (disaster_name || xbdid) {
+					if (normalizedDisasterParam || xbdid) {
 						hasRedirected.current = true;
 
 						if (isXbdMalformed) {
 							toast.warning(`"${xbdid}" is not a valid scene ID.`, {
 								id: "malformed-xbd",
 							});
-						} else if (disaster_name) {
+						} else if (normalizedDisasterParam) {
 							toast.info(
-								`No scene specified for ${disaster_name}. Loading default view.`,
+								`No scene specified for ${normalizedDisasterParam}. Loading default view.`,
 								{ id: "missing-xbd" },
 							);
 						}
@@ -95,7 +100,14 @@ export default function MapPage() {
 		}
 
 		void resolveDisaster();
-	}, [disaster_name, xbdid, isXbdMissing, isXbdMalformed, navigate]);
+	}, [
+		normalizedDisasterParam,
+		requiresDisasterResolution,
+		xbdid,
+		isXbdMissing,
+		isXbdMalformed,
+		navigate,
+	]);
 
 	const handleInvalidScene = useCallback(
 		(message: string) => {
@@ -105,13 +117,11 @@ export default function MapPage() {
 		[navigate],
 	);
 
-	if (isLoading || resolvedDisasterId === null) {
-		return (
-			<div className="flex h-screen items-center justify-center bg-background">
-				<div className="animate-pulse text-lg">Verifying location...</div>
-			</div>
-		);
+	if (requiresDisasterResolution && (isLoading || resolvedDisasterId === null)) {
+		return null;
 	}
+
+	const disasterId = resolvedDisasterId ?? 1;
 
 	return (
 		<div className="flex flex-col min-h-screen bg-background text-foreground">
@@ -120,8 +130,8 @@ export default function MapPage() {
 				<div className="grid h-full grid-cols-1 gap-4 xl:grid-cols-10">
 					<div className="xl:col-span-7">
 						<MapView
-							key={`${resolvedDisasterId}-${parsedXbdId}`}
-							initialDisasterId={resolvedDisasterId}
+							key={`${disasterId}-${parsedXbdId}`}
+							initialDisasterId={disasterId}
 							initialXbdId={parsedXbdId}
 							initialBuildingUid={buildingFromUrl}
 							onSceneError={handleInvalidScene}
