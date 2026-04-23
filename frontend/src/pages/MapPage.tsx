@@ -20,7 +20,9 @@ export default function MapPage() {
 	const normalizedDisasterParam = disaster_name?.trim();
 	const requiresDisasterResolution = Boolean(normalizedDisasterParam);
 
-	const [resolvedDisasterId, setResolvedDisasterId] = useState<number | null>(1);
+	const [resolvedDisasterId, setResolvedDisasterId] = useState<number | null>(
+		1,
+	);
 	const [isLoading, setIsLoading] = useState(requiresDisasterResolution);
 	const [sceneMetrics, setSceneMetrics] = useState<SceneMetrics | null>(null);
 
@@ -35,7 +37,7 @@ export default function MapPage() {
 
 	useEffect(() => {
 		hasRedirected.current = false;
-	}, [normalizedDisasterParam, xbdid]);
+	}, []);
 
 	useEffect(() => {
 		async function resolveDisaster() {
@@ -117,7 +119,10 @@ export default function MapPage() {
 		[navigate],
 	);
 
-	if (requiresDisasterResolution && (isLoading || resolvedDisasterId === null)) {
+	if (
+		requiresDisasterResolution &&
+		(isLoading || resolvedDisasterId === null)
+	) {
 		return null;
 	}
 
