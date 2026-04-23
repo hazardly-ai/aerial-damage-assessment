@@ -25,6 +25,7 @@ import {
 	POST_IMAGE_LAYER_ID,
 	type PopupData,
 	PRE_IMAGE_LAYER_ID,
+	selectBuildingByUid,
 	setBuildingVisibility,
 	setImageryVisibility,
 	setSatelliteOpacity,
@@ -34,6 +35,9 @@ import {
 interface MapViewProps {
 	initialDisasterId: number;
 	initialXbdId: number;
+	/** When set (e.g. from `?building=` on first load), selects that footprint and opens the popup. */
+	initialBuildingUid?: string;
+	onInitialBuildingHandled?: () => void;
 	onSceneError?: (message: string) => void;
 	onMetricsChange?: (metrics: SceneMetrics | null) => void;
 }
@@ -159,6 +163,8 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 export default function MapView({
 	initialDisasterId,
 	initialXbdId,
+	initialBuildingUid,
+	onInitialBuildingHandled,
 	onSceneError,
 	onMetricsChange,
 }: MapViewProps) {
@@ -292,6 +298,8 @@ export default function MapView({
 	useEffect(() => {
 		if (!containerRef.current) return;
 
+		const buildingUidForInitialSelect = initialBuildingUid?.trim() || undefined;
+
 		let cancelled = false;
 		const abortController = new AbortController();
 		let beforeMap: mapboxgl.Map | null = null;
@@ -391,6 +399,20 @@ export default function MapView({
 					}
 
 					_before.fitBounds([sw, ne], { padding: 0, animate: false });
+
+					_after.once("idle", () => {
+						if (cancelled) return;
+						if (buildingUidForInitialSelect) {
+							selectBuildingByUid({
+								beforeMap: _before,
+								afterMap: _after,
+								uid: buildingUidForInitialSelect,
+								selectedBuildingIdRef,
+								onPopupOpen: openPopup,
+							});
+							onInitialBuildingHandled?.();
+						}
+					});
 				};
 
 				waitForMapsLoad(_before, _after).then(onMapsLoaded);

@@ -839,8 +839,9 @@ export default function Dashboard() {
 															className="border-b border-border/70 align-top cursor-pointer hover:bg-muted/40"
 															onClick={() => {
 																if (!selectedDisasterName) return;
+																const buildingQuery = `building=${encodeURIComponent(building.uid)}`;
 																navigate(
-																	`/map/${selectedDisasterName}/${building.xbd_id}`,
+																	`/map/${selectedDisasterName}/${building.xbd_id}?${buildingQuery}`,
 																);
 															}}
 														>

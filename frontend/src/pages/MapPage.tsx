@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant.tsx";
 import MapMetricsPanel from "@/components/features/MapMetricsPanel.tsx";
@@ -15,6 +15,8 @@ export default function MapPage() {
 		xbdid: string;
 	}>();
 	const navigate = useNavigate();
+	const [searchParams] = useSearchParams();
+	const buildingFromUrl = searchParams.get("building")?.trim() ?? undefined;
 
 	const [resolvedDisasterId, setResolvedDisasterId] = useState<number | null>(
 		null,
@@ -121,6 +123,7 @@ export default function MapPage() {
 							key={`${resolvedDisasterId}-${parsedXbdId}`}
 							initialDisasterId={resolvedDisasterId}
 							initialXbdId={parsedXbdId}
+							initialBuildingUid={buildingFromUrl}
 							onSceneError={handleInvalidScene}
 							onMetricsChange={setSceneMetrics}
 						/>
