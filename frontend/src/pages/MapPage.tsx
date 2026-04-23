@@ -23,6 +23,7 @@ export default function MapPage() {
 	);
 	const [isLoading, setIsLoading] = useState(true);
 	const [sceneMetrics, setSceneMetrics] = useState<SceneMetrics | null>(null);
+	const normalizedDisasterParam = disaster_name?.trim();
 
 	// 1. Validate XBD ID: If it's garbage text or missing, fallback to 18
 	const isXbdMissing = xbdid === undefined || xbdid.trim() === "";
@@ -45,15 +46,17 @@ export default function MapPage() {
 			try {
 				let disasterId = 1;
 
-				if (disaster_name) {
-					const id = await getDisasterIdByName(disaster_name);
+				if (normalizedDisasterParam) {
+					const id = await getDisasterIdByName(normalizedDisasterParam);
 
 					if (!id) {
 						hasRedirected.current = true;
-						// Adding a unique ID prevents duplicates
-						toast.error(`Disaster "${disaster_name}" not recognized.`, {
-							id: "disaster-not-found",
-						});
+						toast.error(
+							`"${normalizedDisasterParam}" is not a valid disaster name.`,
+							{
+								id: "disaster-not-found",
+							},
+						);
 						navigate("/map", { replace: true });
 						return;
 					}
@@ -61,16 +64,16 @@ export default function MapPage() {
 				}
 
 				if (isXbdMissing || isXbdMalformed) {
-					if (disaster_name || xbdid) {
+					if (normalizedDisasterParam || xbdid) {
 						hasRedirected.current = true;
 
 						if (isXbdMalformed) {
 							toast.warning(`"${xbdid}" is not a valid scene ID.`, {
 								id: "malformed-xbd",
 							});
-						} else if (disaster_name) {
+						} else if (normalizedDisasterParam) {
 							toast.info(
-								`No scene specified for ${disaster_name}. Loading default view.`,
+								`No scene specified for ${normalizedDisasterParam}. Loading default view.`,
 								{ id: "missing-xbd" },
 							);
 						}
@@ -95,7 +98,7 @@ export default function MapPage() {
 		}
 
 		void resolveDisaster();
-	}, [disaster_name, xbdid, isXbdMissing, isXbdMalformed, navigate]);
+	}, [normalizedDisasterParam, xbdid, isXbdMissing, isXbdMalformed, navigate]);
 
 	const handleInvalidScene = useCallback(
 		(message: string) => {
