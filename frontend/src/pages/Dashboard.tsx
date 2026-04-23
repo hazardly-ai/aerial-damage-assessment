@@ -18,6 +18,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
 	Tooltip,
 	TooltipContent,
@@ -182,6 +183,7 @@ export default function Dashboard() {
 	const [error, setError] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<ActiveSection>("overview");
 	const [activeDamageFilter, setActiveDamageFilter] = useState<string>("all");
+	const [showCorrectOnly, setShowCorrectOnly] = useState(false);
 	const [selectedDisasterId, setSelectedDisasterId] = useState<number | null>(
 		null,
 	);
@@ -370,7 +372,7 @@ export default function Dashboard() {
 
 				const features = await ensureAllBuildings(selectedDisasterId);
 
-				const filtered =
+				const damageFiltered =
 					activeDamageFilter === "all"
 						? features
 						: features.filter(
@@ -378,6 +380,21 @@ export default function Dashboard() {
 									normalizeDamage(feature.properties.actual_damage) ===
 									activeDamageFilter,
 							);
+
+				const filtered = showCorrectOnly
+					? damageFiltered.filter((feature) => {
+							const actual = normalizeDamage(feature.properties.actual_damage);
+							const rawPredicted = feature.properties.predicted_damage;
+							if (rawPredicted == null) return false;
+
+							const predicted = normalizeDamage(rawPredicted);
+							if (actual === "un-classified" || predicted === "un-classified") {
+								return false;
+							}
+
+							return actual === predicted;
+						})
+					: damageFiltered;
 
 				const nextTotalItems = filtered.length;
 				const nextTotalPages = Math.max(
@@ -442,6 +459,7 @@ export default function Dashboard() {
 		selectedDisasterId,
 		page,
 		activeDamageFilter,
+		showCorrectOnly,
 		ensureAllBuildings,
 		ensureImagePairs,
 		selectedDisasterName,
@@ -783,7 +801,7 @@ export default function Dashboard() {
 									</div>
 								</div>
 
-								<div className="mb-4">
+								<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
 									<Select
 										value={
 											activeDamageFilter === "all"
@@ -809,6 +827,20 @@ export default function Dashboard() {
 											</SelectGroup>
 										</SelectContent>
 									</Select>
+
+									<div className="flex items-center gap-2">
+										<label
+											htmlFor="align-item"
+											className="text-sm text-muted-foreground"
+										>
+											Correct
+										</label>
+										<Switch
+											id="align-item"
+											checked={showCorrectOnly}
+											onCheckedChange={setShowCorrectOnly}
+										/>
+									</div>
 								</div>
 
 								{loadingBuildings ? (
