@@ -10,5 +10,9 @@
 		"ci": "biome ci .",
 		"dev": "cd frontend && npm run dev",
 		"install": "cd frontend && npm install"
+	},
+	"dependencies": {
+		"@radix-ui/react-select": "^2.2.6",
+		"@radix-ui/react-switch": "^1.2.6"
 	}
 }

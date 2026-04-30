@@ -94,7 +94,7 @@ export default function VlmEvaluationPage() {
 					{/* UPLOAD GRID */}
 					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 						{/* PRE */}
-						<div className="border rounded-xl p-4 bg-card space-y-3">
+						<div className="rounded-xl p-4 bg-card space-y-3 border border-border/40 shadow-sm">
 							<p className="font-semibold">Pre-Disaster Image</p>
 
 							<input
@@ -119,7 +119,7 @@ export default function VlmEvaluationPage() {
 						</div>
 
 						{/* POST */}
-						<div className="border rounded-xl p-4 bg-card space-y-3">
+						<div className="rounded-xl p-4 bg-card space-y-3 border border-border/40 shadow-sm">
 							<p className="font-semibold">Post-Disaster Image</p>
 
 							<input
