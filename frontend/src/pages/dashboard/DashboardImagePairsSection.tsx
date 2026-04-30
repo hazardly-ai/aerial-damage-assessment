@@ -1,0 +1,125 @@
+import { useNavigate } from "react-router-dom";
+import Item from "@/components/ui/Item";
+import Pagination from "@/components/ui/Pagination";
+import { SpinnerEmpty } from "@/components/ui/SpinnerEmpty";
+import { resolveImageUrl } from "@/utils/hazardlyApi";
+import type { ImagePairRow } from "./dashboardTypes";
+
+type DashboardImagePairsSectionProps = {
+	loadingImagePairs: boolean;
+	imagePairTotalItems: number;
+	imagePairRows: ImagePairRow[];
+	imagePairPageRows: ImagePairRow[];
+	imagePairPage: number;
+	imagePairTotalPages: number;
+	selectedDisasterName: string | null;
+	onPageChange: (page: number) => void;
+};
+
+const resolveStorageUrl = (path?: string | null): string | null =>
+	path ? resolveImageUrl(path) : null;
+
+export default function DashboardImagePairsSection({
+	loadingImagePairs,
+	imagePairTotalItems,
+	imagePairRows,
+	imagePairPageRows,
+	imagePairPage,
+	imagePairTotalPages,
+	selectedDisasterName,
+	onPageChange,
+}: DashboardImagePairsSectionProps) {
+	const navigate = useNavigate();
+
+	return (
+		<div className="relative overflow-hidden rounded-xl border border-border bg-card p-5">
+			<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+				<h3 className="text-lg font-semibold">Image Pairs</h3>
+				<div className="flex items-center gap-3">
+					<p className="text-xs text-muted-foreground">
+						{imagePairTotalItems} total rows
+					</p>
+				</div>
+			</div>
+
+			{loadingImagePairs ? (
+				<div className="rounded-md border border-border bg-background p-4">
+					<div className="absolute inset-0 z-10 flex items-center justify-center bg-card/40 backdrop-blur-[2px]">
+						<SpinnerEmpty
+							title="Loading image pairs"
+							description="Calculating image-level metrics..."
+							className="min-h-[280px] border-0 p-0"
+						/>
+					</div>
+				</div>
+			) : (
+				<div className="relative z-0 overflow-x-auto">
+					<table className="w-full text-sm">
+						<thead>
+							<tr className="border-b border-border/60 bg-muted/30 text-left text-muted-foreground">
+								<th className="py-2 pr-3 font-medium">Post Image</th>
+								<th className="py-2 pr-3 font-medium">Total Buildings</th>
+								<th className="py-2 pr-3 font-medium">Correct</th>
+								<th className="py-2 pr-3 font-medium">Incorrect</th>
+								<th className="py-2 pr-3 font-medium">Accuracy</th>
+							</tr>
+						</thead>
+						<tbody>
+							{imagePairPageRows.map((pair) => {
+								const postThumbnail = resolveStorageUrl(pair.post_image_path);
+
+								return (
+									<tr
+										key={pair.id}
+										className="cursor-pointer align-top border-b border-border/70 hover:bg-muted/40"
+										onClick={() => {
+											if (!selectedDisasterName) return;
+											navigate(`/map/${selectedDisasterName}/${pair.xbd_id}`);
+										}}
+									>
+										<td className="py-3 pr-3">
+											<Item
+												imageSrc={postThumbnail}
+												imageAlt={`Post scene ${pair.xbd_id}`}
+												title={`Scene #${pair.xbd_id}`}
+												subtitle={`Pair ${pair.id}`}
+												meta={`Compared: ${pair.comparedCount}`}
+											/>
+										</td>
+										<td className="py-3 pr-3 font-medium">
+											{pair.totalBuildings}
+										</td>
+										<td className="py-3 pr-3 font-medium text-emerald-600">
+											{pair.correctCount}
+										</td>
+										<td className="py-3 pr-3 font-medium text-rose-600">
+											{pair.incorrectCount}
+										</td>
+										<td className="py-3 pr-3 text-muted-foreground">
+											{pair.accuracyPct == null
+												? "N/A"
+												: `${pair.accuracyPct}%`}
+										</td>
+									</tr>
+								);
+							})}
+						</tbody>
+					</table>
+					{imagePairRows.length === 0 && (
+						<div className="rounded-md border border-border bg-background px-4 py-6 text-sm text-muted-foreground">
+							No image pair data available for this disaster yet.
+						</div>
+					)}
+				</div>
+			)}
+
+			<div className="relative z-20 border-t border-border bg-card px-4 pb-4 pt-2">
+				<Pagination
+					page={imagePairPage}
+					totalPages={imagePairTotalPages}
+					onPageChange={onPageChange}
+				/>
+			</div>
+		</div>
+	);
+}
