@@ -67,7 +67,6 @@ export default function VlmEvaluationPage() {
 
 			const data = await res.json();
 
-			// still navigates to map (if you kept that logic elsewhere)
 			console.log("Result:", data);
 		} catch {
 			setError("Evaluation failed. Please try again.");
@@ -97,13 +96,19 @@ export default function VlmEvaluationPage() {
 						<div className="rounded-xl p-4 bg-card space-y-3 border border-border/40 shadow-sm">
 							<p className="font-semibold">Pre-Disaster Image</p>
 
-							<input
-								type="file"
-								accept="image/*"
-								onChange={(e) =>
-									e.target.files && handleUpload(e.target.files[0], "pre")
-								}
-							/>
+							<label className="inline-block">
+								<input
+									type="file"
+									accept="image/*"
+									className="hidden"
+									onChange={(e) =>
+										e.target.files && handleUpload(e.target.files[0], "pre")
+									}
+								/>
+								<span className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition">
+									Upload Image
+								</span>
+							</label>
 
 							{prePreview ? (
 								<img
@@ -122,13 +127,19 @@ export default function VlmEvaluationPage() {
 						<div className="rounded-xl p-4 bg-card space-y-3 border border-border/40 shadow-sm">
 							<p className="font-semibold">Post-Disaster Image</p>
 
-							<input
-								type="file"
-								accept="image/*"
-								onChange={(e) =>
-									e.target.files && handleUpload(e.target.files[0], "post")
-								}
-							/>
+							<label className="inline-block">
+								<input
+									type="file"
+									accept="image/*"
+									className="hidden"
+									onChange={(e) =>
+										e.target.files && handleUpload(e.target.files[0], "post")
+									}
+								/>
+								<span className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition">
+									Upload Image
+								</span>
+							</label>
 
 							{postPreview ? (
 								<img
@@ -169,6 +180,7 @@ export default function VlmEvaluationPage() {
 					)}
 				</Container>
 			</main>
+
 			<DisasterResponseAssistant />
 			<Footer />
 		</div>
