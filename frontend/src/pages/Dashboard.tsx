@@ -57,7 +57,19 @@ type BuildingListItem = {
 	post_image_path?: string | null;
 };
 
-type ActiveSection = "overview" | "buildings";
+type ImagePairRow = {
+	id: number;
+	xbd_id: number;
+	pre_image_path?: string | null;
+	post_image_path?: string | null;
+	totalBuildings: number;
+	correctCount: number;
+	incorrectCount: number;
+	comparedCount: number;
+	accuracyPct: string | null;
+};
+
+type ActiveSection = "overview" | "buildings" | "image-pairs";
 
 const CONFUSION_LABELS: DamageLevel[] = [
 	"no-damage",
@@ -181,6 +193,7 @@ export default function Dashboard() {
 	const navigate = useNavigate();
 	const [loadingStats, setLoadingStats] = useState(true);
 	const [loadingBuildings, setLoadingBuildings] = useState(false);
+	const [loadingImagePairs, setLoadingImagePairs] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<ActiveSection>("overview");
 	const [activeDamageFilter, setActiveDamageFilter] = useState<string>("all");
@@ -213,6 +226,7 @@ export default function Dashboard() {
 	const [page, setPage] = useState(1);
 	const [totalPages, setTotalPages] = useState(1);
 	const [totalItems, setTotalItems] = useState(0);
+	const [imagePairsPage, setImagePairsPage] = useState(1);
 	const imagePairMapRef = useRef(imagePairMap);
 	const allBuildingsCacheRef = useRef(allBuildingsCache);
 	const hasLoadedInitialStatsRef = useRef(false);
@@ -485,6 +499,32 @@ export default function Dashboard() {
 		selectedDisasterName,
 	]);
 
+	useEffect(() => {
+		if (activeSection !== "image-pairs") return;
+		if (selectedDisasterId == null) return;
+
+		const loadImagePairs = async () => {
+			try {
+				setLoadingImagePairs(true);
+				setError(null);
+				await Promise.all([
+					ensureImagePairs(selectedDisasterId),
+					ensureAllBuildings(selectedDisasterId),
+				]);
+			} catch (err) {
+				setError(
+					err instanceof Error
+						? err.message
+						: "Unexpected dashboard error while loading image pairs.",
+				);
+			} finally {
+				setLoadingImagePairs(false);
+			}
+		};
+
+		void loadImagePairs();
+	}, [activeSection, selectedDisasterId, ensureImagePairs, ensureAllBuildings]);
+
 	const overviewDamageRows = useMemo(() => {
 		const predictedByDamage: Record<string, number> = {
 			"no-damage": 0,
@@ -532,6 +572,92 @@ export default function Dashboard() {
 		});
 	}, [stats, allBuildingsCache, predictionMetrics]);
 
+	const imagePairRows = useMemo(() => {
+		if (!allBuildingsCache || imagePairMap.size === 0)
+			return [] as ImagePairRow[];
+
+		const counts = new Map<
+			number,
+			{
+				total: number;
+				correct: number;
+				incorrect: number;
+				compared: number;
+			}
+		>();
+
+		for (const feature of allBuildingsCache) {
+			const pairId = feature.properties.image_pair_id;
+			const current = counts.get(pairId) ?? {
+				total: 0,
+				correct: 0,
+				incorrect: 0,
+				compared: 0,
+			};
+			current.total += 1;
+
+			const actual = normalizeDamage(feature.properties.actual_damage);
+			const rawPredicted = feature.properties.predicted_damage;
+			if (rawPredicted != null) {
+				const predicted = normalizeDamage(rawPredicted);
+				if (actual !== "un-classified" && predicted !== "un-classified") {
+					current.compared += 1;
+					if (actual === predicted) {
+						current.correct += 1;
+					} else {
+						current.incorrect += 1;
+					}
+				}
+			}
+
+			counts.set(pairId, current);
+		}
+
+		const rows = Array.from(imagePairMap.entries()).map(([id, pair]) => {
+			const metrics = counts.get(id) ?? {
+				total: 0,
+				correct: 0,
+				incorrect: 0,
+				compared: 0,
+			};
+			const accuracyPct =
+				metrics.compared > 0
+					? ((metrics.correct / metrics.compared) * 100).toFixed(1)
+					: null;
+			return {
+				id,
+				xbd_id: pair.xbd_id,
+				pre_image_path: pair.pre_image_path ?? null,
+				post_image_path: pair.post_image_path ?? null,
+				totalBuildings: metrics.total,
+				correctCount: metrics.correct,
+				incorrectCount: metrics.incorrect,
+				comparedCount: metrics.compared,
+				accuracyPct,
+			};
+		});
+
+		rows.sort((a, b) => a.xbd_id - b.xbd_id);
+		return rows;
+	}, [allBuildingsCache, imagePairMap]);
+
+	const imagePairTotalItems = imagePairRows.length;
+	const imagePairTotalPages = Math.max(
+		1,
+		Math.ceil(imagePairTotalItems / PAGE_SIZE),
+	);
+	const imagePairPageClamped = Math.min(imagePairsPage, imagePairTotalPages);
+	const imagePairPageRows = imagePairRows.slice(
+		(imagePairPageClamped - 1) * PAGE_SIZE,
+		imagePairPageClamped * PAGE_SIZE,
+	);
+
+	useEffect(() => {
+		if (imagePairsPage !== imagePairPageClamped) {
+			setImagePairsPage(imagePairPageClamped);
+		}
+	}, [imagePairsPage, imagePairPageClamped]);
+
 	const setDamageFilter = (filter: string) => {
 		setActiveDamageFilter(filter);
 		setPage(1);
@@ -547,6 +673,10 @@ export default function Dashboard() {
 						activeSection={activeSection}
 						onOverview={() => setActiveSection("overview")}
 						onBuildings={() => setActiveSection("buildings")}
+						onImagePairs={() => {
+							setActiveSection("image-pairs");
+							setImagePairsPage(1);
+						}}
 						disabled={loadingStats}
 					/>
 
@@ -976,6 +1106,104 @@ export default function Dashboard() {
 										page={page}
 										totalPages={totalPages}
 										onPageChange={setPage}
+									/>
+								</div>
+							</div>
+						)}
+
+						{activeSection === "image-pairs" && (
+							<div className="rounded-xl border border-border bg-card p-5 overflow-hidden relative">
+								<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+									<h3 className="text-lg font-semibold">Image Pairs</h3>
+									<div className="flex items-center gap-3">
+										<p className="text-xs text-muted-foreground">
+											{imagePairTotalItems} total rows
+										</p>
+									</div>
+								</div>
+
+								{loadingImagePairs ? (
+									<div className="rounded-md border border-border bg-background p-4">
+										<div className="absolute inset-0 z-10 flex items-center justify-center bg-card/40 backdrop-blur-[2px]">
+											<SpinnerEmpty
+												title="Loading image pairs"
+												description="Calculating image-level metrics..."
+												className="min-h-[280px] border-0 p-0"
+											/>
+										</div>
+									</div>
+								) : (
+									<div className="relative z-0 overflow-x-auto">
+										<table className="w-full text-sm">
+											<thead>
+												<tr className="border-b border-border/60 text-left text-muted-foreground bg-muted/30">
+													<th className="py-2 pr-3 font-medium">Post Image</th>
+													<th className="py-2 pr-3 font-medium">
+														Total Buildings
+													</th>
+													<th className="py-2 pr-3 font-medium">Correct</th>
+													<th className="py-2 pr-3 font-medium">Incorrect</th>
+													<th className="py-2 pr-3 font-medium">Accuracy</th>
+												</tr>
+											</thead>
+											<tbody>
+												{imagePairPageRows.map((pair) => {
+													const postThumbnail = resolveStorageUrl(
+														pair.post_image_path,
+													);
+
+													return (
+														<tr
+															key={pair.id}
+															className="border-b border-border/70 align-top cursor-pointer hover:bg-muted/40"
+															onClick={() => {
+																if (!selectedDisasterName) return;
+																navigate(
+																	`/map/${selectedDisasterName}/${pair.xbd_id}`,
+																);
+															}}
+														>
+															<td className="py-3 pr-3">
+																<Item
+																	imageSrc={postThumbnail}
+																	imageAlt={`Post scene ${pair.xbd_id}`}
+																	title={`Scene #${pair.xbd_id}`}
+																	subtitle={`Pair ${pair.id}`}
+																	meta={`Compared: ${pair.comparedCount}`}
+																/>
+															</td>
+															<td className="py-3 pr-3 font-medium">
+																{pair.totalBuildings}
+															</td>
+															<td className="py-3 pr-3 text-emerald-600 font-medium">
+																{pair.correctCount}
+															</td>
+															<td className="py-3 pr-3 text-rose-600 font-medium">
+																{pair.incorrectCount}
+															</td>
+															<td className="py-3 pr-3 text-muted-foreground">
+																{pair.accuracyPct == null
+																	? "N/A"
+																	: `${pair.accuracyPct}%`}
+															</td>
+														</tr>
+													);
+												})}
+											</tbody>
+										</table>
+										{imagePairRows.length === 0 && (
+											<div className="rounded-md border border-border bg-background px-4 py-6 text-sm text-muted-foreground">
+												No image pair data available for this disaster yet.
+											</div>
+										)}
+									</div>
+								)}
+
+								<div className="relative z-20 border-t border-border bg-card px-4 pb-4 pt-2">
+									<Pagination
+										page={imagePairPageClamped}
+										totalPages={imagePairTotalPages}
+										onPageChange={setImagePairsPage}
 									/>
 								</div>
 							</div>
