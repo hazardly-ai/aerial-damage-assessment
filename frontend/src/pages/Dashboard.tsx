@@ -74,6 +74,20 @@ const DAMAGE_FILTERS: Array<{ key: string; label: string }> = [
 	{ key: "major-damage", label: "Major Damage" },
 	{ key: "destroyed", label: "Destroyed" },
 ];
+const DAMAGE_SYNONYMS: Record<string, NormalizedDamage> = {
+	"no-damage": "no-damage",
+	"no-damages": "no-damage",
+	"minor-damage": "minor-damage",
+	"minor-damages": "minor-damage",
+	"major-damage": "major-damage",
+	"major-damages": "major-damage",
+	destroyed: "destroyed",
+	destroy: "destroyed",
+	"un-classified": "un-classified",
+	unclassified: "un-classified",
+	unknown: "un-classified",
+	uncertain: "un-classified",
+};
 
 const prettyLabel = (value: string): string =>
 	value
@@ -90,21 +104,8 @@ const normalizeDamage = (raw?: string | null): NormalizedDamage => {
 		.replace(/[_\s]+/g, "-")
 		.replace(/-+/g, "-");
 
-	if (normalized === "no-damage" || normalized === "no-damages")
-		return "no-damage";
-	if (normalized === "minor-damage" || normalized === "minor-damages")
-		return "minor-damage";
-	if (normalized === "major-damage" || normalized === "major-damages")
-		return "major-damage";
-	if (normalized === "destroyed" || normalized === "destroy")
-		return "destroyed";
-	if (
-		normalized === "un-classified" ||
-		normalized === "unclassified" ||
-		normalized === "unknown" ||
-		normalized === "uncertain"
-	)
-		return "un-classified";
+	const mappedDamage = DAMAGE_SYNONYMS[normalized];
+	if (mappedDamage) return mappedDamage;
 
 	if (DAMAGE_FILTERS.some((item) => item.key === normalized)) {
 		return normalized as NormalizedDamage;
@@ -275,8 +276,8 @@ export default function Dashboard() {
 				setSelectedDisasterId(currentDisaster.id);
 				setSelectedDisasterName(currentDisaster.name);
 
-				// Wait for BOTH the stats and the full features before turning off the loader
-				await Promise.allSettled([
+				// Wait for BOTH the stats and the full features before turning off the loader.
+				const [allBuildingsResult, statsResult] = await Promise.allSettled([
 					ensureAllBuildings(currentDisaster.id),
 					(async () => {
 						try {
@@ -288,10 +289,29 @@ export default function Dashboard() {
 							if (err instanceof ApiError && err.status === 404) {
 								const features = await ensureAllBuildings(currentDisaster.id);
 								setStats(buildStatsFromFeatures(features));
+								return;
 							}
+							throw err;
 						}
 					})(),
 				]);
+
+				if (allBuildingsResult.status === "rejected") {
+					setError(
+						allBuildingsResult.reason instanceof Error
+							? allBuildingsResult.reason.message
+							: "Unexpected dashboard error.",
+					);
+					return;
+				}
+				if (statsResult.status === "rejected") {
+					setError(
+						statsResult.reason instanceof Error
+							? statsResult.reason.message
+							: "Unexpected dashboard error.",
+					);
+					return;
+				}
 			} catch (err) {
 				setError(
 					err instanceof Error ? err.message : "Unexpected dashboard error.",

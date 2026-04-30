@@ -178,7 +178,8 @@ export default function MapView({
 	const [disasterId, setDisasterId] = useState(initialDisasterId);
 	const [xbdId, setXbdId] = useState<number>(initialXbdId);
 	const [sceneLoading, setSceneLoading] = useState(false);
-	const [_retryCount, setRetryCount] = useState(0);
+	const [bootstrapRetryCount, setBootstrapRetryCount] = useState(0);
+	const [sceneRetryCount, setSceneRetryCount] = useState(0);
 	const [buildingsVisible, setBuildingsVisible] = useState(true);
 	const [imageryVisible, setImageryVisible] = useState(true);
 	const [compareIdle, setCompareIdle] = useState(false);
@@ -196,6 +197,10 @@ export default function MapView({
 	const boundsRef = useRef<ImageBounds | null>(null);
 	const scheduleCompareIdleRef = useRef<() => void>(() => {});
 	imageryVisibleRef.current = imageryVisible;
+	const bootstrapRetryCountRef = useRef(bootstrapRetryCount);
+	const sceneRetryCountRef = useRef(sceneRetryCount);
+	bootstrapRetryCountRef.current = bootstrapRetryCount;
+	sceneRetryCountRef.current = sceneRetryCount;
 
 	useEffect(() => {
 		setDisasterId(initialDisasterId);
@@ -303,6 +308,7 @@ export default function MapView({
 		if (!containerRef.current) return;
 
 		const buildingUidForInitialSelect = normalizedInitialBuildingUid;
+		const retryCountAtStart = bootstrapRetryCount;
 
 		let cancelled = false;
 		const abortController = new AbortController();
@@ -322,7 +328,12 @@ export default function MapView({
 						"The requested scene coordinates or imagery could not be found.",
 					);
 				}
-				if (cancelled || !containerRef.current) return;
+				if (
+					cancelled ||
+					retryCountAtStart !== bootstrapRetryCountRef.current ||
+					!containerRef.current
+				)
+					return;
 				boundsRef.current = bounds;
 
 				containerRef.current.innerHTML = "";
@@ -356,7 +367,8 @@ export default function MapView({
 				const _after = afterMap;
 
 				const onMapsLoaded = () => {
-					if (cancelled) return;
+					if (cancelled || retryCountAtStart !== bootstrapRetryCountRef.current)
+						return;
 
 					addInitialSourcesAndLayers({
 						beforeMap: _before,
@@ -405,7 +417,11 @@ export default function MapView({
 					_before.fitBounds([sw, ne], { padding: 0, animate: false });
 
 					_after.once("idle", () => {
-						if (cancelled) return;
+						if (
+							cancelled ||
+							retryCountAtStart !== bootstrapRetryCountRef.current
+						)
+							return;
 						if (buildingUidForInitialSelect) {
 							const buildingSelected = selectBuildingByUid({
 								beforeMap: _before,
@@ -428,7 +444,8 @@ export default function MapView({
 				waitForMapsLoad(_before, _after).then(onMapsLoaded);
 			})
 			.catch((err: unknown) => {
-				if (cancelled) return;
+				if (cancelled || retryCountAtStart !== bootstrapRetryCountRef.current)
+					return;
 				if (err instanceof DOMException && err.name === "AbortError") return;
 
 				const errorMsg =
@@ -473,6 +490,7 @@ export default function MapView({
 		onSceneError,
 		onMetricsChange,
 		disasterId,
+		bootstrapRetryCount,
 		normalizedInitialBuildingUid,
 		onInitialBuildingHandled,
 	]);
@@ -481,6 +499,7 @@ export default function MapView({
 		const before = beforeMapRef.current;
 		const after = afterMapRef.current;
 		if (!before || !after || !layersReadyRef.current) return;
+		const retryCountAtStart = sceneRetryCount;
 
 		let cancelled = false;
 		const abortController = new AbortController();
@@ -490,7 +509,13 @@ export default function MapView({
 
 		fetchMapData(disasterId, xbdId, { signal: abortController.signal })
 			.then(({ imagePair, buildings, bounds }) => {
-				if (cancelled || !beforeMapRef.current || !afterMapRef.current) return;
+				if (
+					cancelled ||
+					retryCountAtStart !== sceneRetryCountRef.current ||
+					!beforeMapRef.current ||
+					!afterMapRef.current
+				)
+					return;
 				boundsRef.current = bounds;
 
 				const _before = beforeMapRef.current;
@@ -537,7 +562,8 @@ export default function MapView({
 				);
 			})
 			.catch((err: unknown) => {
-				if (cancelled) return;
+				if (cancelled || retryCountAtStart !== sceneRetryCountRef.current)
+					return;
 				if (err instanceof DOMException && err.name === "AbortError") return;
 
 				const errorMsg = err instanceof Error ? err.message : String(err);
@@ -562,7 +588,7 @@ export default function MapView({
 				onMetricsChange?.(null);
 			})
 			.finally(() => {
-				if (!cancelled) {
+				if (!cancelled && retryCountAtStart === sceneRetryCountRef.current) {
 					setSceneLoading(false);
 				}
 			});
@@ -571,7 +597,14 @@ export default function MapView({
 			cancelled = true;
 			abortController.abort();
 		};
-	}, [xbdId, disasterId, closePopup, onSceneError, onMetricsChange]);
+	}, [
+		xbdId,
+		disasterId,
+		sceneRetryCount,
+		closePopup,
+		onSceneError,
+		onMetricsChange,
+	]);
 
 	useEffect(() => {
 		if (!imageryVisible) {
@@ -642,7 +675,11 @@ export default function MapView({
 						onClick={() => {
 							setStatus("loading");
 							setErrorMessage(null);
-							setRetryCount((c) => c + 1);
+							if (layersReadyRef.current) {
+								setSceneRetryCount((c) => c + 1);
+								return;
+							}
+							setBootstrapRetryCount((c) => c + 1);
 						}}
 					>
 						Retry

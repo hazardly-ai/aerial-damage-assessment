@@ -27,11 +27,11 @@ export default function MapPage() {
 	const [sceneMetrics, setSceneMetrics] = useState<SceneMetrics | null>(null);
 
 	// 1. Validate XBD ID: If it's garbage text or missing, fallback to 18
-	const isXbdMissing = xbdid === undefined || xbdid.trim() === "";
-	const isXbdMalformed =
-		!isXbdMissing && Number.isNaN(Number.parseInt(xbdid, 10));
+	const normalizedXbdId = xbdid?.trim();
+	const isXbdMissing = normalizedXbdId === undefined || normalizedXbdId === "";
+	const isXbdMalformed = !isXbdMissing && !/^\d+$/.test(normalizedXbdId);
 	const parsedXbdId =
-		isXbdMissing || isXbdMalformed ? 18 : Number.parseInt(xbdid, 10);
+		isXbdMissing || isXbdMalformed ? 18 : Number(normalizedXbdId);
 
 	const hasRedirected = useRef(false);
 
