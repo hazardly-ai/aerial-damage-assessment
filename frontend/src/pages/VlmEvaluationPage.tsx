@@ -6,12 +6,6 @@ import Container from "@/components/layout/Container";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
 
-/* type Result = {
-	label: string;
-	confidence?: number;
-};
-*/
-
 export default function VlmEvaluationPage() {
 	const [preImage, setPreImage] = useState<File | null>(null);
 	const [postImage, setPostImage] = useState<File | null>(null);
@@ -44,6 +38,16 @@ export default function VlmEvaluationPage() {
 		}
 	};
 
+	const clearImage = (type: "pre" | "post") => {
+		if (type === "pre") {
+			setPreImage(null);
+			setPrePreview(null);
+		} else {
+			setPostImage(null);
+			setPostPreview(null);
+		}
+	};
+
 	const handleEvaluate = async () => {
 		if (!preImage || !postImage) {
 			setError("Please upload both images.");
@@ -66,7 +70,6 @@ export default function VlmEvaluationPage() {
 			if (!res.ok) throw new Error("Evaluation failed");
 
 			const data = await res.json();
-
 			console.log("Result:", data);
 		} catch {
 			setError("Evaluation failed. Please try again.");
@@ -96,19 +99,31 @@ export default function VlmEvaluationPage() {
 						<div className="rounded-xl p-4 bg-card space-y-3 border border-border/40 shadow-sm">
 							<p className="font-semibold">Pre-Disaster Image</p>
 
-							<label className="inline-block">
-								<input
-									type="file"
-									accept="image/*"
-									className="hidden"
-									onChange={(e) =>
-										e.target.files && handleUpload(e.target.files[0], "pre")
-									}
-								/>
-								<span className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition">
-									Upload Image
-								</span>
-							</label>
+							<div className="flex items-center gap-3">
+								<label className="inline-block">
+									<input
+										type="file"
+										accept="image/*"
+										className="hidden"
+										onChange={(e) =>
+											e.target.files && handleUpload(e.target.files[0], "pre")
+										}
+									/>
+									<span className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition">
+										Upload Image
+									</span>
+								</label>
+
+								{preImage && (
+									<button
+										type="button"
+										onClick={() => clearImage("pre")}
+										className="px-3 py-2 rounded-lg text-sm font-medium border border-border/40 hover:bg-muted transition"
+									>
+										Clear
+									</button>
+								)}
+							</div>
 
 							{prePreview ? (
 								<img
@@ -127,19 +142,31 @@ export default function VlmEvaluationPage() {
 						<div className="rounded-xl p-4 bg-card space-y-3 border border-border/40 shadow-sm">
 							<p className="font-semibold">Post-Disaster Image</p>
 
-							<label className="inline-block">
-								<input
-									type="file"
-									accept="image/*"
-									className="hidden"
-									onChange={(e) =>
-										e.target.files && handleUpload(e.target.files[0], "post")
-									}
-								/>
-								<span className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition">
-									Upload Image
-								</span>
-							</label>
+							<div className="flex items-center gap-3">
+								<label className="inline-block">
+									<input
+										type="file"
+										accept="image/*"
+										className="hidden"
+										onChange={(e) =>
+											e.target.files && handleUpload(e.target.files[0], "post")
+										}
+									/>
+									<span className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition">
+										Upload Image
+									</span>
+								</label>
+
+								{postImage && (
+									<button
+										type="button"
+										onClick={() => clearImage("post")}
+										className="px-3 py-2 rounded-lg text-sm font-medium border border-border/40 hover:bg-muted transition"
+									>
+										Clear
+									</button>
+								)}
+							</div>
 
 							{postPreview ? (
 								<img
