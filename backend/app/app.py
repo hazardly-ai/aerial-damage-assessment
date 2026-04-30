@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import buildings, disasters, image_pairs
+from app.routers import buildings, disasters, image_pairs, vlm
 
 app = FastAPI(title="Hazardly API")
 
@@ -16,6 +16,7 @@ app.add_middleware(
 app.include_router(disasters.router)
 app.include_router(image_pairs.router)
 app.include_router(buildings.router)
+app.include_router(vlm.router)
 
 
 @app.get("/")

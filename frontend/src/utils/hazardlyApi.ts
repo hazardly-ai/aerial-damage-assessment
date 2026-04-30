@@ -532,3 +532,51 @@ export async function fetchMapData(
 	const bounds = computeImageBounds(imagePair.properties);
 	return { imagePair, buildings, bounds };
 }
+
+// ─── VLM Evaluation ─────────────────────────────────────────────────────────
+
+export interface VlmDamageProbabilities {
+	no_damage: number;
+	minor_damage: number;
+	major_damage: number;
+	destroyed: number;
+}
+
+export interface VlmPrediction {
+	damage_class: string;
+	confidence: number;
+	probabilities: VlmDamageProbabilities;
+	description: string;
+}
+
+export interface VlmEvaluationResult {
+	prediction: VlmPrediction;
+	model_version: string;
+	is_mock: boolean;
+}
+
+export async function evaluateVlm(
+	preImage: File,
+	postImage: File,
+): Promise<VlmEvaluationResult> {
+	const base = getRequiredApiBaseUrl();
+	const formData = new FormData();
+	formData.append("pre_image", preImage);
+	formData.append("post_image", postImage);
+
+	const res = await fetch(`${base}/vlm/evaluate`, {
+		method: "POST",
+		body: formData,
+	});
+
+	if (!res.ok) {
+		const text = await res.text().catch(() => res.statusText);
+		throw new ApiError(
+			`VLM evaluation failed: ${text}`,
+			res.status,
+			"/vlm/evaluate",
+		);
+	}
+
+	return (await res.json()) as VlmEvaluationResult;
+}
