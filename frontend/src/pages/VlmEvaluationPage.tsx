@@ -78,6 +78,44 @@ export default function VlmEvaluationPage() {
 		}
 	};
 
+	const renderUploadRow = (
+		file: File | null,
+		type: "pre" | "post",
+		_label: string,
+	) => (
+		<div className="flex items-center justify-between gap-4">
+			<label className="inline-block">
+				<input
+					type="file"
+					accept="image/*"
+					className="hidden"
+					onChange={(e) =>
+						e.target.files && handleUpload(e.target.files[0], type)
+					}
+				/>
+				<span className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition">
+					Upload Image
+				</span>
+			</label>
+
+			<div className="flex items-center gap-3 min-w-0">
+				<p className="text-xs text-muted-foreground truncate max-w-[340px]">
+					{file ? file.name : "No file selected"}
+				</p>
+
+				{file && (
+					<button
+						type="button"
+						onClick={() => clearImage(type)}
+						className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border/40 hover:bg-muted transition"
+					>
+						Clear
+					</button>
+				)}
+			</div>
+		</div>
+	);
+
 	return (
 		<div className="min-h-screen flex flex-col">
 			<Header />
@@ -99,31 +137,7 @@ export default function VlmEvaluationPage() {
 						<div className="rounded-xl p-4 bg-card space-y-3 border border-border/40 shadow-sm">
 							<p className="font-semibold">Pre-Disaster Image</p>
 
-							<div className="flex items-center gap-3">
-								<label className="inline-block">
-									<input
-										type="file"
-										accept="image/*"
-										className="hidden"
-										onChange={(e) =>
-											e.target.files && handleUpload(e.target.files[0], "pre")
-										}
-									/>
-									<span className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition">
-										Upload Image
-									</span>
-								</label>
-
-								{preImage && (
-									<button
-										type="button"
-										onClick={() => clearImage("pre")}
-										className="px-3 py-2 rounded-lg text-sm font-medium border border-border/40 hover:bg-muted transition"
-									>
-										Clear
-									</button>
-								)}
-							</div>
+							{renderUploadRow(preImage, "pre", "Pre")}
 
 							{prePreview ? (
 								<img
@@ -142,31 +156,7 @@ export default function VlmEvaluationPage() {
 						<div className="rounded-xl p-4 bg-card space-y-3 border border-border/40 shadow-sm">
 							<p className="font-semibold">Post-Disaster Image</p>
 
-							<div className="flex items-center gap-3">
-								<label className="inline-block">
-									<input
-										type="file"
-										accept="image/*"
-										className="hidden"
-										onChange={(e) =>
-											e.target.files && handleUpload(e.target.files[0], "post")
-										}
-									/>
-									<span className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition">
-										Upload Image
-									</span>
-								</label>
-
-								{postImage && (
-									<button
-										type="button"
-										onClick={() => clearImage("post")}
-										className="px-3 py-2 rounded-lg text-sm font-medium border border-border/40 hover:bg-muted transition"
-									>
-										Clear
-									</button>
-								)}
-							</div>
+							{renderUploadRow(postImage, "post", "Post")}
 
 							{postPreview ? (
 								<img
