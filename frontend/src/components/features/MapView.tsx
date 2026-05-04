@@ -59,6 +59,20 @@ function computeSceneMetrics(
 		"major-damage",
 		"destroyed",
 	] as const;
+	const NORMALIZED_DAMAGE_LABELS: Record<string, NormalizedDamage> = {
+		"no-damage": "no-damage",
+		"no-damages": "no-damage",
+		"minor-damage": "minor-damage",
+		"minor-damages": "minor-damage",
+		"major-damage": "major-damage",
+		"major-damages": "major-damage",
+		destroyed: "destroyed",
+		destroy: "destroyed",
+		"un-classified": "un-classified",
+		unclassified: "un-classified",
+		unknown: "un-classified",
+		uncertain: "un-classified",
+	};
 
 	const predictedDistribution: Record<string, number> = {
 		"no-damage": 0,
@@ -85,28 +99,7 @@ function computeSceneMetrics(
 			.replace(/[_\s]+/g, "-")
 			.replace(/-+/g, "-");
 
-		if (normalized === "no-damage" || normalized === "no-damages") {
-			return "no-damage";
-		}
-		if (normalized === "minor-damage" || normalized === "minor-damages") {
-			return "minor-damage";
-		}
-		if (normalized === "major-damage" || normalized === "major-damages") {
-			return "major-damage";
-		}
-		if (normalized === "destroyed" || normalized === "destroy") {
-			return "destroyed";
-		}
-		if (
-			normalized === "un-classified" ||
-			normalized === "unclassified" ||
-			normalized === "unknown" ||
-			normalized === "uncertain"
-		) {
-			return "un-classified";
-		}
-
-		return "un-classified";
+		return NORMALIZED_DAMAGE_LABELS[normalized] ?? "un-classified";
 	};
 
 	for (const feature of features) {
