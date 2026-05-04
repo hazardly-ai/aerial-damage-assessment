@@ -1,51 +1,156 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant";
 import Container from "@/components/layout/Container";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import { evaluateVlm, type VlmEvaluationResult } from "@/utils/hazardlyApi";
+
+const DAMAGE_COLORS: Record<string, string> = {
+	"no-damage": "bg-green-100 text-green-800 border-green-300",
+	"minor-damage": "bg-yellow-100 text-yellow-800 border-yellow-300",
+	"major-damage": "bg-orange-100 text-orange-800 border-orange-300",
+	destroyed: "bg-red-100 text-red-800 border-red-300",
+};
+
+function DamageLabel({ damageClass }: { damageClass: string }) {
+	const color =
+		DAMAGE_COLORS[damageClass] ?? "bg-gray-100 text-gray-800 border-gray-300";
+
+	return (
+		<span
+			className={`inline-block rounded-full border px-3 py-1 text-sm font-semibold ${color}`}
+		>
+			{damageClass}
+		</span>
+	);
+}
+
+function ProbabilityBar({ label, value }: { label: string; value: number }) {
+	const pct = Math.round(value * 100);
+
+	return (
+		<div className="flex items-center gap-3">
+			<span className="w-28 truncate text-sm text-muted-foreground">
+				{label}
+			</span>
+			<div className="h-3 flex-1 overflow-hidden rounded-full bg-muted">
+				<div
+					className="h-full rounded-full bg-primary transition-all"
+					style={{ width: `${pct}%` }}
+				/>
+			</div>
+			<span className="w-12 text-right font-mono text-sm">{pct}%</span>
+		</div>
+	);
+}
+
+function ResultsPanel({ result }: { result: VlmEvaluationResult }) {
+	const { prediction, model_version, is_mock } = result;
+
+	return (
+		<div className="space-y-5 rounded-xl border border-border/40 bg-card p-6 shadow-sm">
+			<div className="flex items-center justify-between gap-3">
+				<h3 className="text-lg font-bold">Damage Assessment</h3>
+				<div className="flex items-center gap-2">
+					{is_mock && (
+						<span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+							Mock Data
+						</span>
+					)}
+					<span className="text-xs text-muted-foreground">{model_version}</span>
+				</div>
+			</div>
+
+			<div className="flex items-center gap-4">
+				<DamageLabel damageClass={prediction.damage_class} />
+				<span className="text-sm text-muted-foreground">
+					{Math.round(prediction.confidence * 100)}% confidence
+				</span>
+			</div>
+
+			<p className="text-sm leading-relaxed">{prediction.description}</p>
+
+			<div className="space-y-2">
+				<p className="text-sm font-semibold">Class Probabilities</p>
+				<ProbabilityBar
+					label="No Damage"
+					value={prediction.probabilities.no_damage}
+				/>
+				<ProbabilityBar
+					label="Minor"
+					value={prediction.probabilities.minor_damage}
+				/>
+				<ProbabilityBar
+					label="Major"
+					value={prediction.probabilities.major_damage}
+				/>
+				<ProbabilityBar
+					label="Destroyed"
+					value={prediction.probabilities.destroyed}
+				/>
+			</div>
+		</div>
+	);
+}
 
 export default function VlmEvaluationPage() {
 	const [preImage, setPreImage] = useState<File | null>(null);
 	const [postImage, setPostImage] = useState<File | null>(null);
-
 	const [prePreview, setPrePreview] = useState<string | null>(null);
 	const [postPreview, setPostPreview] = useState<string | null>(null);
-
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [result, setResult] = useState<VlmEvaluationResult | null>(null);
+
+	useEffect(() => {
+		return () => {
+			if (prePreview) URL.revokeObjectURL(prePreview);
+			if (postPreview) URL.revokeObjectURL(postPreview);
+		};
+	}, [prePreview, postPreview]);
 
 	const validateImage = (file: File) =>
 		["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type);
 
 	const handleUpload = (file: File, type: "pre" | "post") => {
 		setError(null);
+		setResult(null);
 
 		if (!validateImage(file)) {
-			setError("Invalid image format.");
+			setError("Invalid image format. Please upload PNG, JPEG, or WebP.");
 			return;
 		}
 
 		const url = URL.createObjectURL(file);
 
 		if (type === "pre") {
+			if (prePreview) URL.revokeObjectURL(prePreview);
 			setPreImage(file);
 			setPrePreview(url);
-		} else {
-			setPostImage(file);
-			setPostPreview(url);
+			return;
 		}
+
+		if (postPreview) URL.revokeObjectURL(postPreview);
+		setPostImage(file);
+		setPostPreview(url);
 	};
 
 	const clearImage = (type: "pre" | "post") => {
+		setError(null);
+		setResult(null);
+
 		if (type === "pre") {
+			if (prePreview) URL.revokeObjectURL(prePreview);
 			setPreImage(null);
 			setPrePreview(null);
-		} else {
-			setPostImage(null);
-			setPostPreview(null);
+			return;
 		}
+
+		if (postPreview) URL.revokeObjectURL(postPreview);
+		setPostImage(null);
+		setPostPreview(null);
 	};
 
 	const handleEvaluate = async () => {
@@ -56,50 +161,41 @@ export default function VlmEvaluationPage() {
 
 		setLoading(true);
 		setError(null);
-
-		const formData = new FormData();
-		formData.append("pre_image", preImage);
-		formData.append("post_image", postImage);
+		setResult(null);
 
 		try {
-			const res = await fetch("/api/vlm/evaluate", {
-				method: "POST",
-				body: formData,
-			});
-
-			if (!res.ok) throw new Error("Evaluation failed");
-
-			const data = await res.json();
-			console.log("Result:", data);
-		} catch {
-			setError("Evaluation failed. Please try again.");
+			const data = await evaluateVlm(preImage, postImage);
+			setResult(data);
+		} catch (err) {
+			setError(
+				err instanceof Error
+					? err.message
+					: "Evaluation failed. Please try again.",
+			);
 		} finally {
 			setLoading(false);
 		}
 	};
 
-	const renderUploadRow = (
-		file: File | null,
-		type: "pre" | "post",
-		_label: string,
-	) => (
+	const renderUploadRow = (file: File | null, type: "pre" | "post") => (
 		<div className="flex items-center justify-between gap-4">
 			<label className="inline-block">
 				<input
 					type="file"
-					accept="image/*"
+					accept="image/png,image/jpeg,image/webp"
 					className="hidden"
-					onChange={(e) =>
-						e.target.files && handleUpload(e.target.files[0], type)
-					}
+					onChange={(e) => {
+						const nextFile = e.target.files?.[0];
+						if (nextFile) handleUpload(nextFile, type);
+					}}
 				/>
-				<span className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium cursor-pointer hover:bg-secondary/80 transition">
+				<span className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition hover:bg-secondary/80">
 					Upload Image
 				</span>
 			</label>
 
-			<div className="flex items-center gap-3 min-w-0">
-				<p className="text-xs text-muted-foreground truncate max-w-[340px]">
+			<div className="flex min-w-0 items-center gap-3">
+				<p className="max-w-[340px] truncate text-xs text-muted-foreground">
 					{file ? file.name : "No file selected"}
 				</p>
 
@@ -107,7 +203,7 @@ export default function VlmEvaluationPage() {
 					<button
 						type="button"
 						onClick={() => clearImage(type)}
-						className="px-3 py-1.5 rounded-lg text-xs font-medium border border-border/40 hover:bg-muted transition"
+						className="rounded-lg border border-border/40 px-3 py-1.5 text-xs font-medium transition hover:bg-muted"
 					>
 						Clear
 					</button>
@@ -117,84 +213,77 @@ export default function VlmEvaluationPage() {
 	);
 
 	return (
-		<div className="min-h-screen flex flex-col">
+		<div className="flex min-h-screen flex-col">
 			<Header />
 
 			<main className="flex-1">
-				<Container className="py-8 space-y-8">
+				<Container className="space-y-8 py-8">
 					<div>
 						<h2 className="text-2xl font-bold tracking-tight">
 							VLM Damage Evaluation
 						</h2>
 						<p className="text-sm text-muted-foreground">
-							Upload pre/post disaster images for AI assessment
+							Upload pre and post disaster building crops for AI damage
+							assessment
 						</p>
 					</div>
 
-					{/* UPLOAD GRID */}
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						{/* PRE */}
-						<div className="rounded-xl p-4 bg-card space-y-3 border border-border/40 shadow-sm">
+					<div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+						<div className="space-y-3 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
 							<p className="font-semibold">Pre-Disaster Image</p>
-
-							{renderUploadRow(preImage, "pre", "Pre")}
-
+							{renderUploadRow(preImage, "pre")}
 							{prePreview ? (
 								<img
 									src={prePreview}
 									alt="Pre-disaster preview"
-									className="h-52 w-full object-cover rounded-lg border"
+									className="h-52 w-full rounded-lg border bg-muted object-contain"
 								/>
 							) : (
-								<div className="h-52 flex items-center justify-center bg-muted text-muted-foreground rounded-lg">
+								<div className="flex h-52 items-center justify-center rounded-lg bg-muted text-muted-foreground">
 									No image selected
 								</div>
 							)}
 						</div>
 
-						{/* POST */}
-						<div className="rounded-xl p-4 bg-card space-y-3 border border-border/40 shadow-sm">
+						<div className="space-y-3 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
 							<p className="font-semibold">Post-Disaster Image</p>
-
-							{renderUploadRow(postImage, "post", "Post")}
-
+							{renderUploadRow(postImage, "post")}
 							{postPreview ? (
 								<img
 									src={postPreview}
 									alt="Post-disaster preview"
-									className="h-52 w-full object-cover rounded-lg border"
+									className="h-52 w-full rounded-lg border bg-muted object-contain"
 								/>
 							) : (
-								<div className="h-52 flex items-center justify-center bg-muted text-muted-foreground rounded-lg">
+								<div className="flex h-52 items-center justify-center rounded-lg bg-muted text-muted-foreground">
 									No image selected
 								</div>
 							)}
 						</div>
 					</div>
 
-					{/* BUTTON */}
 					<div className="flex justify-center">
 						<button
 							type="button"
 							onClick={handleEvaluate}
 							disabled={!preImage || !postImage || loading}
-							className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-semibold disabled:opacity-50"
+							className="rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground disabled:opacity-50"
 						>
 							{loading ? "Evaluating..." : "Run Evaluation"}
 						</button>
 					</div>
 
-					{/* ERROR */}
 					{error && (
-						<p className="text-center text-red-500 font-medium">{error}</p>
+						<p className="text-center font-medium text-red-500">{error}</p>
 					)}
 
-					{/* LOADING */}
 					{loading && (
 						<p className="text-center text-muted-foreground">
 							Processing images...
 						</p>
 					)}
+
+					{result && <ResultsPanel result={result} />}
 				</Container>
 			</main>
 
