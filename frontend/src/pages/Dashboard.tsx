@@ -57,9 +57,22 @@ export default function Dashboard() {
 							<DashboardBuildingsSection
 								totalItems={dashboard.totalItems}
 								activeDamageFilter={dashboard.activeDamageFilter}
-								showCorrectOnly={dashboard.showCorrectOnly}
+								buildingSearchQuery={dashboard.buildingSearchQuery}
+								disasterSearchQuery={dashboard.disasterSearchQuery}
+								xbdSearchQuery={dashboard.xbdSearchQuery}
+								predictedDamageFilter={dashboard.predictedDamageFilter}
+								buildingCorrectnessFilter={dashboard.buildingCorrectnessFilter}
 								onDamageFilterChange={dashboard.setBuildingsFilter}
-								onShowCorrectOnlyChange={dashboard.setShowCorrectOnly}
+								onBuildingSearchChange={dashboard.setBuildingSearchFilter}
+								onDisasterSearchChange={dashboard.setDisasterSearchFilter}
+								onXbdSearchChange={dashboard.setXbdSearchFilter}
+								onPredictedDamageFilterChange={
+									dashboard.setPredictedDamageTableFilter
+								}
+								onBuildingCorrectnessFilterChange={
+									dashboard.setBuildingCorrectnessTableFilter
+								}
+								onClearFilters={dashboard.clearBuildingFilters}
 								loadingBuildings={dashboard.loadingBuildings}
 								page={dashboard.page}
 								rows={dashboard.rows}

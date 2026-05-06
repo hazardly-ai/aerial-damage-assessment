@@ -1,28 +1,31 @@
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/Button";
 import Item from "@/components/ui/Item";
 import Pagination from "@/components/ui/Pagination";
 import { SpinnerEmpty } from "@/components/ui/SpinnerEmpty";
-import {
-	Select,
-	SelectContent,
-	SelectGroup,
-	SelectItem,
-	SelectLabel,
-	SelectTrigger,
-	SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { DAMAGE_COLOR_HEX } from "@/constants/app";
 import { resolveImageUrl } from "@/utils/hazardlyApi";
-import type { BuildingListItem } from "./dashboardTypes";
+import type {
+	BuildingCorrectnessFilter,
+	BuildingListItem,
+} from "./dashboardTypes";
 import { DAMAGE_FILTERS, normalizeDamage, prettyLabel } from "./dashboardUtils";
 
 type DashboardBuildingsSectionProps = {
 	totalItems: number;
 	activeDamageFilter: string;
-	showCorrectOnly: boolean;
+	buildingSearchQuery: string;
+	disasterSearchQuery: string;
+	xbdSearchQuery: string;
+	predictedDamageFilter: string;
+	buildingCorrectnessFilter: BuildingCorrectnessFilter;
 	onDamageFilterChange: (value: string) => void;
-	onShowCorrectOnlyChange: (value: boolean) => void;
+	onBuildingSearchChange: (value: string) => void;
+	onDisasterSearchChange: (value: string) => void;
+	onXbdSearchChange: (value: string) => void;
+	onPredictedDamageFilterChange: (value: string) => void;
+	onBuildingCorrectnessFilterChange: (value: BuildingCorrectnessFilter) => void;
+	onClearFilters: () => void;
 	loadingBuildings: boolean;
 	page: number;
 	rows: BuildingListItem[];
@@ -37,9 +40,18 @@ const resolveStorageUrl = (path?: string | null): string | null =>
 export default function DashboardBuildingsSection({
 	totalItems,
 	activeDamageFilter,
-	showCorrectOnly,
+	buildingSearchQuery,
+	disasterSearchQuery,
+	xbdSearchQuery,
+	predictedDamageFilter,
+	buildingCorrectnessFilter,
 	onDamageFilterChange,
-	onShowCorrectOnlyChange,
+	onBuildingSearchChange,
+	onDisasterSearchChange,
+	onXbdSearchChange,
+	onPredictedDamageFilterChange,
+	onBuildingCorrectnessFilterChange,
+	onClearFilters,
 	loadingBuildings,
 	page,
 	rows,
@@ -48,6 +60,13 @@ export default function DashboardBuildingsSection({
 	onPageChange,
 }: DashboardBuildingsSectionProps) {
 	const navigate = useNavigate();
+	const hasActiveFilters =
+		activeDamageFilter !== "all" ||
+		buildingSearchQuery !== "" ||
+		disasterSearchQuery !== "" ||
+		xbdSearchQuery !== "" ||
+		predictedDamageFilter !== "all" ||
+		buildingCorrectnessFilter !== "all";
 
 	return (
 		<div className="relative overflow-hidden rounded-xl border border-border bg-card p-5">
@@ -57,38 +76,14 @@ export default function DashboardBuildingsSection({
 					<p className="text-xs text-muted-foreground">
 						{totalItems} total rows
 					</p>
-				</div>
-			</div>
-
-			<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-				<Select
-					value={activeDamageFilter === "all" ? undefined : activeDamageFilter}
-					onValueChange={onDamageFilterChange}
-				>
-					<SelectTrigger className="w-full max-w-48">
-						<SelectValue placeholder="Damages" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectGroup>
-							<SelectLabel>Damages</SelectLabel>
-							{DAMAGE_FILTERS.map((filter) => (
-								<SelectItem key={filter.key} value={filter.key}>
-									{filter.label}
-								</SelectItem>
-							))}
-						</SelectGroup>
-					</SelectContent>
-				</Select>
-
-				<div className="flex items-center gap-2">
-					<label htmlFor="align-item" className="text-sm text-muted-foreground">
-						Correct
-					</label>
-					<Switch
-						id="align-item"
-						checked={showCorrectOnly}
-						onCheckedChange={onShowCorrectOnlyChange}
-					/>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={onClearFilters}
+						disabled={!hasActiveFilters}
+					>
+						Clear filters
+					</Button>
 				</div>
 			</div>
 
@@ -113,6 +108,86 @@ export default function DashboardBuildingsSection({
 								<th className="py-2 pr-3 font-medium">Actual</th>
 								<th className="py-2 pr-3 font-medium">Predicted</th>
 								<th className="py-2 pr-3 font-medium">Correct</th>
+							</tr>
+							<tr className="border-b border-border/60 bg-background text-left align-top">
+								<th className="py-2 pr-3">
+									<input
+										type="text"
+										value={buildingSearchQuery}
+										onChange={(event) =>
+											onBuildingSearchChange(event.target.value)
+										}
+										placeholder="Address or UID"
+										className="w-full min-w-40 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none ring-0 transition-colors duration-theme ease-theme placeholder:text-muted-foreground focus:border-primary"
+									/>
+								</th>
+								<th className="py-2 pr-3">
+									<input
+										type="text"
+										value={disasterSearchQuery}
+										onChange={(event) =>
+											onDisasterSearchChange(event.target.value)
+										}
+										placeholder="Disaster name"
+										className="w-full min-w-32 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none ring-0 transition-colors duration-theme ease-theme placeholder:text-muted-foreground focus:border-primary"
+									/>
+								</th>
+								<th className="py-2 pr-3">
+									<input
+										type="text"
+										inputMode="numeric"
+										value={xbdSearchQuery}
+										onChange={(event) => onXbdSearchChange(event.target.value)}
+										placeholder="Scene ID"
+										className="w-full min-w-24 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none ring-0 transition-colors duration-theme ease-theme placeholder:text-muted-foreground focus:border-primary"
+									/>
+								</th>
+								<th className="py-2 pr-3">
+									<select
+										value={activeDamageFilter}
+										onChange={(event) =>
+											onDamageFilterChange(event.target.value)
+										}
+										className="w-full min-w-32 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors duration-theme ease-theme focus:border-primary"
+									>
+										{DAMAGE_FILTERS.map((filter) => (
+											<option key={filter.key} value={filter.key}>
+												{filter.label}
+											</option>
+										))}
+									</select>
+								</th>
+								<th className="py-2 pr-3">
+									<select
+										value={predictedDamageFilter}
+										onChange={(event) =>
+											onPredictedDamageFilterChange(event.target.value)
+										}
+										className="w-full min-w-32 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors duration-theme ease-theme focus:border-primary"
+									>
+										<option value="all">All</option>
+										<option value="no-damage">No Damage</option>
+										<option value="minor-damage">Minor Damage</option>
+										<option value="major-damage">Major Damage</option>
+										<option value="destroyed">Destroyed</option>
+										<option value="un-classified">Unclassified</option>
+									</select>
+								</th>
+								<th className="py-2 pr-3">
+									<select
+										value={buildingCorrectnessFilter}
+										onChange={(event) =>
+											onBuildingCorrectnessFilterChange(
+												event.target.value as BuildingCorrectnessFilter,
+											)
+										}
+										className="w-full min-w-28 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors duration-theme ease-theme focus:border-primary"
+									>
+										<option value="all">All</option>
+										<option value="yes">Yes</option>
+										<option value="no">No</option>
+									</select>
+								</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -187,6 +262,11 @@ export default function DashboardBuildingsSection({
 							})}
 						</tbody>
 					</table>
+					{rows.length === 0 && (
+						<div className="rounded-md border border-border bg-background px-4 py-6 text-sm text-muted-foreground">
+							No buildings match the current filters.
+						</div>
+					)}
 				</div>
 			)}
 

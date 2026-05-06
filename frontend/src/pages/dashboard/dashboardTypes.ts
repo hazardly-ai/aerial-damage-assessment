@@ -44,6 +44,8 @@ export type SortDirection = "asc" | "desc";
 
 export type ActiveSection = "overview" | "buildings" | "image-pairs";
 
+export type BuildingCorrectnessFilter = "all" | "yes" | "no";
+
 export type OverviewDamageRow = {
 	key: string;
 	label: string;

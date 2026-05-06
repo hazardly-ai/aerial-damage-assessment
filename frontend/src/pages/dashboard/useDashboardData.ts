@@ -11,6 +11,7 @@ import {
 } from "@/utils/hazardlyApi";
 import type {
 	ActiveSection,
+	BuildingCorrectnessFilter,
 	BuildingListItem,
 	ImagePairRow,
 	ImagePairSortKey,
@@ -68,7 +69,13 @@ export function useDashboardData() {
 	const [error, setError] = useState<string | null>(null);
 	const [activeSection, setActiveSection] = useState<ActiveSection>("overview");
 	const [activeDamageFilter, setActiveDamageFilter] = useState<string>("all");
-	const [showCorrectOnly, setShowCorrectOnly] = useState(false);
+	const [buildingSearchQuery, setBuildingSearchQuery] = useState("");
+	const [disasterSearchQuery, setDisasterSearchQuery] = useState("");
+	const [xbdSearchQuery, setXbdSearchQuery] = useState("");
+	const [predictedDamageFilter, setPredictedDamageFilter] =
+		useState<string>("all");
+	const [buildingCorrectnessFilter, setBuildingCorrectnessFilter] =
+		useState<BuildingCorrectnessFilter>("all");
 	const [selectedDisasterId, setSelectedDisasterId] = useState<number | null>(
 		null,
 	);
@@ -263,46 +270,15 @@ export function useDashboardData() {
 				const pairs = await ensureImagePairs(selectedDisasterId);
 				const features = await ensureAllBuildings(selectedDisasterId);
 
-				const damageFiltered =
-					activeDamageFilter === "all"
-						? features
-						: features.filter(
-								(feature) =>
-									normalizeDamage(feature.properties.actual_damage) ===
-									activeDamageFilter,
-							);
+				const normalizedBuildingQuery = buildingSearchQuery
+					.trim()
+					.toLowerCase();
+				const normalizedDisasterQuery = disasterSearchQuery
+					.trim()
+					.toLowerCase();
+				const normalizedXbdQuery = xbdSearchQuery.trim();
 
-				const filtered = showCorrectOnly
-					? damageFiltered.filter((feature) => {
-							const actual = normalizeDamage(feature.properties.actual_damage);
-							const rawPredicted = feature.properties.predicted_damage;
-							if (rawPredicted == null) return false;
-
-							const predicted = normalizeDamage(rawPredicted);
-							if (actual === "un-classified" || predicted === "un-classified") {
-								return false;
-							}
-
-							return actual === predicted;
-						})
-					: damageFiltered;
-
-				const nextTotalItems = filtered.length;
-				const nextTotalPages = Math.max(
-					1,
-					Math.ceil(nextTotalItems / PAGE_SIZE),
-				);
-				const clampedPage = Math.min(page, nextTotalPages);
-
-				if (clampedPage !== page) {
-					setPage(clampedPage);
-					return;
-				}
-
-				const start = (clampedPage - 1) * PAGE_SIZE;
-				const pagedFeatures = filtered.slice(start, start + PAGE_SIZE);
-
-				const mapped: BuildingListItem[] = pagedFeatures.map((feature) => {
+				const mappedAll: BuildingListItem[] = features.map((feature) => {
 					const prop = feature.properties;
 					const pair = pairs.get(prop.image_pair_id);
 					const actual = normalizeDamage(prop.actual_damage);
@@ -327,6 +303,82 @@ export function useDashboardData() {
 					};
 				});
 
+				const filtered = mappedAll.filter((building) => {
+					if (
+						activeDamageFilter !== "all" &&
+						normalizeDamage(building.actual_damage) !== activeDamageFilter
+					) {
+						return false;
+					}
+
+					if (predictedDamageFilter !== "all") {
+						if (predictedDamageFilter === "missing") {
+							if (building.predicted_damage !== null) return false;
+						} else if (building.predicted_damage !== predictedDamageFilter) {
+							return false;
+						}
+					}
+
+					if (buildingCorrectnessFilter !== "all") {
+						if (
+							buildingCorrectnessFilter === "yes" &&
+							building.is_correct !== true
+						) {
+							return false;
+						}
+						if (
+							buildingCorrectnessFilter === "no" &&
+							building.is_correct !== false
+						) {
+							return false;
+						}
+					}
+
+					if (normalizedBuildingQuery) {
+						const address = building.address?.toLowerCase() ?? "";
+						const uid = building.uid.toLowerCase();
+						if (
+							!address.includes(normalizedBuildingQuery) &&
+							!uid.includes(normalizedBuildingQuery)
+						) {
+							return false;
+						}
+					}
+
+					if (
+						normalizedDisasterQuery &&
+						!building.disaster_name
+							.toLowerCase()
+							.includes(normalizedDisasterQuery)
+					) {
+						return false;
+					}
+
+					if (
+						normalizedXbdQuery &&
+						!matchesWildcard(String(building.xbd_id), normalizedXbdQuery)
+					) {
+						return false;
+					}
+
+					return true;
+				});
+
+				const nextTotalItems = filtered.length;
+				const nextTotalPages = Math.max(
+					1,
+					Math.ceil(nextTotalItems / PAGE_SIZE),
+				);
+				const clampedPage = Math.min(page, nextTotalPages);
+
+				if (clampedPage !== page) {
+					setPage(clampedPage);
+					return;
+				}
+
+				const start = (clampedPage - 1) * PAGE_SIZE;
+				const mapped = filtered.slice(start, start + PAGE_SIZE);
+
 				setRows(mapped);
 				setTotalItems(nextTotalItems);
 				setTotalPages(nextTotalPages);
@@ -348,7 +400,11 @@ export function useDashboardData() {
 		selectedDisasterId,
 		page,
 		activeDamageFilter,
-		showCorrectOnly,
+		buildingSearchQuery,
+		disasterSearchQuery,
+		xbdSearchQuery,
+		predictedDamageFilter,
+		buildingCorrectnessFilter,
 		ensureAllBuildings,
 		ensureImagePairs,
 		selectedDisasterName,
@@ -473,6 +529,44 @@ export function useDashboardData() {
 		setPage(1);
 	}, []);
 
+	const setBuildingSearchFilter = useCallback((value: string) => {
+		setBuildingSearchQuery(value);
+		setPage(1);
+	}, []);
+
+	const setDisasterSearchFilter = useCallback((value: string) => {
+		setDisasterSearchQuery(value);
+		setPage(1);
+	}, []);
+
+	const setXbdSearchFilter = useCallback((value: string) => {
+		setXbdSearchQuery(value);
+		setPage(1);
+	}, []);
+
+	const setPredictedDamageTableFilter = useCallback((value: string) => {
+		setPredictedDamageFilter(value);
+		setPage(1);
+	}, []);
+
+	const setBuildingCorrectnessTableFilter = useCallback(
+		(value: BuildingCorrectnessFilter) => {
+			setBuildingCorrectnessFilter(value);
+			setPage(1);
+		},
+		[],
+	);
+
+	const clearBuildingFilters = useCallback(() => {
+		setActiveDamageFilter("all");
+		setBuildingSearchQuery("");
+		setDisasterSearchQuery("");
+		setXbdSearchQuery("");
+		setPredictedDamageFilter("all");
+		setBuildingCorrectnessFilter("all");
+		setPage(1);
+	}, []);
+
 	return {
 		loadingStats,
 		loadingBuildings,
@@ -488,7 +582,11 @@ export function useDashboardData() {
 		predictionMetrics,
 		overviewDamageRows,
 		activeDamageFilter,
-		showCorrectOnly,
+		buildingSearchQuery,
+		disasterSearchQuery,
+		xbdSearchQuery,
+		predictedDamageFilter,
+		buildingCorrectnessFilter,
 		imagePairRows: sortedImagePairRows,
 		imagePairPageRows,
 		imagePairPage: imagePairPageClamped,
@@ -498,7 +596,12 @@ export function useDashboardData() {
 		imagePairSortDirection,
 		setDamageFilter,
 		setBuildingsFilter,
-		setShowCorrectOnly,
+		setBuildingSearchFilter,
+		setDisasterSearchFilter,
+		setXbdSearchFilter,
+		setPredictedDamageTableFilter,
+		setBuildingCorrectnessTableFilter,
+		clearBuildingFilters,
 		setPage,
 		setImagePairsPage,
 		setImagePairsSort,
