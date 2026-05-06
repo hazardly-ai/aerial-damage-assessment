@@ -399,7 +399,7 @@ export function useDashboardData() {
 		const rows = [...imagePairRows];
 		rows.sort((left, right) => {
 			if (imagePairSortKey == null || imagePairSortDirection == null) {
-				return compareImagePairRows(left, right, "accuracyPct", "desc");
+				return compareImagePairRows(left, right, "xbd_id", "asc");
 			}
 
 			return compareImagePairRows(
