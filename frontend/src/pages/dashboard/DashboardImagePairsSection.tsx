@@ -1,9 +1,14 @@
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Item from "@/components/ui/Item";
 import Pagination from "@/components/ui/Pagination";
 import { SpinnerEmpty } from "@/components/ui/SpinnerEmpty";
 import { resolveImageUrl } from "@/utils/hazardlyApi";
-import type { ImagePairRow } from "./dashboardTypes";
+import type {
+	ImagePairRow,
+	ImagePairSortKey,
+	SortDirection,
+} from "./dashboardTypes";
 
 type DashboardImagePairsSectionProps = {
 	loadingImagePairs: boolean;
@@ -12,8 +17,11 @@ type DashboardImagePairsSectionProps = {
 	imagePairPageRows: ImagePairRow[];
 	imagePairPage: number;
 	imagePairTotalPages: number;
+	imagePairSortKey: ImagePairSortKey | null;
+	imagePairSortDirection: SortDirection | null;
 	selectedDisasterName: string | null;
 	onPageChange: (page: number) => void;
+	onSortChange: (key: ImagePairSortKey) => void;
 };
 
 const resolveStorageUrl = (path?: string | null): string | null =>
@@ -26,10 +34,38 @@ export default function DashboardImagePairsSection({
 	imagePairPageRows,
 	imagePairPage,
 	imagePairTotalPages,
+	imagePairSortKey,
+	imagePairSortDirection,
 	selectedDisasterName,
 	onPageChange,
+	onSortChange,
 }: DashboardImagePairsSectionProps) {
 	const navigate = useNavigate();
+
+	const renderSortIcon = (key: ImagePairSortKey) => {
+		if (imagePairSortKey !== key) {
+			return <ArrowUpDown className="h-3.5 w-3.5" />;
+		}
+
+		return imagePairSortDirection === "asc" ? (
+			<ArrowUp className="h-3.5 w-3.5" />
+		) : (
+			<ArrowDown className="h-3.5 w-3.5" />
+		);
+	};
+
+	const renderSortableHeader = (label: string, key: ImagePairSortKey) => (
+		<th className="py-2 pr-3 font-medium" scope="col">
+			<button
+				type="button"
+				onClick={() => onSortChange(key)}
+				className="inline-flex items-center gap-1 text-left text-muted-foreground transition-colors hover:text-foreground"
+			>
+				<span>{label}</span>
+				{renderSortIcon(key)}
+			</button>
+		</th>
+	);
 
 	return (
 		<div className="relative overflow-hidden rounded-xl border border-border bg-card p-5">
@@ -57,11 +93,11 @@ export default function DashboardImagePairsSection({
 					<table className="w-full text-sm">
 						<thead>
 							<tr className="border-b border-border/60 bg-muted/30 text-left text-muted-foreground">
-								<th className="py-2 pr-3 font-medium">Post Image</th>
-								<th className="py-2 pr-3 font-medium">Total Buildings</th>
-								<th className="py-2 pr-3 font-medium">Correct</th>
-								<th className="py-2 pr-3 font-medium">Incorrect</th>
-								<th className="py-2 pr-3 font-medium">Accuracy</th>
+								{renderSortableHeader("Post Image", "xbd_id")}
+								{renderSortableHeader("Total Buildings", "totalBuildings")}
+								{renderSortableHeader("Correct", "correctCount")}
+								{renderSortableHeader("Incorrect", "incorrectCount")}
+								{renderSortableHeader("Accuracy", "accuracyPct")}
 							</tr>
 						</thead>
 						<tbody>

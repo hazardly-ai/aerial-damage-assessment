@@ -77,8 +77,11 @@ export default function Dashboard() {
 								imagePairPageRows={dashboard.imagePairPageRows}
 								imagePairPage={dashboard.imagePairPage}
 								imagePairTotalPages={dashboard.imagePairTotalPages}
+								imagePairSortKey={dashboard.imagePairSortKey}
+								imagePairSortDirection={dashboard.imagePairSortDirection}
 								selectedDisasterName={dashboard.selectedDisasterName}
 								onPageChange={dashboard.setImagePairsPage}
+								onSortChange={dashboard.setImagePairsSort}
 							/>
 						)}
 					</div>

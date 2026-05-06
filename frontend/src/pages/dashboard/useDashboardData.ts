@@ -13,7 +13,9 @@ import type {
 	ActiveSection,
 	BuildingListItem,
 	ImagePairRow,
+	ImagePairSortKey,
 	PredictionMetrics,
+	SortDirection,
 } from "./dashboardTypes";
 import {
 	buildImagePairRows,
@@ -24,6 +26,31 @@ import {
 	normalizeDamage,
 	PAGE_SIZE,
 } from "./dashboardUtils";
+
+const compareImagePairRows = (
+	left: ImagePairRow,
+	right: ImagePairRow,
+	key: ImagePairSortKey,
+	direction: SortDirection,
+) => {
+	const multiplier = direction === "asc" ? 1 : -1;
+	const leftValue =
+		key === "accuracyPct"
+			? left.accuracyPct == null
+				? -1
+				: Number(left.accuracyPct)
+			: left[key];
+	const rightValue =
+		key === "accuracyPct"
+			? right.accuracyPct == null
+				? -1
+				: Number(right.accuracyPct)
+			: right[key];
+
+	if (leftValue < rightValue) return -1 * multiplier;
+	if (leftValue > rightValue) return 1 * multiplier;
+	return left.xbd_id - right.xbd_id;
+};
 
 type ImagePairLookup = Map<
 	number,
@@ -62,6 +89,10 @@ export function useDashboardData() {
 	const [totalPages, setTotalPages] = useState(1);
 	const [totalItems, setTotalItems] = useState(0);
 	const [imagePairsPage, setImagePairsPage] = useState(1);
+	const [imagePairSortKey, setImagePairSortKey] =
+		useState<ImagePairSortKey | null>(null);
+	const [imagePairSortDirection, setImagePairSortDirection] =
+		useState<SortDirection | null>(null);
 	const imagePairMapRef = useRef(imagePairMap);
 	const allBuildingsCacheRef = useRef(allBuildingsCache);
 	const hasLoadedInitialStatsRef = useRef(false);
@@ -364,13 +395,30 @@ export function useDashboardData() {
 		[allBuildingsCache, imagePairMap],
 	);
 
-	const imagePairTotalItems = imagePairRows.length;
+	const sortedImagePairRows = useMemo<ImagePairRow[]>(() => {
+		const rows = [...imagePairRows];
+		rows.sort((left, right) => {
+			if (imagePairSortKey == null || imagePairSortDirection == null) {
+				return compareImagePairRows(left, right, "accuracyPct", "desc");
+			}
+
+			return compareImagePairRows(
+				left,
+				right,
+				imagePairSortKey,
+				imagePairSortDirection,
+			);
+		});
+		return rows;
+	}, [imagePairRows, imagePairSortDirection, imagePairSortKey]);
+
+	const imagePairTotalItems = sortedImagePairRows.length;
 	const imagePairTotalPages = Math.max(
 		1,
 		Math.ceil(imagePairTotalItems / PAGE_SIZE),
 	);
 	const imagePairPageClamped = Math.min(imagePairsPage, imagePairTotalPages);
-	const imagePairPageRows = imagePairRows.slice(
+	const imagePairPageRows = sortedImagePairRows.slice(
 		(imagePairPageClamped - 1) * PAGE_SIZE,
 		imagePairPageClamped * PAGE_SIZE,
 	);
@@ -400,6 +448,26 @@ export function useDashboardData() {
 		setImagePairsPage(1);
 	}, []);
 
+	const setImagePairsSort = useCallback(
+		(key: ImagePairSortKey) => {
+			setImagePairsPage(1);
+			if (imagePairSortKey !== key) {
+				setImagePairSortKey(key);
+				setImagePairSortDirection("desc");
+				return;
+			}
+
+			if (imagePairSortDirection === "desc") {
+				setImagePairSortDirection("asc");
+				return;
+			}
+
+			setImagePairSortKey(null);
+			setImagePairSortDirection(null);
+		},
+		[imagePairSortDirection, imagePairSortKey],
+	);
+
 	const setBuildingsFilter = useCallback((value: string) => {
 		setActiveDamageFilter(value);
 		setPage(1);
@@ -421,16 +489,19 @@ export function useDashboardData() {
 		overviewDamageRows,
 		activeDamageFilter,
 		showCorrectOnly,
-		imagePairRows,
+		imagePairRows: sortedImagePairRows,
 		imagePairPageRows,
 		imagePairPage: imagePairPageClamped,
 		imagePairTotalPages,
 		imagePairTotalItems,
+		imagePairSortKey,
+		imagePairSortDirection,
 		setDamageFilter,
 		setBuildingsFilter,
 		setShowCorrectOnly,
 		setPage,
 		setImagePairsPage,
+		setImagePairsSort,
 		setOverviewSection,
 		setBuildingsSection,
 		setImagePairsSection,

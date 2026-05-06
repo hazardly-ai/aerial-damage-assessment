@@ -33,6 +33,15 @@ export type ImagePairRow = {
 	accuracyPct: string | null;
 };
 
+export type ImagePairSortKey =
+	| "xbd_id"
+	| "totalBuildings"
+	| "correctCount"
+	| "incorrectCount"
+	| "accuracyPct";
+
+export type SortDirection = "asc" | "desc";
+
 export type ActiveSection = "overview" | "buildings" | "image-pairs";
 
 export type OverviewDamageRow = {
