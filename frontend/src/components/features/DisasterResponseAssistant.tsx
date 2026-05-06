@@ -33,10 +33,13 @@ export default function DisasterResponseAssistant() {
 
 	const [currentQuery, setCurrentQuery] = useState("");
 	const bottomRef = useRef<HTMLDivElement | null>(null);
+	const messageCount = responseLog.length;
 
 	useEffect(() => {
-		bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, []);
+		if (messageCount > 0) {
+			bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+		}
+	}, [messageCount]);
 
 	useEffect(() => {
 		sessionStorage.setItem("chatHistory", JSON.stringify(responseLog));

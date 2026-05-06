@@ -34,12 +34,15 @@ export default function MapPage() {
 		isXbdMissing || isXbdMalformed ? 18 : Number(normalizedXbdId);
 
 	const hasRedirected = useRef(false);
+	const lastRouteKey = useRef<string | null>(null);
 
 	useEffect(() => {
-		hasRedirected.current = false;
-	}, []);
+		const routeKey = `${normalizedDisasterParam ?? ""}:${xbdid ?? ""}`;
+		if (lastRouteKey.current !== routeKey) {
+			hasRedirected.current = false;
+			lastRouteKey.current = routeKey;
+		}
 
-	useEffect(() => {
 		async function resolveDisaster() {
 			if (hasRedirected.current) return;
 			if (!requiresDisasterResolution) {
