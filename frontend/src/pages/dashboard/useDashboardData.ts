@@ -28,6 +28,14 @@ import {
 	PAGE_SIZE,
 } from "./dashboardUtils";
 
+type BuildingSortKey =
+	| "building"
+	| "disaster_name"
+	| "xbd_id"
+	| "actual_damage"
+	| "predicted_damage"
+	| "is_correct";
+
 const compareImagePairRows = (
 	left: ImagePairRow,
 	right: ImagePairRow,
@@ -35,22 +43,68 @@ const compareImagePairRows = (
 	direction: SortDirection,
 ) => {
 	const multiplier = direction === "asc" ? 1 : -1;
-	const leftValue =
-		key === "accuracyPct"
-			? left.accuracyPct == null
-				? -1
-				: Number(left.accuracyPct)
-			: left[key];
-	const rightValue =
-		key === "accuracyPct"
-			? right.accuracyPct == null
-				? -1
-				: Number(right.accuracyPct)
-			: right[key];
+	const getValue = (row: ImagePairRow): number => {
+		switch (key) {
+			case "xbd_id":
+				return row.xbd_id;
+			case "totalBuildings":
+				return row.totalBuildings;
+			case "correctCount":
+				return row.correctCount;
+			case "incorrectCount":
+				return row.incorrectCount;
+			case "accuracyPct":
+				return row.accuracyPct == null ? -1 : Number(row.accuracyPct);
+			default: {
+				throw new Error(`Unsupported image pair sort key: ${String(key)}`);
+			}
+		}
+	};
+
+	const leftValue = getValue(left);
+	const rightValue = getValue(right);
 
 	if (leftValue < rightValue) return -1 * multiplier;
 	if (leftValue > rightValue) return 1 * multiplier;
 	return left.xbd_id - right.xbd_id;
+};
+
+const compareBuildingRows = (
+	left: BuildingListItem,
+	right: BuildingListItem,
+	key: BuildingSortKey,
+	direction: SortDirection,
+) => {
+	const multiplier = direction === "asc" ? 1 : -1;
+
+	const getValue = (building: BuildingListItem): string | number => {
+		switch (key) {
+			case "building":
+				return (building.address ?? building.uid).toLowerCase();
+			case "disaster_name":
+				return building.disaster_name.toLowerCase();
+			case "xbd_id":
+				return building.xbd_id;
+			case "actual_damage":
+				return building.actual_damage;
+			case "predicted_damage":
+				return building.predicted_damage ?? "";
+			case "is_correct":
+				if (building.is_correct === true) return 2;
+				if (building.is_correct === false) return 1;
+				return 0;
+			default: {
+				throw new Error(`Unsupported building sort key: ${String(key)}`);
+			}
+		}
+	};
+
+	const leftValue = getValue(left);
+	const rightValue = getValue(right);
+
+	if (leftValue < rightValue) return -1 * multiplier;
+	if (leftValue > rightValue) return 1 * multiplier;
+	return left.id - right.id;
 };
 
 const matchesWildcard = (value: string, pattern: string) => {
@@ -105,6 +159,10 @@ export function useDashboardData() {
 	const [page, setPage] = useState(1);
 	const [totalPages, setTotalPages] = useState(1);
 	const [totalItems, setTotalItems] = useState(0);
+	const [buildingSortKey, setBuildingSortKey] =
+		useState<BuildingSortKey | null>(null);
+	const [buildingSortDirection, setBuildingSortDirection] =
+		useState<SortDirection | null>(null);
 	const [imagePairsPage, setImagePairsPage] = useState(1);
 	const [imagePairSortKey, setImagePairSortKey] =
 		useState<ImagePairSortKey | null>(null);
@@ -369,8 +427,19 @@ export function useDashboardData() {
 						matchesWildcard(String(building.xbd_id), normalizedXbdQuery)
 					);
 				});
+				const sorted =
+					buildingSortKey == null || buildingSortDirection == null
+						? filtered
+						: [...filtered].sort((left, right) =>
+								compareBuildingRows(
+									left,
+									right,
+									buildingSortKey,
+									buildingSortDirection,
+								),
+							);
 
-				const nextTotalItems = filtered.length;
+				const nextTotalItems = sorted.length;
 				const nextTotalPages = Math.max(
 					1,
 					Math.ceil(nextTotalItems / PAGE_SIZE),
@@ -383,7 +452,7 @@ export function useDashboardData() {
 				}
 
 				const start = (clampedPage - 1) * PAGE_SIZE;
-				const mapped = filtered.slice(start, start + PAGE_SIZE);
+				const mapped = sorted.slice(start, start + PAGE_SIZE);
 
 				setRows(mapped);
 				setTotalItems(nextTotalItems);
@@ -411,6 +480,8 @@ export function useDashboardData() {
 		xbdSearchQuery,
 		predictedDamageFilter,
 		buildingCorrectnessFilter,
+		buildingSortKey,
+		buildingSortDirection,
 		ensureAllBuildings,
 		ensureImagePairs,
 		selectedDisasterName,
@@ -535,6 +606,26 @@ export function useDashboardData() {
 		setPage(1);
 	}, []);
 
+	const setBuildingsSort = useCallback(
+		(key: BuildingSortKey) => {
+			setPage(1);
+			if (buildingSortKey !== key) {
+				setBuildingSortKey(key);
+				setBuildingSortDirection("desc");
+				return;
+			}
+
+			if (buildingSortDirection === "desc") {
+				setBuildingSortDirection("asc");
+				return;
+			}
+
+			setBuildingSortKey(null);
+			setBuildingSortDirection(null);
+		},
+		[buildingSortDirection, buildingSortKey],
+	);
+
 	const setBuildingSearchFilter = useCallback((value: string) => {
 		setBuildingSearchQuery(value);
 		setPage(1);
@@ -585,6 +676,8 @@ export function useDashboardData() {
 		page,
 		totalPages,
 		totalItems,
+		buildingSortKey,
+		buildingSortDirection,
 		predictionMetrics,
 		overviewDamageRows,
 		activeDamageFilter,
@@ -602,6 +695,7 @@ export function useDashboardData() {
 		imagePairSortDirection,
 		setDamageFilter,
 		setBuildingsFilter,
+		setBuildingsSort,
 		setBuildingSearchFilter,
 		setDisasterSearchFilter,
 		setXbdSearchFilter,

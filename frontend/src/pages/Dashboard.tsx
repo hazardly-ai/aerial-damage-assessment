@@ -78,7 +78,10 @@ export default function Dashboard() {
 								rows={dashboard.rows}
 								selectedDisasterName={dashboard.selectedDisasterName}
 								totalPages={dashboard.totalPages}
+								buildingSortKey={dashboard.buildingSortKey}
+								buildingSortDirection={dashboard.buildingSortDirection}
 								onPageChange={dashboard.setPage}
+								onSortChange={dashboard.setBuildingsSort}
 							/>
 						)}
 

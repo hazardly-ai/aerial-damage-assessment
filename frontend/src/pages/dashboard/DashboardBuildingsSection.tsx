@@ -1,3 +1,4 @@
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import Item from "@/components/ui/Item";
@@ -8,8 +9,17 @@ import { resolveImageUrl } from "@/utils/hazardlyApi";
 import type {
 	BuildingCorrectnessFilter,
 	BuildingListItem,
+	SortDirection,
 } from "./dashboardTypes";
 import { DAMAGE_FILTERS, normalizeDamage, prettyLabel } from "./dashboardUtils";
+
+type BuildingSortKey =
+	| "building"
+	| "disaster_name"
+	| "xbd_id"
+	| "actual_damage"
+	| "predicted_damage"
+	| "is_correct";
 
 type DashboardBuildingsSectionProps = {
 	totalItems: number;
@@ -31,7 +41,10 @@ type DashboardBuildingsSectionProps = {
 	rows: BuildingListItem[];
 	selectedDisasterName: string | null;
 	totalPages: number;
+	buildingSortKey: BuildingSortKey | null;
+	buildingSortDirection: SortDirection | null;
 	onPageChange: (page: number) => void;
+	onSortChange: (key: BuildingSortKey) => void;
 };
 
 const resolveStorageUrl = (path?: string | null): string | null =>
@@ -57,7 +70,10 @@ export default function DashboardBuildingsSection({
 	rows,
 	selectedDisasterName,
 	totalPages,
+	buildingSortKey,
+	buildingSortDirection,
 	onPageChange,
+	onSortChange,
 }: DashboardBuildingsSectionProps) {
 	const navigate = useNavigate();
 	const hasActiveFilters =
@@ -67,6 +83,31 @@ export default function DashboardBuildingsSection({
 		xbdSearchQuery !== "" ||
 		predictedDamageFilter !== "all" ||
 		buildingCorrectnessFilter !== "all";
+
+	const renderSortIcon = (key: BuildingSortKey) => {
+		if (buildingSortKey !== key) {
+			return <ArrowUpDown className="h-3.5 w-3.5" />;
+		}
+
+		return buildingSortDirection === "asc" ? (
+			<ArrowUp className="h-3.5 w-3.5" />
+		) : (
+			<ArrowDown className="h-3.5 w-3.5" />
+		);
+	};
+
+	const renderSortableHeader = (label: string, key: BuildingSortKey) => (
+		<th className="py-2 pr-3 font-medium" scope="col">
+			<button
+				type="button"
+				onClick={() => onSortChange(key)}
+				className="inline-flex items-center gap-1 text-left text-muted-foreground transition-colors hover:text-foreground"
+			>
+				<span>{label}</span>
+				{renderSortIcon(key)}
+			</button>
+		</th>
+	);
 
 	return (
 		<div className="relative overflow-hidden rounded-xl border border-border bg-card p-5">
@@ -102,12 +143,12 @@ export default function DashboardBuildingsSection({
 					<table className="w-full min-w-[980px] text-sm">
 						<thead>
 							<tr className="border-b border-border/60 bg-muted/30 text-left text-muted-foreground">
-								<th className="py-2 pr-3 font-medium">Building</th>
-								<th className="py-2 pr-3 font-medium">Disaster</th>
-								<th className="py-2 pr-3 font-medium">xBD</th>
-								<th className="py-2 pr-3 font-medium">Actual</th>
-								<th className="py-2 pr-3 font-medium">Predicted</th>
-								<th className="py-2 pr-3 font-medium">Correct</th>
+								{renderSortableHeader("Building", "building")}
+								{renderSortableHeader("Disaster", "disaster_name")}
+								{renderSortableHeader("xBD", "xbd_id")}
+								{renderSortableHeader("Actual", "actual_damage")}
+								{renderSortableHeader("Predicted", "predicted_damage")}
+								{renderSortableHeader("Correct", "is_correct")}
 							</tr>
 							<tr className="border-b border-border/60 bg-background text-left align-top">
 								<th className="py-2 pr-3">
