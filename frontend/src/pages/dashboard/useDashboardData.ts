@@ -53,6 +53,16 @@ const compareImagePairRows = (
 	return left.xbd_id - right.xbd_id;
 };
 
+const matchesWildcard = (value: string, pattern: string) => {
+	if (!pattern.includes("*")) {
+		return value === pattern;
+	}
+
+	const escapedPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+	const regexPattern = `^${escapedPattern.split("*").join(".*")}$`;
+	return new RegExp(regexPattern).test(value);
+};
+
 type ImagePairLookup = Map<
 	number,
 	{
@@ -354,14 +364,10 @@ export function useDashboardData() {
 						return false;
 					}
 
-					if (
-						normalizedXbdQuery &&
-						!matchesWildcard(String(building.xbd_id), normalizedXbdQuery)
-					) {
-						return false;
-					}
-
-					return true;
+					return (
+						!normalizedXbdQuery ||
+						matchesWildcard(String(building.xbd_id), normalizedXbdQuery)
+					);
 				});
 
 				const nextTotalItems = filtered.length;
