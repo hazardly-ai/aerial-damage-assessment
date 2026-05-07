@@ -257,9 +257,7 @@ export default function MapPage() {
 															: 0;
 													const baseAlpha = 0.12;
 													const alpha =
-														value > 0
-															? baseAlpha + intensity * 0.6
-															: 0.06;
+														value > 0 ? baseAlpha + intensity * 0.6 : 0.06;
 													const backgroundColor = isDiagonal
 														? `rgba(16, 185, 129, ${alpha})`
 														: `rgba(239, 68, 68, ${alpha})`;

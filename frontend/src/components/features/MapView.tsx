@@ -220,8 +220,7 @@ function computeSceneMetrics(
 			precisionRatio !== null &&
 			recallRatio !== null &&
 			precisionRatio + recallRatio > 0
-				? (2 * precisionRatio * recallRatio) /
-					(precisionRatio + recallRatio)
+				? (2 * precisionRatio * recallRatio) / (precisionRatio + recallRatio)
 				: null;
 
 		const precision = precisionRatio !== null ? precisionRatio * 100 : null;

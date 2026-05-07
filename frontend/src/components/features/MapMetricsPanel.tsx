@@ -210,7 +210,6 @@ export default function MapMetricsPanel({
 					})}
 				</div>
 			</div>
-
 		</aside>
 	);
 }
