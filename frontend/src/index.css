@@ -150,7 +150,7 @@ body {
 
 .dashboard-theme-table,
 .dashboard-theme-table,
-	:is(
+:is(
 		thead,
 		tbody,
 		tr,
