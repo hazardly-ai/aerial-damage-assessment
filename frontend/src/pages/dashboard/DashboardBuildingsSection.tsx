@@ -122,7 +122,7 @@ export default function DashboardBuildingsSection({
 
 	return (
 		<>
-			<div className="relative overflow-hidden rounded-xl border border-border bg-card p-5">
+			<div className="dashboard-theme-surface relative overflow-hidden rounded-xl border border-border bg-card p-5">
 				<div className="mb-4 flex flex-wrap items-center justify-between gap-3">
 					<h3 className="text-lg font-semibold">Buildings</h3>
 					<div className="flex items-center gap-3">
@@ -152,7 +152,7 @@ export default function DashboardBuildingsSection({
 					</div>
 				) : (
 					<div className="relative z-0 overflow-x-auto">
-						<table className="w-full min-w-[980px] text-sm">
+						<table className="dashboard-theme-table w-full min-w-[980px] text-sm">
 							<thead>
 								<tr className="border-b border-border/60 bg-muted/30 text-left text-muted-foreground">
 									{renderSortableHeader("Building", "building")}

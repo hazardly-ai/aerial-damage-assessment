@@ -58,10 +58,8 @@ export default function DashboardOverviewSection({
 }: DashboardOverviewSectionProps) {
 	return (
 		<div
-			className={`${
-				loadingStats
-					? "pointer-events-none opacity-20"
-					: "opacity-100 transition-opacity duration-300"
+			className={`ui-fade-opacity ${
+				loadingStats ? "pointer-events-none opacity-20" : "opacity-100"
 			} flex flex-col gap-6`}
 		>
 			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
@@ -182,7 +180,9 @@ export default function DashboardOverviewSection({
 
 				{predictionMetrics.available ? (
 					<div
-						className={`overflow-x-auto ${loadingBuildings ? "opacity-50" : "opacity-100"}`}
+						className={`ui-fade-opacity overflow-x-auto ${
+							loadingBuildings ? "opacity-50" : "opacity-100"
+						}`}
 					>
 						<table className="w-full min-w-[760px] text-sm">
 							<thead>

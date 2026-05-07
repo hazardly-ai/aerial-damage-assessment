@@ -13,6 +13,9 @@
 :root {
 	--theme-transition-duration: 280ms;
 	--theme-transition-easing: cubic-bezier(0.22, 1, 0.36, 1);
+	--fade-transition-duration: 220ms;
+	--fade-transition-duration-slow: 280ms;
+	--fade-transition-easing: cubic-bezier(0.22, 1, 0.36, 1);
 
 	--background: 210 20% 96%;
 	--foreground: 222 47% 11%;
@@ -136,6 +139,35 @@ body {
 	color: hsl(var(--foreground));
 }
 
+.ui-fade-opacity {
+	transition: opacity var(--fade-transition-duration)
+		var(--fade-transition-easing);
+}
+
+.dashboard-theme-surface {
+	--theme-transition-duration: 140ms;
+}
+
+.dashboard-theme-table,
+.dashboard-theme-table,
+	:is(
+		thead,
+		tbody,
+		tr,
+		th,
+		td,
+		button,
+		input,
+		select,
+		option,
+		img,
+		svg,
+		p,
+		span
+	) {
+	transition: none;
+}
+
 .header-divider {
 	height: 1px;
 	background-color: hsl(var(--border));
@@ -180,12 +212,14 @@ body {
 }
 
 .map-wrapper .mapboxgl-compare {
-	transition: opacity 0.24s ease;
+	transition: opacity var(--fade-transition-duration)
+		var(--fade-transition-easing);
 }
 
 .map-wrapper .mapboxgl-compare .compare-swiper-vertical,
 .map-wrapper .mapboxgl-compare .compare-swiper-horizontal {
-	transition: opacity 0.24s ease;
+	transition: opacity var(--fade-transition-duration)
+		var(--fade-transition-easing);
 }
 
 .map-wrapper--compare-idle .compare-swiper-vertical,
@@ -210,6 +244,13 @@ body {
 	justify-content: center;
 	background: hsl(var(--background) / 0.88);
 	gap: 0.75rem;
+	opacity: 1;
+	transition: opacity var(--fade-transition-duration-slow)
+		var(--fade-transition-easing);
+}
+
+.map-status-overlay--loading[data-fading="true"] {
+	opacity: 0;
 }
 
 .map-status-spinner {
@@ -285,8 +326,8 @@ body {
 	background: transparent;
 	color: inherit;
 	cursor: pointer;
-	transition: opacity var(--theme-transition-duration)
-		var(--theme-transition-easing);
+	transition: opacity var(--fade-transition-duration)
+		var(--fade-transition-easing);
 	flex-shrink: 0;
 }
 
@@ -356,10 +397,11 @@ body {
 	opacity: 1;
 	transform: translateY(0);
 	transition:
-		max-height 0.28s ease,
-		opacity 0.2s ease,
-		transform 0.24s ease,
-		margin-top 0.24s ease;
+		max-height var(--fade-transition-duration-slow)
+		var(--fade-transition-easing),
+		opacity var(--fade-transition-duration) var(--fade-transition-easing),
+		transform var(--fade-transition-duration) var(--fade-transition-easing),
+		margin-top var(--fade-transition-duration) var(--fade-transition-easing);
 }
 
 .map-controls[data-collapsed="true"] .map-controls__body {
@@ -897,23 +939,33 @@ body {
 
 /* Chatbot Panel */
 .chat-panel-animation {
-	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+	transition:
+		opacity var(--fade-transition-duration) var(--fade-transition-easing),
+		transform var(--fade-transition-duration) var(--fade-transition-easing);
 	transform-origin: bottom right;
 }
 
 .chat-panel-container {
-	transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+	transition:
+		opacity var(--fade-transition-duration-slow) var(--fade-transition-easing),
+		transform var(--fade-transition-duration-slow) var(--fade-transition-easing),
+		background-color var(--theme-transition-duration)
+		var(--theme-transition-easing),
+		border-color var(--theme-transition-duration) var(--theme-transition-easing),
+		color var(--theme-transition-duration) var(--theme-transition-easing),
+		box-shadow var(--theme-transition-duration) var(--theme-transition-easing);
+	will-change: opacity, transform;
 	transform-origin: bottom right;
 }
 
 .chat-panel-open {
 	opacity: 1;
-	transform: scale(1) translateY(0);
+	transform: translateY(0) scale(1);
 	pointer-events: auto;
 }
 
 .chat-panel-closed {
 	opacity: 0;
-	transform: scale(0.9) translateY(20px);
+	transform: translateY(12px) scale(0.98);
 	pointer-events: none;
 }

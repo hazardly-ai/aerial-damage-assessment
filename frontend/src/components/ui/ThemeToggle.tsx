@@ -1,4 +1,6 @@
 // React hooks for state and lifecycle logic
+
+import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 
 // Reusable styled Button component
@@ -48,9 +50,18 @@ export default function ThemeToggle() {
 		<Button
 			variant="outline"
 			onClick={toggleTheme}
-			className="w-[115px] justify-center"
+			size="sm"
+			className="h-10 w-10 rounded-full p-0"
+			aria-label={
+				theme === "light" ? "Switch to dark mode" : "Switch to light mode"
+			}
+			title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
 		>
-			{theme === "light" ? "Dark Mode" : "Light Mode"}
+			{theme === "light" ? (
+				<Moon className="h-4 w-4" aria-hidden="true" />
+			) : (
+				<Sun className="h-4 w-4" aria-hidden="true" />
+			)}
 		</Button>
 	);
 }
