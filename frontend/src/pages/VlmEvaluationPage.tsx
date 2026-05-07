@@ -35,12 +35,14 @@ function ProbabilityBar({ label, value }: { label: string; value: number }) {
 			<span className="w-28 truncate text-sm text-muted-foreground">
 				{label}
 			</span>
+
 			<div className="h-3 flex-1 overflow-hidden rounded-full bg-muted">
 				<div
 					className="h-full rounded-full bg-primary transition-all"
 					style={{ width: `${pct}%` }}
 				/>
 			</div>
+
 			<span className="w-12 text-right font-mono text-sm">{pct}%</span>
 		</div>
 	);
@@ -53,18 +55,21 @@ function ResultsPanel({ result }: { result: VlmEvaluationResult }) {
 		<div className="space-y-5 rounded-xl border border-border/40 bg-card p-6 shadow-sm">
 			<div className="flex items-center justify-between gap-3">
 				<h3 className="text-lg font-bold">Damage Assessment</h3>
+
 				<div className="flex items-center gap-2">
 					{is_mock && (
 						<span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
 							Mock Data
 						</span>
 					)}
+
 					<span className="text-xs text-muted-foreground">{model_version}</span>
 				</div>
 			</div>
 
 			<div className="flex items-center gap-4">
 				<DamageLabel damageClass={prediction.damage_class} />
+
 				<span className="text-sm text-muted-foreground">
 					{Math.round(prediction.confidence * 100)}% confidence
 				</span>
@@ -74,18 +79,22 @@ function ResultsPanel({ result }: { result: VlmEvaluationResult }) {
 
 			<div className="space-y-2">
 				<p className="text-sm font-semibold">Class Probabilities</p>
+
 				<ProbabilityBar
 					label="No Damage"
 					value={prediction.probabilities.no_damage}
 				/>
+
 				<ProbabilityBar
 					label="Minor"
 					value={prediction.probabilities.minor_damage}
 				/>
+
 				<ProbabilityBar
 					label="Major"
 					value={prediction.probabilities.major_damage}
 				/>
+
 				<ProbabilityBar
 					label="Destroyed"
 					value={prediction.probabilities.destroyed}
@@ -98,16 +107,26 @@ function ResultsPanel({ result }: { result: VlmEvaluationResult }) {
 export default function VlmEvaluationPage() {
 	const [preImage, setPreImage] = useState<File | null>(null);
 	const [postImage, setPostImage] = useState<File | null>(null);
+
 	const [prePreview, setPrePreview] = useState<string | null>(null);
 	const [postPreview, setPostPreview] = useState<string | null>(null);
+
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+
 	const [result, setResult] = useState<VlmEvaluationResult | null>(null);
+
+	const [dragging, setDragging] = useState<"pre" | "post" | null>(null);
 
 	useEffect(() => {
 		return () => {
-			if (prePreview) URL.revokeObjectURL(prePreview);
-			if (postPreview) URL.revokeObjectURL(postPreview);
+			if (prePreview) {
+				URL.revokeObjectURL(prePreview);
+			}
+
+			if (postPreview) {
+				URL.revokeObjectURL(postPreview);
+			}
 		};
 	}, [prePreview, postPreview]);
 
@@ -120,21 +139,45 @@ export default function VlmEvaluationPage() {
 
 		if (!validateImage(file)) {
 			setError("Invalid image format. Please upload PNG, JPEG, or WebP.");
+
 			return;
 		}
 
 		const url = URL.createObjectURL(file);
 
 		if (type === "pre") {
-			if (prePreview) URL.revokeObjectURL(prePreview);
+			if (prePreview) {
+				URL.revokeObjectURL(prePreview);
+			}
+
 			setPreImage(file);
 			setPrePreview(url);
+
 			return;
 		}
 
-		if (postPreview) URL.revokeObjectURL(postPreview);
+		if (postPreview) {
+			URL.revokeObjectURL(postPreview);
+		}
+
 		setPostImage(file);
 		setPostPreview(url);
+	};
+
+	const handleDrop = (
+		e: React.DragEvent<HTMLButtonElement>,
+		type: "pre" | "post",
+	) => {
+		e.preventDefault();
+		e.stopPropagation();
+
+		setDragging(null);
+
+		const droppedFile = e.dataTransfer.files?.[0];
+
+		if (droppedFile) {
+			handleUpload(droppedFile, type);
+		}
 	};
 
 	const clearImage = (type: "pre" | "post") => {
@@ -142,13 +185,20 @@ export default function VlmEvaluationPage() {
 		setResult(null);
 
 		if (type === "pre") {
-			if (prePreview) URL.revokeObjectURL(prePreview);
+			if (prePreview) {
+				URL.revokeObjectURL(prePreview);
+			}
+
 			setPreImage(null);
 			setPrePreview(null);
+
 			return;
 		}
 
-		if (postPreview) URL.revokeObjectURL(postPreview);
+		if (postPreview) {
+			URL.revokeObjectURL(postPreview);
+		}
+
 		setPostImage(null);
 		setPostPreview(null);
 	};
@@ -156,6 +206,7 @@ export default function VlmEvaluationPage() {
 	const handleEvaluate = async () => {
 		if (!preImage || !postImage) {
 			setError("Please upload both images.");
+
 			return;
 		}
 
@@ -165,6 +216,7 @@ export default function VlmEvaluationPage() {
 
 		try {
 			const data = await evaluateVlm(preImage, postImage);
+
 			setResult(data);
 		} catch (err) {
 			setError(
@@ -186,9 +238,13 @@ export default function VlmEvaluationPage() {
 					className="hidden"
 					onChange={(e) => {
 						const nextFile = e.target.files?.[0];
-						if (nextFile) handleUpload(nextFile, type);
+
+						if (nextFile) {
+							handleUpload(nextFile, type);
+						}
 					}}
 				/>
+
 				<span className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground transition hover:bg-secondary/80">
 					Upload Image
 				</span>
@@ -222,6 +278,7 @@ export default function VlmEvaluationPage() {
 						<h2 className="text-2xl font-bold tracking-tight">
 							VLM Damage Evaluation
 						</h2>
+
 						<p className="text-sm text-muted-foreground">
 							Upload pre and post disaster building crops for AI damage
 							assessment
@@ -231,34 +288,72 @@ export default function VlmEvaluationPage() {
 					<div className="grid grid-cols-1 gap-6 md:grid-cols-2">
 						<div className="space-y-3 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
 							<p className="font-semibold">Pre-Disaster Image</p>
+
 							{renderUploadRow(preImage, "pre")}
-							{prePreview ? (
-								<img
-									src={prePreview}
-									alt="Pre-disaster preview"
-									className="h-52 w-full rounded-lg border bg-muted object-contain"
-								/>
-							) : (
-								<div className="flex h-52 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-									No image selected
-								</div>
-							)}
+
+							<button
+								type="button"
+								onDragOver={(e) => {
+									e.preventDefault();
+									setDragging("pre");
+								}}
+								onDragLeave={() => setDragging(null)}
+								onDrop={(e) => handleDrop(e, "pre")}
+								className={`relative flex h-52 w-full items-center justify-center rounded-lg border-2 border-dashed transition ${
+									dragging === "pre"
+										? "border-primary bg-primary/10"
+										: "border-border bg-muted"
+								}`}
+							>
+								{prePreview ? (
+									<img
+										src={prePreview}
+										alt="Pre-disaster preview"
+										className="h-full w-full rounded-lg object-contain"
+									/>
+								) : (
+									<div className="text-center text-sm text-muted-foreground">
+										<p>Drag & drop image here</p>
+
+										<p className="mt-1 text-xs">or use Upload Image</p>
+									</div>
+								)}
+							</button>
 						</div>
 
 						<div className="space-y-3 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
 							<p className="font-semibold">Post-Disaster Image</p>
+
 							{renderUploadRow(postImage, "post")}
-							{postPreview ? (
-								<img
-									src={postPreview}
-									alt="Post-disaster preview"
-									className="h-52 w-full rounded-lg border bg-muted object-contain"
-								/>
-							) : (
-								<div className="flex h-52 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-									No image selected
-								</div>
-							)}
+
+							<button
+								type="button"
+								onDragOver={(e) => {
+									e.preventDefault();
+									setDragging("post");
+								}}
+								onDragLeave={() => setDragging(null)}
+								onDrop={(e) => handleDrop(e, "post")}
+								className={`relative flex h-52 w-full items-center justify-center rounded-lg border-2 border-dashed transition ${
+									dragging === "post"
+										? "border-primary bg-primary/10"
+										: "border-border bg-muted"
+								}`}
+							>
+								{postPreview ? (
+									<img
+										src={postPreview}
+										alt="Post-disaster preview"
+										className="h-full w-full rounded-lg object-contain"
+									/>
+								) : (
+									<div className="text-center text-sm text-muted-foreground">
+										<p>Drag & drop image here</p>
+
+										<p className="mt-1 text-xs">or use Upload Image</p>
+									</div>
+								)}
+							</button>
 						</div>
 					</div>
 
