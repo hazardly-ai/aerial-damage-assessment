@@ -23,6 +23,7 @@ export const POST_IMAGE_LAYER_ID = "post-layer";
 const SATELLITE_BASE_LAYER_ID = "satellite";
 const SATELLITE_DIMMED_OPACITY = 0.4;
 const SATELLITE_FULL_OPACITY = 1;
+const MAP_LOAD_TIMEOUT_MS = 15000;
 
 export interface PopupData {
 	uid: string;
@@ -250,6 +251,11 @@ export function createMapInstance(
 		setSatelliteOpacity(map, imageryVisibleRef.current),
 	);
 	map.on("error", (e) => console.error("Mapbox error:", e));
+	map.on("load", () => {
+		map.resize();
+		window.requestAnimationFrame(() => map.resize());
+		window.setTimeout(() => map.resize(), 150);
+	});
 	map.addControl(new mapboxgl.NavigationControl(), "top-right");
 	if (options?.withResetBoundsControl && options.onResetView) {
 		map.addControl(new ResetBoundsControl(options.onResetView), "top-right");
@@ -262,12 +268,63 @@ export function waitForMapsLoad(
 	afterMap: mapboxgl.Map,
 ) {
 	const waitForMapLoad = (map: mapboxgl.Map) =>
-		new Promise<void>((resolve) => {
+		new Promise<void>((resolve, reject) => {
 			if (map.loaded()) {
 				resolve();
 				return;
 			}
-			map.once("load", () => resolve());
+
+			let settled = false;
+			let timeoutId: number | null = window.setTimeout(() => {
+				cleanup();
+				reject(
+					new Error(
+						"Mapbox did not finish loading in time. Please retry the map.",
+					),
+				);
+			}, MAP_LOAD_TIMEOUT_MS);
+
+			const cleanup = () => {
+				if (timeoutId !== null) {
+					window.clearTimeout(timeoutId);
+					timeoutId = null;
+				}
+				map.off("load", handleLoad);
+				map.off("error", handleError);
+				map.off("remove", handleRemove);
+			};
+
+			const settle = (callback: () => void) => {
+				if (settled) return;
+				settled = true;
+				cleanup();
+				callback();
+			};
+
+			const handleLoad = () => settle(resolve);
+			const handleError = (event: {
+				error?: { message?: string };
+				sourceId?: string;
+			}) => {
+				const message = event.error?.message?.trim();
+				if (!message) {
+					return;
+				}
+				settle(() =>
+					reject(new Error(`Mapbox failed to initialize: ${message}`)),
+				);
+			};
+			const handleRemove = () => {
+				settle(() =>
+					reject(
+						new Error("Mapbox map was removed before it finished loading."),
+					),
+				);
+			};
+
+			map.on("load", handleLoad);
+			map.on("error", handleError);
+			map.on("remove", handleRemove);
 		});
 
 	return Promise.all([waitForMapLoad(beforeMap), waitForMapLoad(afterMap)]);

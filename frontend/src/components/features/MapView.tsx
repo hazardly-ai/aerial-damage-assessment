@@ -441,7 +441,7 @@ export default function MapView({
 					});
 				};
 
-				waitForMapsLoad(_before, _after).then(onMapsLoaded);
+				return waitForMapsLoad(_before, _after).then(onMapsLoaded);
 			})
 			.catch((err: unknown) => {
 				if (cancelled || retryCountAtStart !== bootstrapRetryCountRef.current)
