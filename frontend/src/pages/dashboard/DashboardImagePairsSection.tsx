@@ -125,11 +125,15 @@ export default function DashboardImagePairsSection({
 											}}
 										>
 											<td className="py-3 pr-3">
-												<button
-													type="button"
-													className="group block w-full text-left"
-													onClick={(event) => {
-														event.stopPropagation();
+												<Item
+													imageSrc={postThumbnail}
+													imageAlt={`Post scene ${pair.xbd_id}`}
+													title={`Scene #${pair.xbd_id}`}
+													subtitle={`Pair ${pair.id}`}
+													meta={`Compared: ${pair.comparedCount}`}
+													imageOverlayLabel="Preview"
+													imageButtonLabel={`Preview scene ${pair.xbd_id}`}
+													onImageClick={() => {
 														if (!postThumbnail) return;
 														setPreviewImage({
 															src: postThumbnail,
@@ -138,16 +142,7 @@ export default function DashboardImagePairsSection({
 															subtitle: `Pair ${pair.id}`,
 														});
 													}}
-												>
-													<Item
-														imageSrc={postThumbnail}
-														imageAlt={`Post scene ${pair.xbd_id}`}
-														title={`Scene #${pair.xbd_id}`}
-														subtitle={`Pair ${pair.id}`}
-														meta={`Compared: ${pair.comparedCount}`}
-														imageOverlayLabel="Preview"
-													/>
-												</button>
+												/>
 											</td>
 											<td className="py-3 pr-3 font-medium">
 												{pair.totalBuildings}

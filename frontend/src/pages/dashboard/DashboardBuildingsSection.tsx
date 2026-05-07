@@ -264,11 +264,16 @@ export default function DashboardBuildingsSection({
 											}}
 										>
 											<td className="py-3 pr-3">
-												<button
-													type="button"
-													className="group block w-full text-left"
-													onClick={(event) => {
-														event.stopPropagation();
+												<Item
+													imageSrc={thumbnail}
+													imageAlt={`Building ${building.uid}`}
+													title={building.address || building.uid}
+													subtitle={
+														building.address ? building.uid : undefined
+													}
+													imageOverlayLabel="Preview"
+													imageButtonLabel={`Preview building ${building.uid}`}
+													onImageClick={() => {
 														if (!thumbnail) return;
 														setPreviewImage({
 															src: thumbnail,
@@ -277,17 +282,7 @@ export default function DashboardBuildingsSection({
 															subtitle: `Post-disaster image - xBD ${building.xbd_id}`,
 														});
 													}}
-												>
-													<Item
-														imageSrc={thumbnail}
-														imageAlt={`Building ${building.uid}`}
-														title={building.address || building.uid}
-														subtitle={
-															building.address ? building.uid : undefined
-														}
-														imageOverlayLabel="Preview"
-													/>
-												</button>
+												/>
 											</td>
 											<td className="whitespace-nowrap py-3 pr-3 text-xs font-medium">
 												{building.disaster_name}
