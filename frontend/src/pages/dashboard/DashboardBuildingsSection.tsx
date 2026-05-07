@@ -268,9 +268,7 @@ export default function DashboardBuildingsSection({
 													imageSrc={thumbnail}
 													imageAlt={`Building ${building.uid}`}
 													title={building.address || building.uid}
-													subtitle={
-														building.address ? building.uid : undefined
-													}
+													subtitle={building.address ? building.uid : undefined}
 													imageOverlayLabel="Preview"
 													imageButtonLabel={`Preview building ${building.uid}`}
 													onImageClick={() => {
