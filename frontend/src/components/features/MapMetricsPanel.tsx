@@ -1,9 +1,15 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DAMAGE_COLOR_HEX } from "@/constants/app";
 import type { SceneMetrics } from "@/types/map";
 
 interface MapMetricsPanelProps {
 	metrics: SceneMetrics | null;
 	isLoading?: boolean;
+	canGoPrev?: boolean;
+	canGoNext?: boolean;
+	onPrev?: () => void;
+	onNext?: () => void;
+	navDisabled?: boolean;
 }
 
 const formatDamageLabel = (key: string): string =>
@@ -14,6 +20,8 @@ const formatDamageLabel = (key: string): string =>
 
 const formatPercent = (value: number): string => `${Math.round(value)}%`;
 const formatAccuracyPercent = (value: number): string => `${value.toFixed(1)}%`;
+const formatMetricPercent = (value: number | null): string =>
+	value === null ? "N/A" : `${value.toFixed(1)}%`;
 
 const DAMAGE_CLASS_ORDER = [
 	"no-damage",
@@ -25,6 +33,11 @@ const DAMAGE_CLASS_ORDER = [
 export default function MapMetricsPanel({
 	metrics,
 	isLoading = false,
+	canGoPrev = false,
+	canGoNext = false,
+	onPrev,
+	onNext,
+	navDisabled = false,
 }: MapMetricsPanelProps) {
 	if (isLoading || !metrics) {
 		return (
@@ -72,7 +85,7 @@ export default function MapMetricsPanel({
 	});
 
 	return (
-		<aside className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 p-4 shadow-sm backdrop-blur-sm">
+		<aside className="flex h-full flex-col overflow-y-auto rounded-2xl border border-border/70 bg-card/95 p-4 shadow-sm backdrop-blur-sm">
 			<div className="mb-4 flex items-center justify-between">
 				<div>
 					<p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
@@ -81,6 +94,26 @@ export default function MapMetricsPanel({
 					<h3 className="text-lg font-semibold text-foreground">
 						Scene #{metrics.xbdId}
 					</h3>
+				</div>
+				<div className="flex items-center gap-2">
+					<button
+						type="button"
+						className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+						onClick={onPrev}
+						disabled={navDisabled || !canGoPrev}
+						aria-label="Previous scene"
+					>
+						<ChevronLeft size={16} />
+					</button>
+					<button
+						type="button"
+						className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+						onClick={onNext}
+						disabled={navDisabled || !canGoNext}
+						aria-label="Next scene"
+					>
+						<ChevronRight size={16} />
+					</button>
 				</div>
 			</div>
 
@@ -98,6 +131,27 @@ export default function MapMetricsPanel({
 						{metrics.accuracy !== null
 							? formatAccuracyPercent(metrics.accuracy)
 							: "N/A"}
+					</p>
+				</div>
+			</div>
+
+			<div className="mt-4 grid grid-cols-3 gap-3">
+				<div className="rounded-xl border border-border/60 bg-background/70 p-3">
+					<p className="text-xs text-muted-foreground">Precision</p>
+					<p className="mt-1 text-xl font-semibold text-foreground">
+						{formatMetricPercent(metrics.precisionMacro)}
+					</p>
+				</div>
+				<div className="rounded-xl border border-border/60 bg-background/70 p-3">
+					<p className="text-xs text-muted-foreground">Recall</p>
+					<p className="mt-1 text-xl font-semibold text-foreground">
+						{formatMetricPercent(metrics.recallMacro)}
+					</p>
+				</div>
+				<div className="rounded-xl border border-border/60 bg-background/70 p-3">
+					<p className="text-xs text-muted-foreground">F1</p>
+					<p className="mt-1 text-xl font-semibold text-foreground">
+						{formatMetricPercent(metrics.f1Macro)}
 					</p>
 				</div>
 			</div>
@@ -156,6 +210,7 @@ export default function MapMetricsPanel({
 					})}
 				</div>
 			</div>
+
 		</aside>
 	);
 }

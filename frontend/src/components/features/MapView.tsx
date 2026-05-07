@@ -34,12 +34,19 @@ import {
 
 interface MapViewProps {
 	initialDisasterId: number;
-	initialXbdId: number;
+	selectedXbdId: number;
+	onXbdChange: (xbdId: number) => void;
 	/** When set (e.g. from `?building=` on first load), selects that footprint and opens the popup. */
 	initialBuildingUid?: string;
 	onInitialBuildingHandled?: () => void;
 	onSceneError?: (message: string) => void;
 	onMetricsChange?: (metrics: SceneMetrics | null) => void;
+	xbdSelectorStatus: "loading" | "ready" | "error";
+	xbdIds: number[];
+	canGoPrev: boolean;
+	canGoNext: boolean;
+	onPrev: () => void;
+	onNext: () => void;
 }
 
 function computeSceneMetrics(
@@ -71,6 +78,32 @@ function computeSceneMetrics(
 		"minor-damage": 0,
 		"major-damage": 0,
 		destroyed: 0,
+	};
+	const confusionMatrix: Record<string, Record<string, number>> = {
+		"no-damage": {
+			"no-damage": 0,
+			"minor-damage": 0,
+			"major-damage": 0,
+			destroyed: 0,
+		},
+		"minor-damage": {
+			"no-damage": 0,
+			"minor-damage": 0,
+			"major-damage": 0,
+			destroyed: 0,
+		},
+		"major-damage": {
+			"no-damage": 0,
+			"minor-damage": 0,
+			"major-damage": 0,
+			destroyed: 0,
+		},
+		destroyed: {
+			"no-damage": 0,
+			"minor-damage": 0,
+			"major-damage": 0,
+			destroyed: 0,
+		},
 	};
 	let evaluatedPredictions = 0;
 	let correctPredictions = 0;
@@ -139,13 +172,86 @@ function computeSceneMetrics(
 			if (predictedDamageValue === actualDamageValue) {
 				correctPredictions += 1;
 			}
+			confusionMatrix[actualDamageValue][predictedDamageValue] += 1;
 		}
+	}
+
+	let matrixMax = 0;
+	for (const actualLabel of DAMAGE_CLASSES) {
+		for (const predictedLabel of DAMAGE_CLASSES) {
+			const value = confusionMatrix[actualLabel][predictedLabel];
+			if (value > matrixMax) matrixMax = value;
+		}
+	}
+
+	const perClassMetrics: Record<
+		string,
+		{
+			precision: number | null;
+			recall: number | null;
+			f1: number | null;
+		}
+	> = {};
+	let precisionSum = 0;
+	let recallSum = 0;
+	let f1Sum = 0;
+	let precisionCount = 0;
+	let recallCount = 0;
+	let f1Count = 0;
+
+	for (const label of DAMAGE_CLASSES) {
+		const tp = confusionMatrix[label][label];
+		let fp = 0;
+		let fn = 0;
+		for (const actualLabel of DAMAGE_CLASSES) {
+			if (actualLabel !== label) {
+				fp += confusionMatrix[actualLabel][label];
+			}
+		}
+		for (const predictedLabel of DAMAGE_CLASSES) {
+			if (predictedLabel !== label) {
+				fn += confusionMatrix[label][predictedLabel];
+			}
+		}
+
+		const precisionRatio = tp + fp > 0 ? tp / (tp + fp) : null;
+		const recallRatio = tp + fn > 0 ? tp / (tp + fn) : null;
+		const f1Ratio =
+			precisionRatio !== null &&
+			recallRatio !== null &&
+			precisionRatio + recallRatio > 0
+				? (2 * precisionRatio * recallRatio) /
+					(precisionRatio + recallRatio)
+				: null;
+
+		const precision = precisionRatio !== null ? precisionRatio * 100 : null;
+		const recall = recallRatio !== null ? recallRatio * 100 : null;
+		const f1 = f1Ratio !== null ? f1Ratio * 100 : null;
+
+		if (precision !== null) {
+			precisionSum += precision;
+			precisionCount += 1;
+		}
+		if (recall !== null) {
+			recallSum += recall;
+			recallCount += 1;
+		}
+		if (f1 !== null) {
+			f1Sum += f1;
+			f1Count += 1;
+		}
+
+		perClassMetrics[label] = { precision, recall, f1 };
 	}
 
 	const accuracy =
 		evaluatedPredictions > 0
 			? (correctPredictions / evaluatedPredictions) * 100
 			: null;
+	const precisionMacro =
+		precisionCount > 0 ? precisionSum / precisionCount : null;
+	const recallMacro = recallCount > 0 ? recallSum / recallCount : null;
+	const f1Macro = f1Count > 0 ? f1Sum / f1Count : null;
 
 	return {
 		xbdId,
@@ -155,6 +261,13 @@ function computeSceneMetrics(
 		evaluatedPredictions,
 		correctPredictions,
 		accuracy,
+		precisionMacro,
+		recallMacro,
+		f1Macro,
+		perClassMetrics,
+		confusionMatrix,
+		matrixTotal: evaluatedPredictions,
+		matrixMax,
 	};
 }
 
@@ -162,11 +275,18 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
 export default function MapView({
 	initialDisasterId,
-	initialXbdId,
+	selectedXbdId,
+	onXbdChange,
 	initialBuildingUid,
 	onInitialBuildingHandled,
 	onSceneError,
 	onMetricsChange,
+	xbdSelectorStatus,
+	xbdIds,
+	canGoPrev,
+	canGoNext,
+	onPrev,
+	onNext,
 }: MapViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
@@ -176,7 +296,6 @@ export default function MapView({
 	const layersReadyRef = useRef(false);
 
 	const [disasterId, setDisasterId] = useState(initialDisasterId);
-	const [xbdId, setXbdId] = useState<number>(initialXbdId);
 	const [sceneLoading, setSceneLoading] = useState(false);
 	const [bootstrapRetryCount, setBootstrapRetryCount] = useState(0);
 	const [sceneRetryCount, setSceneRetryCount] = useState(0);
@@ -204,8 +323,7 @@ export default function MapView({
 
 	useEffect(() => {
 		setDisasterId(initialDisasterId);
-		setXbdId(initialXbdId);
-	}, [initialDisasterId, initialXbdId]);
+	}, [initialDisasterId]);
 
 	const updatePopupPos = useCallback(() => {
 		if (popupDataRef.current && afterMapRef.current) {
@@ -297,8 +415,8 @@ export default function MapView({
 		after.fitBounds([bounds.sw, bounds.ne], { padding: 0, animate: true });
 	}, []);
 
-	const xbdIdRef = useRef(xbdId);
-	xbdIdRef.current = xbdId;
+	const xbdIdRef = useRef(selectedXbdId);
+	xbdIdRef.current = selectedXbdId;
 	const normalizedInitialBuildingUid = useMemo(
 		() => initialBuildingUid?.trim() || undefined,
 		[initialBuildingUid],
@@ -482,7 +600,7 @@ export default function MapView({
 			beforeMapRef.current = null;
 			afterMapRef.current = null;
 		};
-		// xbdId is intentionally excluded; scene switches are handled by Effect 2.
+		// selectedXbdId is intentionally excluded; scene switches are handled by Effect 2.
 	}, [
 		openPopup,
 		updatePopupPos,
@@ -507,7 +625,7 @@ export default function MapView({
 		closePopup();
 		onMetricsChange?.(null);
 
-		fetchMapData(disasterId, xbdId, { signal: abortController.signal })
+		fetchMapData(disasterId, selectedXbdId, { signal: abortController.signal })
 			.then(({ imagePair, buildings, bounds }) => {
 				if (
 					cancelled ||
@@ -598,7 +716,7 @@ export default function MapView({
 			abortController.abort();
 		};
 	}, [
-		xbdId,
+		selectedXbdId,
 		disasterId,
 		sceneRetryCount,
 		closePopup,
@@ -640,16 +758,21 @@ export default function MapView({
 			className={`map-wrapper w-full relative${
 				compareIdle ? " map-wrapper--compare-idle" : ""
 			}`}
-			style={{ height: "70vh" }}
+			style={{ height: "80vh" }}
 			data-imagery-visible={imageryVisible ? "true" : "false"}
 			data-compare-idle={compareIdle ? "true" : "false"}
 		>
 			<div ref={containerRef} className="map-container w-full h-full" />
 
 			<MapControls
-				disasterId={disasterId}
-				selectedXbdId={xbdId}
-				onXbdChange={setXbdId}
+				selectedXbdId={selectedXbdId}
+				onXbdChange={onXbdChange}
+				xbdSelectorStatus={xbdSelectorStatus}
+				xbdIds={xbdIds}
+				canGoPrev={canGoPrev}
+				canGoNext={canGoNext}
+				onPrev={onPrev}
+				onNext={onNext}
 				sceneDisabled={status !== "ready"}
 				sceneLoading={sceneLoading}
 				imageryVisible={imageryVisible}

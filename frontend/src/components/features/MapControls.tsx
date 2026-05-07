@@ -1,14 +1,15 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import {
-	useXbdSelectorState,
-	XbdSelector,
-} from "@/components/features/XbdSelector";
+import { XbdSelector } from "@/components/features/XbdSelector";
 
 interface MapControlsProps {
-	disasterId: number;
 	selectedXbdId: number;
 	onXbdChange: (xbdId: number) => void;
+	xbdSelectorStatus: "loading" | "ready" | "error";
+	xbdIds: number[];
+	canGoPrev: boolean;
+	canGoNext: boolean;
+	onPrev: () => void;
+	onNext: () => void;
 	sceneDisabled: boolean;
 	sceneLoading: boolean;
 	imageryVisible: boolean;
@@ -48,9 +49,14 @@ function LayerToggleRow({
 }
 
 export function MapControls({
-	disasterId,
 	selectedXbdId,
 	onXbdChange,
+	xbdSelectorStatus,
+	xbdIds,
+	canGoPrev,
+	canGoNext,
+	onPrev,
+	onNext,
 	sceneDisabled,
 	sceneLoading,
 	imageryVisible,
@@ -60,12 +66,6 @@ export function MapControls({
 	visible,
 }: MapControlsProps) {
 	const [collapsed, setCollapsed] = useState(true);
-	const xbdSelector = useXbdSelectorState({
-		disasterId,
-		selectedXbdId,
-		onChange: onXbdChange,
-	});
-	const headerNavDisabled = sceneDisabled || xbdSelector.status !== "ready";
 
 	return (
 		<div
@@ -86,34 +86,6 @@ export function MapControls({
 						XBD {selectedXbdId}
 					</span>
 				</button>
-				{collapsed && (
-					<span className="map-controls__header-nav">
-						<button
-							type="button"
-							className="xbd-selector__arrow map-controls__header-arrow"
-							onClick={(e) => {
-								e.stopPropagation();
-								xbdSelector.goPrev();
-							}}
-							disabled={headerNavDisabled || !xbdSelector.canGoPrev}
-							aria-label="Previous scene"
-						>
-							<ChevronLeft size={14} />
-						</button>
-						<button
-							type="button"
-							className="xbd-selector__arrow map-controls__header-arrow"
-							onClick={(e) => {
-								e.stopPropagation();
-								xbdSelector.goNext();
-							}}
-							disabled={headerNavDisabled || !xbdSelector.canGoNext}
-							aria-label="Next scene"
-						>
-							<ChevronRight size={14} />
-						</button>
-					</span>
-				)}
 				<button
 					type="button"
 					className="map-controls__toggle"
@@ -146,12 +118,12 @@ export function MapControls({
 					<XbdSelector
 						selectedXbdId={selectedXbdId}
 						onChange={onXbdChange}
-						status={xbdSelector.status}
-						xbdIds={xbdSelector.xbdIds}
-						canGoPrev={xbdSelector.canGoPrev}
-						canGoNext={xbdSelector.canGoNext}
-						onPrev={xbdSelector.goPrev}
-						onNext={xbdSelector.goNext}
+						status={xbdSelectorStatus}
+						xbdIds={xbdIds}
+						canGoPrev={canGoPrev}
+						canGoNext={canGoNext}
+						onPrev={onPrev}
+						onNext={onNext}
 						disabled={sceneDisabled || collapsed}
 						showArrows={!collapsed}
 					/>
