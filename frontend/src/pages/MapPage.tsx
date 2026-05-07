@@ -7,6 +7,8 @@ import MapView from "@/components/features/MapView.tsx";
 import { useXbdSelectorState } from "@/components/features/XbdSelector";
 import Footer from "@/components/layout/Footer.tsx";
 import Header from "@/components/layout/Header.tsx";
+import type { DamageLevel } from "@/pages/dashboard/dashboardTypes";
+import { prettyLabel } from "@/pages/dashboard/dashboardUtils";
 import type { SceneMetrics } from "@/types/map";
 import { getDisasterIdByName } from "@/utils/hazardlyApi.ts";
 
@@ -17,11 +19,32 @@ const DAMAGE_CLASS_ORDER = [
 	"destroyed",
 ] as const;
 
-const formatDamageLabel = (key: string): string =>
-	key
-		.replace(/_/g, " ")
-		.replace(/-/g, " ")
-		.replace(/\b\w/g, (c: string) => c.toUpperCase());
+const getCellBackgroundColor = (
+	actualLabel: DamageLevel,
+	predictedLabel: DamageLevel,
+	value: number,
+	matrixMax: number,
+): string => {
+	const isDiagonal = actualLabel === predictedLabel;
+	const intensity = matrixMax > 0 ? value / matrixMax : 0;
+	const isDark = document.documentElement.classList.contains("dark");
+	const baseAlpha = isDark ? 0.25 : 0.15;
+	const scale = isDark ? 0.65 : 0.55;
+	const alpha =
+		value > 0 ? baseAlpha + intensity * scale : isDark ? 0.08 : 0.06;
+	const isTopLeft =
+		actualLabel === "no-damage" && predictedLabel === "no-damage";
+
+	if (isTopLeft) {
+		return isDark
+			? `rgba(5, 150, 105, ${Math.min(0.95, alpha + 0.25)})`
+			: `rgba(16, 185, 129, ${alpha})`;
+	}
+
+	return isDiagonal
+		? `rgba(16, 185, 129, ${alpha})`
+		: `rgba(239, 68, 68, ${alpha})`;
+};
 
 export default function MapPage() {
 	const { disaster_name, xbdid } = useParams<{
@@ -218,7 +241,7 @@ export default function MapPage() {
 												key={`scene-pred-${predictedLabel}`}
 												className="px-2 py-2 font-medium text-center"
 											>
-												{formatDamageLabel(predictedLabel)}
+												{prettyLabel(predictedLabel)}
 											</th>
 										))}
 										<th className="px-2 py-2 font-semibold text-center text-foreground">
@@ -243,7 +266,7 @@ export default function MapPage() {
 												className="border-b border-border/70"
 											>
 												<td className="px-2 py-2 font-medium">
-													{formatDamageLabel(actualLabel)}
+													{prettyLabel(actualLabel)}
 												</td>
 												{DAMAGE_CLASS_ORDER.map((predictedLabel) => {
 													const value =
@@ -251,26 +274,23 @@ export default function MapPage() {
 															predictedLabel
 														] ?? 0;
 													const isDiagonal = actualLabel === predictedLabel;
-													const intensity =
-														sceneMetrics.matrixMax > 0
-															? value / sceneMetrics.matrixMax
-															: 0;
-													const baseAlpha = 0.12;
-													const alpha =
-														value > 0 ? baseAlpha + intensity * 0.6 : 0.06;
-													const backgroundColor = isDiagonal
-														? `rgba(16, 185, 129, ${alpha})`
-														: `rgba(239, 68, 68, ${alpha})`;
 
 													return (
 														<td
 															key={`scene-cell-${actualLabel}-${predictedLabel}`}
 															className={`px-2 py-2 text-center font-medium ${
 																isDiagonal
-																	? "text-emerald-700"
-																	: "text-rose-700"
+																	? "text-emerald-900 dark:text-emerald-300"
+																	: "text-rose-700 dark:text-rose-300"
 															}`}
-															style={{ backgroundColor }}
+															style={{
+																backgroundColor: getCellBackgroundColor(
+																	actualLabel,
+																	predictedLabel,
+																	value,
+																	sceneMetrics.matrixMax,
+																),
+															}}
 														>
 															{value}
 														</td>
