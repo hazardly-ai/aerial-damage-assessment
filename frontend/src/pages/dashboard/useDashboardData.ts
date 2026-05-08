@@ -133,12 +133,96 @@ type ImagePairLookup = Map<
 	}
 >;
 
+type DashboardSessionCache = {
+	selectedDisasterId: number | null;
+	selectedDisasterName: string | null;
+	stats: BuildingStatsResponse | null;
+	allBuildingsCache: BuildingFeature[] | null;
+	imagePairMap: ImagePairLookup;
+};
+
+const DASHBOARD_VIEW_STATE_KEY = "dashboardViewState";
+
+const EMPTY_STATS: BuildingStatsResponse = {
+	total: 0,
+	no_damage: 0,
+	by_damage: {},
+};
+
+const dashboardSessionCache: DashboardSessionCache = {
+	selectedDisasterId: null,
+	selectedDisasterName: null,
+	stats: null,
+	allBuildingsCache: null,
+	imagePairMap: new Map(),
+};
+
+const readDashboardViewState = (): {
+	activeSection: ActiveSection;
+	page: number;
+	imagePairsPage: number;
+} => {
+	if (typeof window === "undefined") {
+		return {
+			activeSection: "overview",
+			page: 1,
+			imagePairsPage: 1,
+		};
+	}
+
+	const raw = window.sessionStorage.getItem(DASHBOARD_VIEW_STATE_KEY);
+	if (!raw) {
+		return {
+			activeSection: "overview",
+			page: 1,
+			imagePairsPage: 1,
+		};
+	}
+
+	try {
+		const parsed = JSON.parse(raw) as Partial<{
+			activeSection: ActiveSection;
+			page: number;
+			imagePairsPage: number;
+		}>;
+
+		return {
+			activeSection:
+				parsed.activeSection === "buildings" ||
+				parsed.activeSection === "image-pairs" ||
+				parsed.activeSection === "overview"
+					? parsed.activeSection
+					: "overview",
+			page:
+				typeof parsed.page === "number" && parsed.page > 0
+					? Math.floor(parsed.page)
+					: 1,
+			imagePairsPage:
+				typeof parsed.imagePairsPage === "number" &&
+				parsed.imagePairsPage > 0
+					? Math.floor(parsed.imagePairsPage)
+					: 1,
+		};
+	} catch {
+		return {
+			activeSection: "overview",
+			page: 1,
+			imagePairsPage: 1,
+		};
+	}
+};
+
 export function useDashboardData() {
-	const [loadingStats, setLoadingStats] = useState(true);
+	const initialViewState = readDashboardViewState();
+	const [loadingStats, setLoadingStats] = useState(
+		dashboardSessionCache.stats == null,
+	);
 	const [loadingBuildings, setLoadingBuildings] = useState(false);
 	const [loadingImagePairs, setLoadingImagePairs] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [activeSection, setActiveSection] = useState<ActiveSection>("overview");
+	const [activeSection, setActiveSection] = useState<ActiveSection>(
+		initialViewState.activeSection,
+	);
 	const [activeDamageFilter, setActiveDamageFilter] = useState<string>("all");
 	const [buildingSearchQuery, setBuildingSearchQuery] = useState("");
 	const [disasterSearchQuery, setDisasterSearchQuery] = useState("");
@@ -148,33 +232,35 @@ export function useDashboardData() {
 	const [buildingCorrectnessFilter, setBuildingCorrectnessFilter] =
 		useState<BuildingCorrectnessFilter>("all");
 	const [selectedDisasterId, setSelectedDisasterId] = useState<number | null>(
-		null,
+		dashboardSessionCache.selectedDisasterId,
 	);
 	const [selectedDisasterName, setSelectedDisasterName] = useState<
 		string | null
-	>(null);
+	>(dashboardSessionCache.selectedDisasterName);
 	const [allBuildingsCache, setAllBuildingsCache] = useState<
 		BuildingFeature[] | null
-	>(null);
-	const [imagePairMap, setImagePairMap] = useState<ImagePairLookup>(new Map());
-	const [stats, setStats] = useState<BuildingStatsResponse>({
-		total: 0,
-		no_damage: 0,
-		by_damage: {},
-	});
-	const [page, setPage] = useState(1);
+	>(dashboardSessionCache.allBuildingsCache);
+	const [imagePairMap, setImagePairMap] = useState<ImagePairLookup>(
+		dashboardSessionCache.imagePairMap,
+	);
+	const [stats, setStats] = useState<BuildingStatsResponse>(
+		dashboardSessionCache.stats ?? EMPTY_STATS,
+	);
+	const [page, setPage] = useState(initialViewState.page);
 	const [buildingSortKey, setBuildingSortKey] =
 		useState<BuildingSortKey | null>(null);
 	const [buildingSortDirection, setBuildingSortDirection] =
 		useState<SortDirection | null>(null);
-	const [imagePairsPage, setImagePairsPage] = useState(1);
+	const [imagePairsPage, setImagePairsPage] = useState(
+		initialViewState.imagePairsPage,
+	);
 	const [imagePairSortKey, setImagePairSortKey] =
 		useState<ImagePairSortKey | null>(null);
 	const [imagePairSortDirection, setImagePairSortDirection] =
 		useState<SortDirection | null>(null);
 	const imagePairMapRef = useRef(imagePairMap);
 	const allBuildingsCacheRef = useRef(allBuildingsCache);
-	const hasLoadedInitialStatsRef = useRef(false);
+	const hasLoadedInitialStatsRef = useRef(dashboardSessionCache.stats != null);
 
 	imagePairMapRef.current = imagePairMap;
 	allBuildingsCacheRef.current = allBuildingsCache;
@@ -182,6 +268,19 @@ export function useDashboardData() {
 	const deferredBuildingSearchQuery = useDeferredValue(buildingSearchQuery);
 	const deferredDisasterSearchQuery = useDeferredValue(disasterSearchQuery);
 	const deferredXbdSearchQuery = useDeferredValue(xbdSearchQuery);
+
+	useEffect(() => {
+		if (typeof window === "undefined") return;
+
+		window.sessionStorage.setItem(
+			DASHBOARD_VIEW_STATE_KEY,
+			JSON.stringify({
+				activeSection,
+				page,
+				imagePairsPage,
+			}),
+		);
+	}, [activeSection, imagePairsPage, page]);
 
 	const ensureImagePairs = useCallback(async (disasterId: number) => {
 		if (imagePairMapRef.current.size > 0) return imagePairMapRef.current;
@@ -201,6 +300,7 @@ export function useDashboardData() {
 		}
 
 		imagePairMapRef.current = next;
+		dashboardSessionCache.imagePairMap = next;
 		setImagePairMap(next);
 		return next;
 	}, []);
@@ -210,6 +310,7 @@ export function useDashboardData() {
 		const data = await fetchBuildingsForDisaster(disasterId);
 		const features = data.features ?? [];
 		allBuildingsCacheRef.current = features;
+		dashboardSessionCache.allBuildingsCache = features;
 		setAllBuildingsCache(features);
 		return features;
 	}, []);
@@ -231,6 +332,8 @@ export function useDashboardData() {
 				}
 
 				const currentDisaster = disasters[0];
+				dashboardSessionCache.selectedDisasterId = currentDisaster.id;
+				dashboardSessionCache.selectedDisasterName = currentDisaster.name;
 				setSelectedDisasterId(currentDisaster.id);
 				setSelectedDisasterName(currentDisaster.name);
 
@@ -244,6 +347,7 @@ export function useDashboardData() {
 
 					throw err;
 				});
+				dashboardSessionCache.stats = nextStats;
 				setStats(nextStats);
 
 				void ensureAllBuildings(currentDisaster.id).catch((prefetchError) => {
