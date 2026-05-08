@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useDeferredValue,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import {
 	ApiError,
 	type BuildingFeature,
@@ -155,10 +162,7 @@ export function useDashboardData() {
 		no_damage: 0,
 		by_damage: {},
 	});
-	const [rows, setRows] = useState<BuildingListItem[]>([]);
 	const [page, setPage] = useState(1);
-	const [totalPages, setTotalPages] = useState(1);
-	const [totalItems, setTotalItems] = useState(0);
 	const [buildingSortKey, setBuildingSortKey] =
 		useState<BuildingSortKey | null>(null);
 	const [buildingSortDirection, setBuildingSortDirection] =
@@ -174,6 +178,10 @@ export function useDashboardData() {
 
 	imagePairMapRef.current = imagePairMap;
 	allBuildingsCacheRef.current = allBuildingsCache;
+
+	const deferredBuildingSearchQuery = useDeferredValue(buildingSearchQuery);
+	const deferredDisasterSearchQuery = useDeferredValue(disasterSearchQuery);
+	const deferredXbdSearchQuery = useDeferredValue(xbdSearchQuery);
 
 	const ensureImagePairs = useCallback(async (disasterId: number) => {
 		if (imagePairMapRef.current.size > 0) return imagePairMapRef.current;
@@ -226,41 +234,25 @@ export function useDashboardData() {
 				setSelectedDisasterId(currentDisaster.id);
 				setSelectedDisasterName(currentDisaster.name);
 
-				const [allBuildingsResult, statsResult] = await Promise.allSettled([
-					ensureAllBuildings(currentDisaster.id),
-					(async () => {
-						try {
-							const nextStats = await fetchBuildingStatsForDisaster(
-								currentDisaster.id,
-							);
-							setStats(nextStats);
-						} catch (err) {
-							if (err instanceof ApiError && err.status === 404) {
-								const features = await ensureAllBuildings(currentDisaster.id);
-								setStats(buildStatsFromFeatures(features));
-								return;
-							}
-							throw err;
-						}
-					})(),
-				]);
+				const nextStats = await fetchBuildingStatsForDisaster(
+					currentDisaster.id,
+				).catch(async (err: unknown) => {
+					if (err instanceof ApiError && err.status === 404) {
+						const features = await ensureAllBuildings(currentDisaster.id);
+						return buildStatsFromFeatures(features);
+					}
 
-				if (allBuildingsResult.status === "rejected") {
+					throw err;
+				});
+				setStats(nextStats);
+
+				void ensureAllBuildings(currentDisaster.id).catch((prefetchError) => {
 					setError(
-						allBuildingsResult.reason instanceof Error
-							? allBuildingsResult.reason.message
+						prefetchError instanceof Error
+							? prefetchError.message
 							: "Unexpected dashboard error.",
 					);
-					return;
-				}
-
-				if (statsResult.status === "rejected") {
-					setError(
-						statsResult.reason instanceof Error
-							? statsResult.reason.message
-							: "Unexpected dashboard error.",
-					);
-				}
+				});
 			} catch (err) {
 				setError(
 					err instanceof Error ? err.message : "Unexpected dashboard error.",
@@ -326,166 +318,159 @@ export function useDashboardData() {
 		};
 	}, [allBuildingsCache]);
 
+	const allBuildingRows = useMemo<BuildingListItem[]>(() => {
+		if (!allBuildingsCache) return [];
+
+		return allBuildingsCache.map((feature) => {
+			const prop = feature.properties;
+			const pair = imagePairMap.get(prop.image_pair_id);
+			const actual = normalizeDamage(prop.actual_damage);
+			const predicted =
+				prop.predicted_damage == null
+					? null
+					: normalizeDamage(prop.predicted_damage);
+
+			return {
+				id: prop.id,
+				uid: prop.uid,
+				address: typeof prop.address === "string" ? prop.address : null,
+				disaster_name: selectedDisasterName ?? "Unknown",
+				image_pair_id: prop.image_pair_id,
+				xbd_id: pair?.xbd_id ?? -1,
+				actual_damage: actual,
+				predicted_damage: predicted,
+				is_correct: predicted === null ? null : actual === predicted,
+				created_at: prop.created_at ?? null,
+				pre_image_path: pair?.pre_image_path ?? null,
+				post_image_path: pair?.post_image_path ?? null,
+			};
+		});
+	}, [allBuildingsCache, imagePairMap, selectedDisasterName]);
+
 	useEffect(() => {
 		if (activeSection !== "buildings") return;
 		if (selectedDisasterId == null) return;
 
-		const loadBuildingsPage = async () => {
+		const loadBuildingsData = async () => {
 			try {
 				setLoadingBuildings(true);
 				setError(null);
 
-				const pairs = await ensureImagePairs(selectedDisasterId);
-				const features = await ensureAllBuildings(selectedDisasterId);
-
-				const normalizedBuildingQuery = buildingSearchQuery
-					.trim()
-					.toLowerCase();
-				const normalizedDisasterQuery = disasterSearchQuery
-					.trim()
-					.toLowerCase();
-				const normalizedXbdQuery = xbdSearchQuery.trim();
-
-				const mappedAll: BuildingListItem[] = features.map((feature) => {
-					const prop = feature.properties;
-					const pair = pairs.get(prop.image_pair_id);
-					const actual = normalizeDamage(prop.actual_damage);
-					const predicted =
-						prop.predicted_damage == null
-							? null
-							: normalizeDamage(prop.predicted_damage);
-
-					return {
-						id: prop.id,
-						uid: prop.uid,
-						address: typeof prop.address === "string" ? prop.address : null,
-						disaster_name: selectedDisasterName ?? "Unknown",
-						image_pair_id: prop.image_pair_id,
-						xbd_id: pair?.xbd_id ?? -1,
-						actual_damage: actual,
-						predicted_damage: predicted,
-						is_correct: predicted === null ? null : actual === predicted,
-						created_at: prop.created_at ?? null,
-						pre_image_path: pair?.pre_image_path ?? null,
-						post_image_path: pair?.post_image_path ?? null,
-					};
-				});
-
-				const filtered = mappedAll.filter((building) => {
-					if (
-						activeDamageFilter !== "all" &&
-						normalizeDamage(building.actual_damage) !== activeDamageFilter
-					) {
-						return false;
-					}
-
-					if (predictedDamageFilter !== "all") {
-						if (predictedDamageFilter === "missing") {
-							if (building.predicted_damage !== null) return false;
-						} else if (building.predicted_damage !== predictedDamageFilter) {
-							return false;
-						}
-					}
-
-					if (buildingCorrectnessFilter !== "all") {
-						if (
-							buildingCorrectnessFilter === "yes" &&
-							building.is_correct !== true
-						) {
-							return false;
-						}
-						if (
-							buildingCorrectnessFilter === "no" &&
-							building.is_correct !== false
-						) {
-							return false;
-						}
-					}
-
-					if (normalizedBuildingQuery) {
-						const address = building.address?.toLowerCase() ?? "";
-						const uid = building.uid.toLowerCase();
-						if (
-							!address.includes(normalizedBuildingQuery) &&
-							!uid.includes(normalizedBuildingQuery)
-						) {
-							return false;
-						}
-					}
-
-					if (
-						normalizedDisasterQuery &&
-						!building.disaster_name
-							.toLowerCase()
-							.includes(normalizedDisasterQuery)
-					) {
-						return false;
-					}
-
-					return (
-						!normalizedXbdQuery ||
-						matchesWildcard(String(building.xbd_id), normalizedXbdQuery)
-					);
-				});
-				const sorted =
-					buildingSortKey == null || buildingSortDirection == null
-						? filtered
-						: [...filtered].sort((left, right) =>
-								compareBuildingRows(
-									left,
-									right,
-									buildingSortKey,
-									buildingSortDirection,
-								),
-							);
-
-				const nextTotalItems = sorted.length;
-				const nextTotalPages = Math.max(
-					1,
-					Math.ceil(nextTotalItems / PAGE_SIZE),
-				);
-				const clampedPage = Math.min(page, nextTotalPages);
-
-				if (clampedPage !== page) {
-					setPage(clampedPage);
-					return;
-				}
-
-				const start = (clampedPage - 1) * PAGE_SIZE;
-				const mapped = sorted.slice(start, start + PAGE_SIZE);
-
-				setRows(mapped);
-				setTotalItems(nextTotalItems);
-				setTotalPages(nextTotalPages);
+				await Promise.all([
+					ensureImagePairs(selectedDisasterId),
+					ensureAllBuildings(selectedDisasterId),
+				]);
 			} catch (err) {
 				setError(
 					err instanceof Error
 						? err.message
 						: "Unexpected dashboard error while loading buildings.",
 				);
-				setRows([]);
 			} finally {
 				setLoadingBuildings(false);
 			}
 		};
 
-		void loadBuildingsPage();
+		void loadBuildingsData();
+	}, [activeSection, selectedDisasterId, ensureAllBuildings, ensureImagePairs]);
+
+	const filteredBuildingRows = useMemo(() => {
+		const normalizedBuildingQuery = deferredBuildingSearchQuery
+			.trim()
+			.toLowerCase();
+		const normalizedDisasterQuery = deferredDisasterSearchQuery
+			.trim()
+			.toLowerCase();
+		const normalizedXbdQuery = deferredXbdSearchQuery.trim();
+
+		return allBuildingRows.filter((building) => {
+			if (
+				activeDamageFilter !== "all" &&
+				building.actual_damage !== activeDamageFilter
+			) {
+				return false;
+			}
+
+			if (predictedDamageFilter !== "all") {
+				if (predictedDamageFilter === "missing") {
+					if (building.predicted_damage !== null) return false;
+				} else if (building.predicted_damage !== predictedDamageFilter) {
+					return false;
+				}
+			}
+
+			if (buildingCorrectnessFilter !== "all") {
+				if (
+					buildingCorrectnessFilter === "yes" &&
+					building.is_correct !== true
+				) {
+					return false;
+				}
+				if (
+					buildingCorrectnessFilter === "no" &&
+					building.is_correct !== false
+				) {
+					return false;
+				}
+			}
+
+			if (normalizedBuildingQuery) {
+				const address = building.address?.toLowerCase() ?? "";
+				const uid = building.uid.toLowerCase();
+				if (
+					!address.includes(normalizedBuildingQuery) &&
+					!uid.includes(normalizedBuildingQuery)
+				) {
+					return false;
+				}
+			}
+
+			if (
+				normalizedDisasterQuery &&
+				!building.disaster_name.toLowerCase().includes(normalizedDisasterQuery)
+			) {
+				return false;
+			}
+
+			return (
+				!normalizedXbdQuery ||
+				matchesWildcard(String(building.xbd_id), normalizedXbdQuery)
+			);
+		});
 	}, [
-		activeSection,
-		selectedDisasterId,
-		page,
 		activeDamageFilter,
-		buildingSearchQuery,
-		disasterSearchQuery,
-		xbdSearchQuery,
-		predictedDamageFilter,
+		allBuildingRows,
 		buildingCorrectnessFilter,
-		buildingSortKey,
-		buildingSortDirection,
-		ensureAllBuildings,
-		ensureImagePairs,
-		selectedDisasterName,
+		deferredBuildingSearchQuery,
+		deferredDisasterSearchQuery,
+		deferredXbdSearchQuery,
+		predictedDamageFilter,
 	]);
+
+	const sortedBuildingRows = useMemo(() => {
+		if (buildingSortKey == null || buildingSortDirection == null) {
+			return filteredBuildingRows;
+		}
+
+		return [...filteredBuildingRows].sort((left, right) =>
+			compareBuildingRows(left, right, buildingSortKey, buildingSortDirection),
+		);
+	}, [buildingSortDirection, buildingSortKey, filteredBuildingRows]);
+
+	const totalItems = sortedBuildingRows.length;
+	const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+	const clampedPage = Math.min(page, totalPages);
+
+	useEffect(() => {
+		if (page !== clampedPage) {
+			setPage(clampedPage);
+		}
+	}, [clampedPage, page]);
+
+	const rows = useMemo(() => {
+		const start = (clampedPage - 1) * PAGE_SIZE;
+		return sortedBuildingRows.slice(start, start + PAGE_SIZE);
+	}, [clampedPage, sortedBuildingRows]);
 
 	useEffect(() => {
 		if (activeSection !== "image-pairs") return;

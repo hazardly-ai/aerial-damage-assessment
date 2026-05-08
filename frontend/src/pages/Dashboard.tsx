@@ -1,4 +1,4 @@
-import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant.tsx";
+import { lazy, Suspense, useEffect, useState } from "react";
 import AppSidebar from "@/components/layout/AppSidebar";
 import Container from "@/components/layout/Container";
 import Footer from "@/components/layout/Footer.tsx";
@@ -9,8 +9,32 @@ import DashboardImagePairsSection from "./dashboard/DashboardImagePairsSection";
 import DashboardOverviewSection from "./dashboard/DashboardOverviewSection";
 import { useDashboardData } from "./dashboard/useDashboardData";
 
+const DisasterResponseAssistant = lazy(
+	() => import("@/components/features/DisasterResponseAssistant.tsx"),
+);
+
 export default function Dashboard() {
 	const dashboard = useDashboardData();
+	const [showAssistant, setShowAssistant] = useState(false);
+
+	useEffect(() => {
+		const idleWindow = window as Window & {
+			requestIdleCallback?: (callback: () => void) => number;
+			cancelIdleCallback?: (id: number) => void;
+		};
+
+		if (idleWindow.requestIdleCallback) {
+			const idleId = idleWindow.requestIdleCallback(() => {
+				setShowAssistant(true);
+			});
+			return () => idleWindow.cancelIdleCallback?.(idleId);
+		}
+
+		const timeoutId = window.setTimeout(() => {
+			setShowAssistant(true);
+		}, 1200);
+		return () => window.clearTimeout(timeoutId);
+	}, []);
 
 	return (
 		<div className="min-h-screen bg-background text-foreground">
@@ -103,7 +127,11 @@ export default function Dashboard() {
 					</div>
 				</div>
 			</Container>
-			<DisasterResponseAssistant />
+			{showAssistant ? (
+				<Suspense fallback={null}>
+					<DisasterResponseAssistant />
+				</Suspense>
+			) : null}
 			<Footer />
 		</div>
 	);
