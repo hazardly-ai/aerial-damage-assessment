@@ -198,8 +198,7 @@ const readDashboardViewState = (): {
 					? Math.floor(parsed.page)
 					: 1,
 			imagePairsPage:
-				typeof parsed.imagePairsPage === "number" &&
-				parsed.imagePairsPage > 0
+				typeof parsed.imagePairsPage === "number" && parsed.imagePairsPage > 0
 					? Math.floor(parsed.imagePairsPage)
 					: 1,
 		};
