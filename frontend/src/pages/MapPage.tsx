@@ -20,6 +20,9 @@ export default function MapPage() {
 	const buildingFromUrl = searchParams.get("building")?.trim() ?? undefined;
 	const normalizedDisasterParam = disaster_name?.trim();
 	const requiresDisasterResolution = Boolean(normalizedDisasterParam);
+	const disasterFallbackPath = normalizedDisasterParam
+		? `/map/${normalizedDisasterParam}`
+		: "/map";
 
 	const [resolvedDisasterId, setResolvedDisasterId] = useState<number | null>(
 		1,
@@ -78,21 +81,20 @@ export default function MapPage() {
 
 				if (isXbdMissing || isXbdMalformed) {
 					if (normalizedDisasterParam || xbdid) {
-						hasRedirected.current = true;
-
 						if (isXbdMalformed) {
+							hasRedirected.current = true;
+							setResolvedDisasterId(disasterId);
 							toast.warning(`"${xbdid}" is not a valid scene ID.`, {
 								id: "malformed-xbd",
 							});
+							navigate(disasterFallbackPath, { replace: true });
+							return;
 						} else if (normalizedDisasterParam) {
 							toast.info(
 								`No scene specified for ${normalizedDisasterParam}. Loading default view.`,
 								{ id: "missing-xbd" },
 							);
 						}
-
-						navigate("/map", { replace: true });
-						return;
 					}
 				}
 
@@ -117,15 +119,16 @@ export default function MapPage() {
 		xbdid,
 		isXbdMissing,
 		isXbdMalformed,
+		disasterFallbackPath,
 		navigate,
 	]);
 
 	const handleInvalidScene = useCallback(
 		(message: string) => {
 			toast.error(message);
-			navigate("/map", { replace: true });
+			navigate(disasterFallbackPath, { replace: true });
 		},
-		[navigate],
+		[disasterFallbackPath, navigate],
 	);
 
 	const disasterId = resolvedDisasterId ?? 1;
