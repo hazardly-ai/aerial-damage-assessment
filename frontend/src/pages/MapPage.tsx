@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+	useLocation,
+	useNavigate,
+	useParams,
+	useSearchParams,
+} from "react-router-dom";
 import { toast } from "sonner";
 import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant.tsx";
 import MapMetricsPanel from "@/components/features/MapMetricsPanel.tsx";
@@ -15,8 +20,14 @@ export default function MapPage() {
 		disaster_name: string;
 		xbdid: string;
 	}>();
+	const location = useLocation();
 	const navigate = useNavigate();
 	const [searchParams] = useSearchParams();
+	const suppressMissingSceneToast =
+		location.state !== null &&
+		typeof location.state === "object" &&
+		"suppressMissingSceneToast" in location.state &&
+		location.state.suppressMissingSceneToast === true;
 	const buildingFromUrl = searchParams.get("building")?.trim() ?? undefined;
 	const normalizedDisasterParam = disaster_name?.trim();
 	const requiresDisasterResolution = Boolean(normalizedDisasterParam);
@@ -89,7 +100,7 @@ export default function MapPage() {
 							});
 							navigate(disasterFallbackPath, { replace: true });
 							return;
-						} else if (normalizedDisasterParam) {
+						} else if (normalizedDisasterParam && !suppressMissingSceneToast) {
 							toast.info(
 								`No scene specified for ${normalizedDisasterParam}. Loading default view.`,
 								{ id: "missing-xbd" },
@@ -121,12 +132,16 @@ export default function MapPage() {
 		isXbdMalformed,
 		disasterFallbackPath,
 		navigate,
+		suppressMissingSceneToast,
 	]);
 
 	const handleInvalidScene = useCallback(
 		(message: string) => {
 			toast.error(message);
-			navigate(disasterFallbackPath, { replace: true });
+			navigate(disasterFallbackPath, {
+				replace: true,
+				state: { suppressMissingSceneToast: true },
+			});
 		},
 		[disasterFallbackPath, navigate],
 	);
@@ -136,6 +151,7 @@ export default function MapPage() {
 		disasterId,
 		selectedXbdId,
 		onChange: setSelectedXbdId,
+		allowFallbackSelection: isXbdMissing,
 	});
 
 	if (
