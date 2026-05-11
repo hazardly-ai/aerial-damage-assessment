@@ -9,11 +9,16 @@ interface DisasterResponseAssistantProps {
 }
 
 const buildMapCommandSummary = (response: ChatResponse): string | undefined => {
+	const targetXbdId = response.action?.params?.xbd_id;
 	if (response.action?.target === "building") {
-		return "Opened the matched building on the map.";
+		return typeof targetXbdId === "number"
+			? `Opened the matched building on XBD ${targetXbdId}.`
+			: "Opened the matched building on the map.";
 	}
 	if (response.action?.target === "map" && response.focus?.address) {
-		return `Moved the map to ${response.focus.address}.`;
+		return typeof targetXbdId === "number"
+			? `Moved the map to ${response.focus.address} on XBD ${targetXbdId}.`
+			: `Moved the map to ${response.focus.address}.`;
 	}
 	if (response.highlighted_buildings.length > 0) {
 		const count = response.highlighted_buildings.length;
