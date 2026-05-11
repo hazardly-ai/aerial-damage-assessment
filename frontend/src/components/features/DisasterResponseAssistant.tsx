@@ -6,7 +6,66 @@ import type { ChatMessage, ChatResponse } from "@/types/chat";
 interface DisasterResponseAssistantProps {
 	onChatResponse?: (response: ChatResponse) => void;
 	onClearMapHighlights?: () => void;
+	onRunSuggestedAction?: (response: ChatResponse) => void;
 }
+
+const PENDING_MESSAGE_ID = "assistant-pending";
+
+function AnimatedAssistantText({
+	content,
+	animate,
+	onProgress,
+	onComplete,
+}: {
+	content: string;
+	animate: boolean;
+	onProgress?: () => void;
+	onComplete?: () => void;
+}) {
+	const [visibleLength, setVisibleLength] = useState(
+		animate ? 0 : content.length,
+	);
+	const onProgressRef = useRef(onProgress);
+	const onCompleteRef = useRef(onComplete);
+
+	useEffect(() => {
+		onProgressRef.current = onProgress;
+		onCompleteRef.current = onComplete;
+	}, [onProgress, onComplete]);
+
+	useEffect(() => {
+		if (!animate) {
+			setVisibleLength(content.length);
+			return;
+		}
+
+		setVisibleLength(0);
+		if (!content) return;
+
+		let index = 0;
+		const timer = window.setInterval(() => {
+			index += 3;
+			if (index >= content.length) {
+				window.clearInterval(timer);
+				setVisibleLength(content.length);
+				onProgressRef.current?.();
+				onCompleteRef.current?.();
+				return;
+			}
+			setVisibleLength(index);
+			onProgressRef.current?.();
+		}, 12);
+
+		return () => window.clearInterval(timer);
+	}, [animate, content]);
+
+	return <>{content.slice(0, visibleLength)}</>;
+}
+
+const requiresExplicitExampleAction = (response: ChatResponse): boolean =>
+	response.action?.reason === "address_query" &&
+	response.action?.target === "map" &&
+	!response.focus;
 
 const buildMapCommandSummary = (response: ChatResponse): string | undefined => {
 	const targetXbdId = response.action?.params?.xbd_id;
@@ -33,6 +92,7 @@ const buildMapCommandSummary = (response: ChatResponse): string | undefined => {
 export default function DisasterResponseAssistant({
 	onChatResponse,
 	onClearMapHighlights,
+	onRunSuggestedAction,
 }: DisasterResponseAssistantProps) {
 	const API_BASE_URL = import.meta.env.VITE_HAZARDLY_API_BASE_URL?.replace(
 		/\/*$/,
@@ -57,14 +117,17 @@ export default function DisasterResponseAssistant({
 	});
 
 	const [currentQuery, setCurrentQuery] = useState("");
+	const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
+	const [animatingMessageId, setAnimatingMessageId] = useState<string | null>(
+		null,
+	);
 	const bottomRef = useRef<HTMLDivElement | null>(null);
-	const messageCount = responseLog.length;
 
 	useEffect(() => {
-		if (messageCount > 0) {
+		if (responseLog.length > 0) {
 			bottomRef.current?.scrollIntoView({ behavior: "smooth" });
 		}
-	}, [messageCount]);
+	}, [responseLog]);
 
 	useEffect(() => {
 		sessionStorage.setItem("chatHistory", JSON.stringify(responseLog));
@@ -73,11 +136,13 @@ export default function DisasterResponseAssistant({
 
 	const clearChat = () => {
 		setResponseLog([initialMessage]);
+		setIsAwaitingResponse(false);
+		setAnimatingMessageId(null);
 		sessionStorage.removeItem("chatHistory");
 	};
 
 	const handleQuery = async () => {
-		if (!currentQuery.trim()) return;
+		if (!currentQuery.trim() || isAwaitingResponse) return;
 		const userEntry: ChatMessage = {
 			id: crypto.randomUUID(),
 			role: "fieldUser",
@@ -86,6 +151,15 @@ export default function DisasterResponseAssistant({
 		setResponseLog((prev) => [...prev, userEntry]);
 		const queryToSend = currentQuery;
 		setCurrentQuery("");
+		setIsAwaitingResponse(true);
+		setResponseLog((prev) => [
+			...prev,
+			{
+				id: PENDING_MESSAGE_ID,
+				role: "responseAssistant",
+				content: "",
+			},
+		]);
 		try {
 			const backendResponse = await fetch(`${API_BASE_URL}/chat`, {
 				method: "POST",
@@ -93,15 +167,19 @@ export default function DisasterResponseAssistant({
 				body: JSON.stringify({ question: queryToSend }),
 			});
 			if (!backendResponse.ok) {
-				setResponseLog((prev) => [
-					...prev,
-					{
-						id: crypto.randomUUID(),
-						role: "responseAssistant",
-						content:
-							"I'm having trouble reaching the backend service right now. Please try again.",
-					},
-				]);
+				setResponseLog((prev) =>
+					prev.map((entry) =>
+						entry.id === PENDING_MESSAGE_ID
+							? {
+									id: crypto.randomUUID(),
+									role: "responseAssistant",
+									content:
+										"I'm having trouble reaching the backend service right now. Please try again.",
+								}
+							: entry,
+					),
+				);
+				setIsAwaitingResponse(false);
 				return;
 			}
 			const data = (await backendResponse.json()) as ChatResponse;
@@ -112,10 +190,24 @@ export default function DisasterResponseAssistant({
 					data.answer ||
 					data.response ||
 					"Your request has been received. Results will appear here.",
-				mapCommandSummary: buildMapCommandSummary(data),
+				mapCommandSummary: requiresExplicitExampleAction(data)
+					? typeof data.action?.params?.xbd_id === "number"
+						? `Representative scene available on XBD ${data.action.params.xbd_id}.`
+						: "Representative scene available."
+					: buildMapCommandSummary(data),
+				suggestedActionLabel: requiresExplicitExampleAction(data)
+					? "Show example XBD"
+					: undefined,
+				actionPayload: requiresExplicitExampleAction(data) ? data : undefined,
 			};
-			setResponseLog((prev) => [...prev, assistantEntry]);
-			if (onChatResponse) {
+			setResponseLog((prev) =>
+				prev.map((entry) =>
+					entry.id === PENDING_MESSAGE_ID ? assistantEntry : entry,
+				),
+			);
+			setIsAwaitingResponse(false);
+			setAnimatingMessageId(assistantEntry.id);
+			if (onChatResponse && !requiresExplicitExampleAction(data)) {
 				try {
 					onChatResponse(data);
 				} catch (error) {
@@ -123,15 +215,20 @@ export default function DisasterResponseAssistant({
 				}
 			}
 		} catch {
-			setResponseLog((prev) => [
-				...prev,
-				{
-					id: crypto.randomUUID(),
-					role: "responseAssistant",
-					content:
-						"I'm having trouble reaching the backend service right now. Please try again.",
-				},
-			]);
+			setResponseLog((prev) =>
+				prev.map((entry) =>
+					entry.id === PENDING_MESSAGE_ID
+						? {
+								id: crypto.randomUUID(),
+								role: "responseAssistant",
+								content:
+									"I'm having trouble reaching the backend service right now. Please try again.",
+							}
+						: entry,
+				),
+			);
+			setIsAwaitingResponse(false);
+			setAnimatingMessageId(null);
 		}
 	};
 
@@ -185,16 +282,55 @@ export default function DisasterResponseAssistant({
 					{responseLog.map((entry) => (
 						<div
 							key={entry.id}
-							className={`p-3 rounded-xl max-w-[85%] border transition-colors duration-theme ease-theme ${
+							className={`rounded-xl max-w-[85%] border transition-colors duration-theme ease-theme ${
 								entry.role === "fieldUser"
-									? "ml-auto bg-primary text-primary-foreground border-primary"
-									: "bg-card text-foreground border-border shadow-sm"
+									? "ml-auto bg-primary text-primary-foreground border-primary p-3"
+									: entry.id === PENDING_MESSAGE_ID
+										? "bg-card text-foreground border-border shadow-sm px-3 py-2"
+										: "bg-card text-foreground border-border shadow-sm p-3"
 							}`}
 						>
-							{entry.content}
+							{entry.id === PENDING_MESSAGE_ID ? (
+								<div className="flex items-center gap-1.5 py-1">
+									<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
+									<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
+									<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" />
+								</div>
+							) : (
+								<AnimatedAssistantText
+									content={entry.content}
+									animate={
+										entry.role === "responseAssistant" &&
+										animatingMessageId === entry.id
+									}
+									onProgress={() =>
+										bottomRef.current?.scrollIntoView({ behavior: "auto" })
+									}
+									onComplete={() => {
+										if (animatingMessageId === entry.id) {
+											setAnimatingMessageId(null);
+										}
+									}}
+								/>
+							)}
 							{entry.mapCommandSummary ? (
 								<div className="mt-2 border-t border-border/70 pt-2 text-xs text-muted-foreground">
 									{entry.mapCommandSummary}
+								</div>
+							) : null}
+							{entry.suggestedActionLabel && entry.actionPayload ? (
+								<div className="mt-3">
+									<button
+										type="button"
+										onClick={() => {
+											if (entry.actionPayload) {
+												onRunSuggestedAction?.(entry.actionPayload);
+											}
+										}}
+										className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+									>
+										{entry.suggestedActionLabel}
+									</button>
 								</div>
 							) : null}
 						</div>
@@ -210,15 +346,17 @@ export default function DisasterResponseAssistant({
 							value={currentQuery}
 							onChange={(e) => setCurrentQuery(e.target.value)}
 							onKeyDown={(e) => e.key === "Enter" && handleQuery()}
+							disabled={isAwaitingResponse}
 							className="flex-1 bg-background text-foreground border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 							placeholder="Ask Disaster Response Assistant..."
 						/>
 						<button
 							type="button"
 							onClick={handleQuery}
+							disabled={isAwaitingResponse}
 							className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm hover:opacity-90"
 						>
-							Send
+							{isAwaitingResponse ? "Waiting..." : "Send"}
 						</button>
 					</div>
 				</div>

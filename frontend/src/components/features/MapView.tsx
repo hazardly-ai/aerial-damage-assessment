@@ -349,6 +349,7 @@ export default function MapView({
 	const selectedBuildingIdRef = useRef<string | number | null>(null);
 	const highlightedBuildingIdsRef = useRef<Array<string | number>>([]);
 	const lastAppliedChatCommandIdRef = useRef<string | null>(null);
+	const loadedSceneXbdIdRef = useRef<number | null>(null);
 	const imageryVisibleRef = useRef(imageryVisible);
 	const boundsRef = useRef<ImageBounds | null>(null);
 	const scheduleCompareIdleRef = useRef<() => void>(() => {});
@@ -549,6 +550,7 @@ export default function MapView({
 					});
 
 					setStatus("ready");
+					loadedSceneXbdIdRef.current = imagePair.properties.xbd_id;
 					onMetricsChange?.(
 						computeSceneMetrics(imagePair.properties.xbd_id, buildings),
 					);
@@ -645,6 +647,7 @@ export default function MapView({
 			afterMap?.remove();
 			beforeMapRef.current = null;
 			afterMapRef.current = null;
+			loadedSceneXbdIdRef.current = null;
 		};
 		// selectedXbdId is intentionally excluded; scene switches are handled by Effect 2.
 	}, [
@@ -726,6 +729,7 @@ export default function MapView({
 				_before.fitBounds([sw, ne], { padding: 0, animate: true });
 				setErrorMessage(null);
 				setStatus("ready");
+				loadedSceneXbdIdRef.current = imagePair.properties.xbd_id;
 				onMetricsChange?.(
 					computeSceneMetrics(imagePair.properties.xbd_id, buildings),
 				);
@@ -807,6 +811,9 @@ export default function MapView({
 	useEffect(() => {
 		if (!chatCommand || status !== "ready" || sceneLoading) return;
 		if (lastAppliedChatCommandIdRef.current === chatCommand.id) {
+			return;
+		}
+		if (loadedSceneXbdIdRef.current !== selectedXbdId) {
 			return;
 		}
 		if (chatCommand.targetXbdId && chatCommand.targetXbdId !== selectedXbdId) {

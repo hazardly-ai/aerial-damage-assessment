@@ -42,6 +42,21 @@ function RouteLoadingFallback() {
 	);
 }
 
+function getCurrentMapRouteContext(pathname: string): {
+	onMapRoute: boolean;
+	disasterName: string | null;
+} {
+	const match = pathname.match(/^\/map(?:\/([^/]+))?/);
+	if (!match) {
+		return { onMapRoute: false, disasterName: null };
+	}
+
+	return {
+		onMapRoute: true,
+		disasterName: match[1] ? decodeURIComponent(match[1]) : null,
+	};
+}
+
 export default function App() {
 	const location = useLocation();
 	const navigate = useNavigate();
@@ -59,6 +74,18 @@ export default function App() {
 					return;
 				}
 
+				const currentMapRoute = getCurrentMapRouteContext(location.pathname);
+				const targetDisasterName =
+					response.action?.params?.disaster_name?.trim() ?? null;
+				const canHandleInsideCurrentMapRoute =
+					currentMapRoute.onMapRoute &&
+					(currentMapRoute.disasterName === null ||
+						targetDisasterName === null ||
+						currentMapRoute.disasterName === targetDisasterName);
+				if (canHandleInsideCurrentMapRoute) {
+					return;
+				}
+
 				if (`${location.pathname}${location.search}` !== nextUrl) {
 					navigate(nextUrl);
 				}
@@ -67,6 +94,13 @@ export default function App() {
 			}
 		},
 		[location.pathname, location.search, navigate],
+	);
+
+	const handleRunSuggestedAction = useCallback(
+		(response: ChatResponse) => {
+			handleChatResponse(response);
+		},
+		[handleChatResponse],
 	);
 
 	const handleClearMapHighlights = useCallback(() => {
@@ -104,6 +138,7 @@ export default function App() {
 			<DisasterResponseAssistant
 				onChatResponse={handleChatResponse}
 				onClearMapHighlights={handleClearMapHighlights}
+				onRunSuggestedAction={handleRunSuggestedAction}
 			/>
 		</>
 	);

@@ -3,6 +3,7 @@ import psycopg  # used to connect to PostgreSQL (Supabase)
 import requests  # used to make HTTP API calls (Mapbox + Nemotron)
 import os  # used to access environment variables
 import json  # used to convert GeoJSON text from PostGIS into a real Python dictionary
+import random
 import re
 from pathlib import Path
 from urllib.parse import quote  # used to safely encode values inside frontend route URLs
@@ -393,14 +394,18 @@ def get_buildings_by_address_text(address_text, damage_filter):
     address_parts = [part.strip() for part in address_clean.split(",") if part.strip()]
     city_part = address_parts[0] if len(address_parts) > 0 else address_clean
     region_part = address_parts[1] if len(address_parts) > 1 else None
-    region_aliases = {
+    region_aliases: dict[str, list[str]] = {
         "texas": ["texas", "tx"],
     }
     city_pattern = re.escape(city_part)
-    region_patterns = [
-        re.escape(alias)
-        for alias in region_aliases.get(region_part.lower(), [region_part])
-    ] if region_part else []
+    region_values: list[str] = []
+    if region_part:
+        normalized_region_part = str(region_part)
+        region_values = region_aliases.get(
+            normalized_region_part.lower(),
+            [normalized_region_part],
+        )
+    region_patterns = [re.escape(alias) for alias in region_values]
     city_state_pattern = (
         rf"\b{city_pattern}\b(?:\s*,\s*|\s+)(?:{'|'.join(region_patterns)})\b"
         if region_patterns
@@ -434,14 +439,18 @@ def get_all_buildings_by_address_text(address_text):
     address_parts = [part.strip() for part in address_clean.split(",") if part.strip()]
     city_part = address_parts[0] if len(address_parts) > 0 else address_clean
     region_part = address_parts[1] if len(address_parts) > 1 else None
-    region_aliases = {
+    region_aliases: dict[str, list[str]] = {
         "texas": ["texas", "tx"],
     }
     city_pattern = re.escape(city_part)
-    region_patterns = [
-        re.escape(alias)
-        for alias in region_aliases.get(region_part.lower(), [region_part])
-    ] if region_part else []
+    region_values: list[str] = []
+    if region_part:
+        normalized_region_part = str(region_part)
+        region_values = region_aliases.get(
+            normalized_region_part.lower(),
+            [normalized_region_part],
+        )
+    region_patterns = [re.escape(alias) for alias in region_values]
     city_state_pattern = (
         rf"\b{city_pattern}\b(?:\s*,\s*|\s+)(?:{'|'.join(region_patterns)})\b"
         if region_patterns
@@ -466,8 +475,8 @@ def get_all_buildings_by_address_text(address_text):
     return rows_to_buildings(rows)
 
 
-def build_map_action_from_buildings(buildings, address_text=None):
-    primary_xbd_id = get_primary_xbd_id(buildings)
+def build_map_action_from_buildings(buildings, address_text=None, primary_xbd_id=None):
+    primary_xbd_id = primary_xbd_id if primary_xbd_id is not None else get_primary_xbd_id(buildings)
 
     return {
         "type": "navigate",
@@ -484,22 +493,20 @@ def build_map_action_from_buildings(buildings, address_text=None):
 
 
 def get_primary_xbd_id(buildings):
-    xbd_counts = {}
+    xbd_ids = sorted({
+        building.get("xbd_id")
+        for building in buildings
+        if building.get("xbd_id") is not None
+    })
 
-    for building in buildings:
-        xbd_id = building.get("xbd_id")
-        if xbd_id is None:
-            continue
-        xbd_counts[xbd_id] = xbd_counts.get(xbd_id, 0) + 1
-
-    if not xbd_counts:
+    if not xbd_ids:
         return None
 
-    return max(sorted(xbd_counts), key=lambda xbd_id: xbd_counts[xbd_id])
+    return random.choice(xbd_ids)
 
 
-def get_buildings_for_primary_scene(buildings):
-    primary_xbd_id = get_primary_xbd_id(buildings)
+def get_buildings_for_primary_scene(buildings, primary_xbd_id=None):
+    primary_xbd_id = primary_xbd_id if primary_xbd_id is not None else get_primary_xbd_id(buildings)
     if primary_xbd_id is None:
         return []
 
@@ -1055,7 +1062,8 @@ def handle_chat_query(question):
     address_filter_text = extract_address_filter_text(question)
     if address_filter_text:
         buildings = get_buildings_by_address_text(address_filter_text, damage_type)
-        scene_buildings = get_buildings_for_primary_scene(buildings)
+        primary_xbd_id = get_primary_xbd_id(buildings)
+        scene_buildings = get_buildings_for_primary_scene(buildings, primary_xbd_id)
         geo = geocode_address(address_filter_text)
 
         if len(buildings) == 0:
@@ -1082,18 +1090,14 @@ def handle_chat_query(question):
         action = (
             build_building_action(buildings[0])
             if len(buildings) == 1
-            else build_map_action_from_buildings(buildings, label_text)
+            else build_map_action_from_buildings(buildings, label_text, primary_xbd_id)
         )
 
         save_turn(question, answer)
         return {
             "answer": answer,
             "response": answer,
-            "focus": {
-                "lat": geo["lat"],
-                "lon": geo["lon"],
-                "address": geo["formatted_address"]
-            } if geo else None,
+            "focus": None,
             "highlighted_buildings": scene_buildings if len(buildings) > 1 else buildings,
             "action": action
         }
@@ -1113,7 +1117,8 @@ def handle_chat_query(question):
             )
         if len(buildings) == 0:
             buildings = get_buildings_by_address_text(in_location_text, damage_type)
-        scene_buildings = get_buildings_for_primary_scene(buildings)
+        primary_xbd_id = get_primary_xbd_id(buildings)
+        scene_buildings = get_buildings_for_primary_scene(buildings, primary_xbd_id)
 
         if len(buildings) == 0:
             answer = f"I could not find relevant damage data for {in_location_text}."
@@ -1121,11 +1126,7 @@ def handle_chat_query(question):
             return {
                 "answer": answer,
                 "response": answer,
-                "focus": {
-                    "lat": geo["lat"],
-                    "lon": geo["lon"],
-                    "address": geo["formatted_address"]
-                } if geo else None,
+                "focus": None,
                 "highlighted_buildings": [],
                 "action": build_no_action()
             }
@@ -1139,18 +1140,14 @@ def handle_chat_query(question):
         action = (
             build_building_action(buildings[0])
             if len(buildings) == 1
-            else build_map_action_from_buildings(buildings, label_text)
+            else build_map_action_from_buildings(buildings, label_text, primary_xbd_id)
         )
 
         save_turn(question, answer)
         return {
             "answer": answer,
             "response": answer,
-            "focus": {
-                "lat": geo["lat"],
-                "lon": geo["lon"],
-                "address": geo["formatted_address"]
-            } if geo else None,
+            "focus": None,
             "highlighted_buildings": scene_buildings if len(buildings) > 1 else buildings,
             "action": action
         }
@@ -1165,14 +1162,16 @@ def handle_chat_query(question):
             b for b in all_buildings
             if b.get("damage") == damage_type
         ]
-        scene_all_buildings = get_buildings_for_primary_scene(all_buildings)
-        scene_filtered_buildings = get_buildings_for_primary_scene(filtered_buildings)
+        primary_all_xbd_id = get_primary_xbd_id(all_buildings)
+        primary_filtered_xbd_id = get_primary_xbd_id(filtered_buildings)
+        scene_all_buildings = get_buildings_for_primary_scene(all_buildings, primary_all_xbd_id)
+        scene_filtered_buildings = get_buildings_for_primary_scene(filtered_buildings, primary_filtered_xbd_id)
 
         if is_data_summary_query(question):
             counts = count_damage_levels(all_buildings)
             answer = format_damage_count_response(counts, address)
             action = (
-                build_map_action_from_buildings(all_buildings, address)
+                build_map_action_from_buildings(all_buildings, address, primary_all_xbd_id)
                 if len(all_buildings) > 0
                 else build_no_action()
             )
@@ -1193,7 +1192,7 @@ def handle_chat_query(question):
                 action = build_no_action()
             else:
                 answer = advisory_response(question, all_buildings, address)
-                action = build_map_action_from_buildings(all_buildings, address)
+                action = build_map_action_from_buildings(all_buildings, address, primary_all_xbd_id)
 
             payload = {
                 "answer": answer,
@@ -1224,7 +1223,7 @@ def handle_chat_query(question):
         action = (
             build_building_action(filtered_buildings[0])
             if len(filtered_buildings) == 1
-            else build_map_action_from_buildings(filtered_buildings, address)
+            else build_map_action_from_buildings(filtered_buildings, address, primary_filtered_xbd_id)
         )
 
         payload = {
@@ -1248,8 +1247,9 @@ def handle_chat_query(question):
         used_address_fallback = len(all_buildings) == 0
         if used_address_fallback:
             all_buildings = get_all_buildings_by_address_text(address)
+        primary_all_xbd_id = get_primary_xbd_id(all_buildings)
         scene_all_buildings = (
-            get_buildings_for_primary_scene(all_buildings)
+            get_buildings_for_primary_scene(all_buildings, primary_all_xbd_id)
             if used_address_fallback
             else all_buildings
         )
@@ -1262,7 +1262,11 @@ def handle_chat_query(question):
         )
 
         # create a map navigation action so frontend can route/focus to the result area
-        action = build_map_action(geo, all_buildings)
+        action = (
+            build_map_action_from_buildings(all_buildings, geo["formatted_address"], primary_all_xbd_id)
+            if used_address_fallback
+            else build_map_action(geo, all_buildings)
+        )
 
         # package chatbot answer, map focus, highlighted buildings, and navigation action
         payload = build_map_payload(answer, geo, scene_all_buildings, action)
@@ -1282,8 +1286,9 @@ def handle_chat_query(question):
         used_address_fallback = len(all_buildings) == 0
         if used_address_fallback:
             all_buildings = get_all_buildings_by_address_text(address)
+        primary_all_xbd_id = get_primary_xbd_id(all_buildings)
         scene_all_buildings = (
-            get_buildings_for_primary_scene(all_buildings)
+            get_buildings_for_primary_scene(all_buildings, primary_all_xbd_id)
             if used_address_fallback
             else all_buildings
         )
@@ -1295,7 +1300,11 @@ def handle_chat_query(question):
             answer = advisory_response(question, all_buildings, geo["formatted_address"])
 
             # create a map navigation action because advisory answers still relate to this location
-            action = build_map_action(geo, all_buildings)
+            action = (
+                build_map_action_from_buildings(all_buildings, geo["formatted_address"], primary_all_xbd_id)
+                if used_address_fallback
+                else build_map_action(geo, all_buildings)
+            )
 
         # package chatbot answer, map focus, highlighted buildings, and navigation action
         payload = build_map_payload(answer, geo, scene_all_buildings, action)
@@ -1314,8 +1323,9 @@ def handle_chat_query(question):
     used_address_fallback = len(buildings) == 0
     if used_address_fallback:
         buildings = get_buildings_by_address_text(address, damage_type)
+    primary_buildings_xbd_id = get_primary_xbd_id(buildings)
     scene_buildings = (
-        get_buildings_for_primary_scene(buildings)
+        get_buildings_for_primary_scene(buildings, primary_buildings_xbd_id)
         if used_address_fallback
         else buildings
     )
@@ -1346,7 +1356,11 @@ def handle_chat_query(question):
 
     # if multiple buildings matched, frontend should route/focus to the map view
     else:
-        action = build_map_action(geo, buildings)
+        action = (
+            build_map_action_from_buildings(buildings, geo["formatted_address"], primary_buildings_xbd_id)
+            if used_address_fallback
+            else build_map_action(geo, buildings)
+        )
 
     # package chatbot answer, map focus, highlighted buildings, and navigation action
     payload = build_map_payload(answer, geo, scene_buildings, action)
