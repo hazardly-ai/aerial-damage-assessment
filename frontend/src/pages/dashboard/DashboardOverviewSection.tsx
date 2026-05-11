@@ -62,43 +62,84 @@ export default function DashboardOverviewSection({
 				loadingStats ? "pointer-events-none opacity-20" : "opacity-100"
 			} flex flex-col gap-6`}
 		>
-			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
-				<div className="flex min-h-[180px] flex-col rounded-xl border border-border bg-card p-4 text-card-foreground">
-					<p className="text-sm text-muted-foreground">Total Buildings</p>
-					<p className="mt-2 text-4xl font-bold leading-none">
-						{totalBuildings}
-					</p>
-					<Button
-						variant="outline"
-						size="sm"
-						className="mt-auto"
-						onClick={() => onViewBuildings("all")}
-					>
-						View
-					</Button>
+			<div
+				className={`rounded-xl border border-border bg-card p-5 text-card-foreground ${
+					loadingBuildings ? "opacity-50" : "opacity-100"
+				}`}
+			>
+				<div className="mb-4 flex items-end justify-between gap-3">
+					<h3 className="text-lg font-semibold">Overview</h3>
 				</div>
+				<div className="flex flex-col gap-4">
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+						<div className="flex min-h-[180px] flex-col rounded-lg border border-border/60 bg-muted/20 p-4">
+							<p className="text-sm text-muted-foreground">Total Buildings</p>
+							<p className="mt-2 text-4xl font-bold leading-none text-card-foreground">
+								{totalBuildings}
+							</p>
+							<Button
+								variant="outline"
+								size="sm"
+								className="mt-auto"
+								onClick={() => onViewBuildings("all")}
+							>
+								View
+							</Button>
+						</div>
 
-				<div className="flex min-h-[180px] flex-col rounded-xl border border-border bg-card p-4 text-card-foreground">
-					<p className="text-sm text-muted-foreground">Overall Accuracy</p>
-					<p className="mt-2 text-4xl font-bold leading-none">
-						{predictionMetrics.available
-							? `${predictionMetrics.accuracyPct}%`
-							: "N/A"}
-					</p>
-					<div className="mt-auto space-y-1">
-						<p className="text-xs text-muted-foreground">
-							{predictionMetrics.correctCount} exact matches from{" "}
-							{predictionMetrics.comparedCount} predictions
-						</p>
-						<p className="text-[11px] text-muted-foreground">
-							Exact class match between ground truth and VLM output.
-						</p>
+						<div className="flex min-h-[180px] flex-col rounded-lg border border-border/60 bg-muted/20 p-4">
+							<p className="text-sm text-muted-foreground">Overall Accuracy</p>
+							<p className="mt-2 text-4xl font-bold leading-none text-card-foreground">
+								{predictionMetrics.available
+									? `${predictionMetrics.accuracyPct}%`
+									: "N/A"}
+							</p>
+							<div className="mt-auto space-y-1">
+								<p className="text-xs text-muted-foreground">
+									{predictionMetrics.correctCount} exact matches from{" "}
+									{predictionMetrics.comparedCount} predictions
+								</p>
+								<p className="text-[11px] text-muted-foreground">
+									Exact class match between ground truth and VLM output.
+								</p>
+							</div>
+						</div>
+					</div>
+
+					<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+						<div className="flex flex-col rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5">
+							<p className="text-sm text-muted-foreground">Precision</p>
+							<p className="mt-1 text-3xl font-bold leading-none text-card-foreground">
+								{predictionMetrics.macroMetrics.available &&
+								predictionMetrics.macroMetrics.precisionMacroPct != null
+									? `${predictionMetrics.macroMetrics.precisionMacroPct}%`
+									: "N/A"}
+							</p>
+						</div>
+						<div className="flex flex-col rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5">
+							<p className="text-sm text-muted-foreground">Recall</p>
+							<p className="mt-1 text-3xl font-bold leading-none text-card-foreground">
+								{predictionMetrics.macroMetrics.available &&
+								predictionMetrics.macroMetrics.recallMacroPct != null
+									? `${predictionMetrics.macroMetrics.recallMacroPct}%`
+									: "N/A"}
+							</p>
+						</div>
+						<div className="flex flex-col rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5">
+							<p className="text-sm text-muted-foreground">F1</p>
+							<p className="mt-1 text-3xl font-bold leading-none text-card-foreground">
+								{predictionMetrics.macroMetrics.available &&
+								predictionMetrics.macroMetrics.f1MacroPct != null
+									? `${predictionMetrics.macroMetrics.f1MacroPct}%`
+									: "N/A"}
+							</p>
+						</div>
 					</div>
 				</div>
 			</div>
 
 			<div className="rounded-xl border border-border bg-card p-5 text-card-foreground">
-				<div className="mb-4 flex items-center justify-between gap-3">
+				<div className="mb-4 flex items-end justify-between gap-3">
 					<h3 className="text-lg font-semibold">Damage Distribution</h3>
 					<span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
 						<span
@@ -173,9 +214,6 @@ export default function DashboardOverviewSection({
 							Rows = actual labels, columns = VLM predictions
 						</p>
 					</div>
-					<p className="text-xs text-muted-foreground">
-						{predictionMetrics.matrixTotal} predictions compared
-					</p>
 				</div>
 
 				{predictionMetrics.available ? (

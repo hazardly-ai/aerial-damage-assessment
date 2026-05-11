@@ -11,6 +11,7 @@ import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
 import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
 import type { MapStatus, SceneMetrics } from "@/types/map.ts";
 import { BUILDINGS_SOURCE_ID } from "@/utils/addBuildingLayer";
+import { rollupBuildingClassificationMetrics } from "@/utils/classificationMetrics";
 import type { BuildingFeature, BuildingsResponse } from "@/utils/hazardlyApi";
 import {
 	fetchMapData,
@@ -53,220 +54,25 @@ function computeSceneMetrics(
 	xbdId: number,
 	buildings: BuildingsResponse,
 ): SceneMetrics {
-	const features = buildings.features;
-	type DamageLevel =
-		| "no-damage"
-		| "minor-damage"
-		| "major-damage"
-		| "destroyed";
-	type NormalizedDamage = DamageLevel | "un-classified";
-	const DAMAGE_CLASSES = [
-		"no-damage",
-		"minor-damage",
-		"major-damage",
-		"destroyed",
-	] as const;
-
-	const predictedDistribution: Record<string, number> = {
-		"no-damage": 0,
-		"minor-damage": 0,
-		"major-damage": 0,
-		destroyed: 0,
-	};
-	const actualDistribution: Record<string, number> = {
-		"no-damage": 0,
-		"minor-damage": 0,
-		"major-damage": 0,
-		destroyed: 0,
-	};
-	const confusionMatrix: Record<string, Record<string, number>> = {
-		"no-damage": {
-			"no-damage": 0,
-			"minor-damage": 0,
-			"major-damage": 0,
-			destroyed: 0,
-		},
-		"minor-damage": {
-			"no-damage": 0,
-			"minor-damage": 0,
-			"major-damage": 0,
-			destroyed: 0,
-		},
-		"major-damage": {
-			"no-damage": 0,
-			"minor-damage": 0,
-			"major-damage": 0,
-			destroyed: 0,
-		},
-		destroyed: {
-			"no-damage": 0,
-			"minor-damage": 0,
-			"major-damage": 0,
-			destroyed: 0,
-		},
-	};
-	let evaluatedPredictions = 0;
-	let correctPredictions = 0;
-
-	const normalizeDamageLabel = (value: unknown): NormalizedDamage => {
-		if (typeof value !== "string" || value.trim().length === 0) {
-			return "un-classified";
-		}
-		const normalized = value
-			.trim()
-			.toLowerCase()
-			.replace(/[_\s]+/g, "-")
-			.replace(/-+/g, "-");
-
-		if (normalized === "no-damage" || normalized === "no-damages") {
-			return "no-damage";
-		}
-		if (normalized === "minor-damage" || normalized === "minor-damages") {
-			return "minor-damage";
-		}
-		if (normalized === "major-damage" || normalized === "major-damages") {
-			return "major-damage";
-		}
-		if (normalized === "destroyed" || normalized === "destroy") {
-			return "destroyed";
-		}
-		if (
-			normalized === "un-classified" ||
-			normalized === "unclassified" ||
-			normalized === "unknown" ||
-			normalized === "uncertain"
-		) {
-			return "un-classified";
-		}
-
-		return "un-classified";
-	};
-
-	for (const feature of features) {
-		const building = feature as BuildingFeature;
-		const predictedDamageValue = normalizeDamageLabel(
-			building.properties.predicted_damage,
-		);
-		const actualDamageValue = normalizeDamageLabel(
-			building.properties.actual_damage,
-		);
-
-		if (
-			predictedDamageValue !== "un-classified" &&
-			DAMAGE_CLASSES.includes(predictedDamageValue)
-		) {
-			predictedDistribution[predictedDamageValue] += 1;
-		}
-		if (
-			actualDamageValue !== "un-classified" &&
-			DAMAGE_CLASSES.includes(actualDamageValue)
-		) {
-			actualDistribution[actualDamageValue] += 1;
-		}
-
-		if (
-			predictedDamageValue !== "un-classified" &&
-			actualDamageValue !== "un-classified"
-		) {
-			evaluatedPredictions += 1;
-			if (predictedDamageValue === actualDamageValue) {
-				correctPredictions += 1;
-			}
-			confusionMatrix[actualDamageValue][predictedDamageValue] += 1;
-		}
-	}
-
-	let matrixMax = 0;
-	for (const actualLabel of DAMAGE_CLASSES) {
-		for (const predictedLabel of DAMAGE_CLASSES) {
-			const value = confusionMatrix[actualLabel][predictedLabel];
-			if (value > matrixMax) matrixMax = value;
-		}
-	}
-
-	const perClassMetrics: Record<
-		string,
-		{
-			precision: number | null;
-			recall: number | null;
-			f1: number | null;
-		}
-	> = {};
-	let precisionSum = 0;
-	let recallSum = 0;
-	let f1Sum = 0;
-	let precisionCount = 0;
-	let recallCount = 0;
-	let f1Count = 0;
-
-	for (const label of DAMAGE_CLASSES) {
-		const tp = confusionMatrix[label][label];
-		let fp = 0;
-		let fn = 0;
-		for (const actualLabel of DAMAGE_CLASSES) {
-			if (actualLabel !== label) {
-				fp += confusionMatrix[actualLabel][label];
-			}
-		}
-		for (const predictedLabel of DAMAGE_CLASSES) {
-			if (predictedLabel !== label) {
-				fn += confusionMatrix[label][predictedLabel];
-			}
-		}
-
-		const precisionRatio = tp + fp > 0 ? tp / (tp + fp) : null;
-		const recallRatio = tp + fn > 0 ? tp / (tp + fn) : null;
-		const f1Ratio =
-			precisionRatio !== null &&
-			recallRatio !== null &&
-			precisionRatio + recallRatio > 0
-				? (2 * precisionRatio * recallRatio) / (precisionRatio + recallRatio)
-				: null;
-
-		const precision = precisionRatio !== null ? precisionRatio * 100 : null;
-		const recall = recallRatio !== null ? recallRatio * 100 : null;
-		const f1 = f1Ratio !== null ? f1Ratio * 100 : null;
-
-		if (precision !== null) {
-			precisionSum += precision;
-			precisionCount += 1;
-		}
-		if (recall !== null) {
-			recallSum += recall;
-			recallCount += 1;
-		}
-		if (f1 !== null) {
-			f1Sum += f1;
-			f1Count += 1;
-		}
-
-		perClassMetrics[label] = { precision, recall, f1 };
-	}
-
-	const accuracy =
-		evaluatedPredictions > 0
-			? (correctPredictions / evaluatedPredictions) * 100
-			: null;
-	const precisionMacro =
-		precisionCount > 0 ? precisionSum / precisionCount : null;
-	const recallMacro = recallCount > 0 ? recallSum / recallCount : null;
-	const f1Macro = f1Count > 0 ? f1Sum / f1Count : null;
+	const features = buildings.features as BuildingFeature[];
+	const r = rollupBuildingClassificationMetrics(features);
 
 	return {
 		xbdId,
 		totalBuildings: features.length,
-		damageDistribution: predictedDistribution,
-		actualDamageDistribution: actualDistribution,
-		evaluatedPredictions,
-		correctPredictions,
-		accuracy,
-		precisionMacro,
-		recallMacro,
-		f1Macro,
-		perClassMetrics,
-		confusionMatrix,
-		matrixTotal: evaluatedPredictions,
-		matrixMax,
+		damageDistribution: { ...r.predictedDistribution },
+		actualDamageDistribution: { ...r.actualDistribution },
+		evaluatedPredictions: r.comparedCount,
+		correctPredictions: r.correctCount,
+		accuracy:
+			r.comparedCount > 0 ? (r.correctCount / r.comparedCount) * 100 : null,
+		precisionMacro: r.precisionMacro,
+		recallMacro: r.recallMacro,
+		f1Macro: r.f1Macro,
+		perClassMetrics: { ...r.perClassMetrics },
+		confusionMatrix: r.confusionMatrix,
+		matrixTotal: r.comparedCount,
+		matrixMax: r.matrixMax,
 	};
 }
 
