@@ -69,7 +69,7 @@ export default function MapMetricsPanel({
 }: MapMetricsPanelProps) {
 	if (isLoading || !metrics) {
 		return (
-			<aside className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 p-3 shadow-sm">
+			<aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 p-3 shadow-sm">
 				<div className="animate-pulse space-y-2.5">
 					<div className="h-4 w-28 rounded bg-muted" />
 					<div className="grid grid-cols-2 gap-2">
@@ -117,8 +117,8 @@ export default function MapMetricsPanel({
 	});
 
 	return (
-		<aside className="flex h-full flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 p-3 shadow-sm backdrop-blur-sm">
-			<div className="mb-3 flex items-center justify-between">
+		<aside className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card/95 p-3 shadow-sm backdrop-blur-sm">
+			<div className="mb-3 shrink-0 flex items-center justify-between">
 				<div>
 					<p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
 						Image Metrics
@@ -149,7 +149,7 @@ export default function MapMetricsPanel({
 				</div>
 			</div>
 
-			<div className="grid grid-cols-2 gap-2">
+			<div className="shrink-0 grid grid-cols-2 gap-2">
 				<div className="rounded-lg border border-border/60 bg-background/70 p-2.5">
 					<p className="text-[11px] text-muted-foreground">Total Buildings</p>
 					<p className="mt-1 text-xl font-bold text-foreground">
@@ -167,7 +167,7 @@ export default function MapMetricsPanel({
 				</div>
 			</div>
 
-			<div className="mt-2 grid grid-cols-3 gap-2">
+			<div className="mt-2 shrink-0 grid grid-cols-3 gap-2">
 				<div className="rounded-lg border border-border/60 bg-background/70 p-2.5">
 					<p className="text-[11px] text-muted-foreground">Precision</p>
 					<p className="mt-1 text-lg font-semibold text-foreground">
@@ -188,159 +188,163 @@ export default function MapMetricsPanel({
 				</div>
 			</div>
 
-			<div className="mt-2 rounded-lg border border-border/60 bg-background/70 p-2.5">
-				<div className="mb-2 flex items-center justify-between gap-2">
-					<p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-						Damage Distribution
-					</p>
-					<div className="inline-flex items-center gap-3 text-[11px] text-muted-foreground">
-						<span className="inline-flex items-center gap-1">
-							<span
-								className="h-2 w-2 rounded-full"
-								style={{ backgroundColor: "#2563eb", opacity: 0.9 }}
-							/>
-							Predicted
-						</span>
-					</div>
-				</div>
-				<div className="space-y-2">
-					{damageEntries.map((row) => {
-						return (
-							<div key={row.label} className="space-y-1">
-								<div className="flex items-center justify-between gap-2 text-[11px]">
-									<span className="font-medium text-foreground">
-										{formatDamageLabel(row.label)}
-									</span>
-									<span className="text-[10px] text-muted-foreground">
-										A: {row.actualCount} ({formatPercent(row.actualPercentage)})
-										| P: {row.predictedCount} (
-										{formatPercent(row.predictedPercentage)})
-									</span>
-								</div>
-								<div className="h-1.5 w-full rounded-full bg-muted">
-									<div
-										className="h-full rounded-full bg-primary"
-										style={{
-											width: `${row.actualPercentage}%`,
-											backgroundColor: DAMAGE_COLOR_HEX[row.label],
-											opacity: 0.8,
-										}}
-									/>
-								</div>
-								<div className="h-1.5 w-full rounded-full bg-muted">
-									<div
-										className="h-full rounded-full"
-										style={{
-											width: `${row.predictedPercentage}%`,
-											backgroundColor: "#2563eb",
-											opacity: 0.9,
-										}}
-									/>
-								</div>
-							</div>
-						);
-					})}
-				</div>
-			</div>
-
-			<div className="mt-2 flex-1 rounded-lg border border-border/60 bg-background/70 p-2.5">
-				<div className="mb-2 flex items-center justify-between gap-2">
-					<div>
+			<div className="min-h-0 flex-1 overflow-y-auto pr-1">
+				<div className="mt-2 rounded-lg border border-border/60 bg-background/70 p-2.5">
+					<div className="mb-2 flex items-center justify-between gap-2">
 						<p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-							Confusion Matrix
+							Damage Distribution
 						</p>
-						<p className="text-[10px] text-muted-foreground">
-							Rows = actual, columns = predicted
-						</p>
+						<div className="inline-flex items-center gap-3 text-[11px] text-muted-foreground">
+							<span className="inline-flex items-center gap-1">
+								<span
+									className="h-2 w-2 rounded-full"
+									style={{ backgroundColor: "#2563eb", opacity: 0.9 }}
+								/>
+								Predicted
+							</span>
+						</div>
 					</div>
-					<p className="text-[10px] text-muted-foreground">
-						{metrics.matrixTotal} predictions compared
-					</p>
+					<div className="space-y-2">
+						{damageEntries.map((row) => {
+							return (
+								<div key={row.label} className="space-y-1">
+									<div className="flex items-center justify-between gap-2 text-[11px]">
+										<span className="font-medium text-foreground">
+											{formatDamageLabel(row.label)}
+										</span>
+										<span className="text-[10px] text-muted-foreground">
+											A: {row.actualCount} (
+											{formatPercent(row.actualPercentage)}) | P:{" "}
+											{row.predictedCount} (
+											{formatPercent(row.predictedPercentage)})
+										</span>
+									</div>
+									<div className="h-1.5 w-full rounded-full bg-muted">
+										<div
+											className="h-full rounded-full bg-primary"
+											style={{
+												width: `${row.actualPercentage}%`,
+												backgroundColor: DAMAGE_COLOR_HEX[row.label],
+												opacity: 0.8,
+											}}
+										/>
+									</div>
+									<div className="h-1.5 w-full rounded-full bg-muted">
+										<div
+											className="h-full rounded-full"
+											style={{
+												width: `${row.predictedPercentage}%`,
+												backgroundColor: "#2563eb",
+												opacity: 0.9,
+											}}
+										/>
+									</div>
+								</div>
+							);
+						})}
+					</div>
 				</div>
 
-				{metrics.matrixTotal > 0 ? (
-					<div className="overflow-hidden">
-						<table className="w-full table-fixed text-xs">
-							<thead>
-								<tr className="border-b border-border/60 bg-muted/30 text-left text-muted-foreground">
-									<th className="w-[24%] px-1.5 py-1.5 font-medium">
-										Actual \ Pred
-									</th>
-									{DAMAGE_CLASS_ORDER.map((predictedLabel) => (
-										<th
-											key={`scene-pred-${predictedLabel}`}
-											className="px-1 py-1.5 text-center font-medium"
-										>
-											<span className="block leading-tight">
-												{prettyLabel(predictedLabel)}
-											</span>
+				<div className="mt-2 rounded-lg border border-border/60 bg-background/70 p-2.5">
+					<div className="mb-2 flex items-center justify-between gap-2">
+						<div>
+							<p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+								Confusion Matrix
+							</p>
+							<p className="text-[10px] text-muted-foreground">
+								Rows = actual, columns = predicted
+							</p>
+						</div>
+						<p className="text-[10px] text-muted-foreground">
+							{metrics.matrixTotal} predictions compared
+						</p>
+					</div>
+
+					{metrics.matrixTotal > 0 ? (
+						<div className="overflow-x-auto">
+							<table className="w-full min-w-[360px] table-fixed text-xs">
+								<thead>
+									<tr className="border-b border-border/60 bg-muted/30 text-left text-muted-foreground">
+										<th className="w-[24%] px-1.5 py-1.5 font-medium">
+											Actual \ Pred
 										</th>
-									))}
-									<th className="px-1 py-1.5 text-center font-semibold text-foreground">
-										Total
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{DAMAGE_CLASS_ORDER.map((actualLabel) => {
-									const rowTotal = DAMAGE_CLASS_ORDER.reduce(
-										(sum, predictedLabel) =>
-											sum +
-											(metrics.confusionMatrix[actualLabel]?.[predictedLabel] ??
-												0),
-										0,
-									);
+										{DAMAGE_CLASS_ORDER.map((predictedLabel) => (
+											<th
+												key={`scene-pred-${predictedLabel}`}
+												className="px-1 py-1.5 text-center font-medium"
+											>
+												<span className="block leading-tight">
+													{prettyLabel(predictedLabel)}
+												</span>
+											</th>
+										))}
+										<th className="px-1 py-1.5 text-center font-semibold text-foreground">
+											Total
+										</th>
+									</tr>
+								</thead>
+								<tbody>
+									{DAMAGE_CLASS_ORDER.map((actualLabel) => {
+										const rowTotal = DAMAGE_CLASS_ORDER.reduce(
+											(sum, predictedLabel) =>
+												sum +
+												(metrics.confusionMatrix[actualLabel]?.[
+													predictedLabel
+												] ?? 0),
+											0,
+										);
 
-									return (
-										<tr
-											key={`scene-row-${actualLabel}`}
-											className="border-b border-border/70"
-										>
-											<td className="px-1.5 py-1.5 font-medium leading-tight">
-												{prettyLabel(actualLabel)}
-											</td>
-											{DAMAGE_CLASS_ORDER.map((predictedLabel) => {
-												const value =
-													metrics.confusionMatrix[actualLabel]?.[
-														predictedLabel
-													] ?? 0;
-												const isDiagonal = actualLabel === predictedLabel;
+										return (
+											<tr
+												key={`scene-row-${actualLabel}`}
+												className="border-b border-border/70"
+											>
+												<td className="px-1.5 py-1.5 font-medium leading-tight">
+													{prettyLabel(actualLabel)}
+												</td>
+												{DAMAGE_CLASS_ORDER.map((predictedLabel) => {
+													const value =
+														metrics.confusionMatrix[actualLabel]?.[
+															predictedLabel
+														] ?? 0;
+													const isDiagonal = actualLabel === predictedLabel;
 
-												return (
-													<td
-														key={`scene-cell-${actualLabel}-${predictedLabel}`}
-														className={`px-1 py-1.5 text-center font-medium ${
-															isDiagonal
-																? "text-emerald-900 dark:text-emerald-300"
-																: "text-rose-700 dark:text-rose-300"
-														}`}
-														style={{
-															backgroundColor: getCellBackgroundColor(
-																actualLabel,
-																predictedLabel,
-																value,
-																metrics.matrixMax,
-															),
-														}}
-													>
-														{value}
-													</td>
-												);
-											})}
-											<td className="px-1 py-1.5 text-center font-semibold text-muted-foreground">
-												{rowTotal}
-											</td>
-										</tr>
-									);
-								})}
-							</tbody>
-						</table>
-					</div>
-				) : (
-					<div className="rounded-md border border-border bg-background px-3 py-3 text-xs text-muted-foreground">
-						No predicted labels available yet to build the confusion matrix.
-					</div>
-				)}
+													return (
+														<td
+															key={`scene-cell-${actualLabel}-${predictedLabel}`}
+															className={`px-1 py-1.5 text-center font-medium ${
+																isDiagonal
+																	? "text-emerald-900 dark:text-emerald-300"
+																	: "text-rose-700 dark:text-rose-300"
+															}`}
+															style={{
+																backgroundColor: getCellBackgroundColor(
+																	actualLabel,
+																	predictedLabel,
+																	value,
+																	metrics.matrixMax,
+																),
+															}}
+														>
+															{value}
+														</td>
+													);
+												})}
+												<td className="px-1 py-1.5 text-center font-semibold text-muted-foreground">
+													{rowTotal}
+												</td>
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+					) : (
+						<div className="rounded-md border border-border bg-background px-3 py-3 text-xs text-muted-foreground">
+							No predicted labels available yet to build the confusion matrix.
+						</div>
+					)}
+				</div>
 			</div>
 		</aside>
 	);
