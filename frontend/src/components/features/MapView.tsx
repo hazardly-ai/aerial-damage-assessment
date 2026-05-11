@@ -21,6 +21,7 @@ import {
 import {
 	addInitialSourcesAndLayers,
 	bindBuildingInteractions,
+	clearHighlightedBuildings,
 	createCompareInstance,
 	createMapInstance,
 	POST_IMAGE_LAYER_ID,
@@ -345,6 +346,7 @@ export default function MapView({
 	const popupDataRef = useRef<PopupData | null>(null);
 	const selectedBuildingIdRef = useRef<string | number | null>(null);
 	const highlightedBuildingIdsRef = useRef<Array<string | number>>([]);
+	const lastAppliedChatCommandIdRef = useRef<string | null>(null);
 	const imageryVisibleRef = useRef(imageryVisible);
 	const boundsRef = useRef<ImageBounds | null>(null);
 	const scheduleCompareIdleRef = useRef<() => void>(() => {});
@@ -625,7 +627,15 @@ export default function MapView({
 				compareIdleTimerRef.current = null;
 			}
 			selectedBuildingIdRef.current = null;
-			highlightedBuildingIdsRef.current = [];
+			if (beforeMap && afterMap) {
+				clearHighlightedBuildings({
+					beforeMap,
+					afterMap,
+					highlightedBuildingIdsRef,
+				});
+			} else {
+				highlightedBuildingIdsRef.current = [];
+			}
 			boundsRef.current = null;
 			layersReadyRef.current = false;
 			compareRef.current?.remove();
@@ -693,6 +703,11 @@ export default function MapView({
 				popupDataRef.current = null;
 				setPopupData(null);
 				setPopupPos(null);
+				clearHighlightedBuildings({
+					beforeMap: _before,
+					afterMap: _after,
+					highlightedBuildingIdsRef,
+				});
 
 				const beforeSource = _before.getSource(
 					BUILDINGS_SOURCE_ID,
@@ -789,6 +804,9 @@ export default function MapView({
 
 	useEffect(() => {
 		if (!chatCommand || status !== "ready" || sceneLoading) return;
+		if (lastAppliedChatCommandIdRef.current === chatCommand.id) {
+			return;
+		}
 		if (chatCommand.targetXbdId && chatCommand.targetXbdId !== selectedXbdId) {
 			return;
 		}
@@ -865,6 +883,7 @@ export default function MapView({
 				onPopupOpen: openPopup,
 			});
 		}
+		lastAppliedChatCommandIdRef.current = chatCommand.id;
 
 		return () => {
 			cancelled = true;

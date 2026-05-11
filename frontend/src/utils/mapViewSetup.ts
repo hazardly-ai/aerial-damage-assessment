@@ -489,16 +489,7 @@ export function setHighlightedBuildingsByUid(params: {
 }): number {
 	const { beforeMap, afterMap, uids, highlightedBuildingIdsRef } = params;
 
-	for (const featureId of highlightedBuildingIdsRef.current) {
-		beforeMap.setFeatureState(
-			{ source: BUILDINGS_SOURCE_ID, id: featureId },
-			{ highlighted: false },
-		);
-		afterMap.setFeatureState(
-			{ source: BUILDINGS_SOURCE_ID, id: featureId },
-			{ highlighted: false },
-		);
-	}
+	clearHighlightedBuildings({ beforeMap, afterMap, highlightedBuildingIdsRef });
 
 	const nextFeatureIds: Array<string | number> = [];
 	const seenFeatureIds = new Set<string | number>();
@@ -528,4 +519,25 @@ export function setHighlightedBuildingsByUid(params: {
 
 	highlightedBuildingIdsRef.current = nextFeatureIds;
 	return nextFeatureIds.length;
+}
+
+export function clearHighlightedBuildings(params: {
+	beforeMap: mapboxgl.Map;
+	afterMap: mapboxgl.Map;
+	highlightedBuildingIdsRef: MutableRefObject<Array<string | number>>;
+}) {
+	const { beforeMap, afterMap, highlightedBuildingIdsRef } = params;
+
+	for (const featureId of highlightedBuildingIdsRef.current) {
+		beforeMap.setFeatureState(
+			{ source: BUILDINGS_SOURCE_ID, id: featureId },
+			{ highlighted: false },
+		);
+		afterMap.setFeatureState(
+			{ source: BUILDINGS_SOURCE_ID, id: featureId },
+			{ highlighted: false },
+		);
+	}
+
+	highlightedBuildingIdsRef.current = [];
 }

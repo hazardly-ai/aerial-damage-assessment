@@ -43,6 +43,7 @@ export default function MapPage({ chatCommand = null }: MapPageProps) {
 	const parsedXbdId =
 		isXbdMissing || isXbdMalformed ? 18 : Number(normalizedXbdId);
 	const [selectedXbdId, setSelectedXbdId] = useState(parsedXbdId);
+	const lastAppliedChatSceneIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		setSelectedXbdId(parsedXbdId);
@@ -140,9 +141,16 @@ export default function MapPage({ chatCommand = null }: MapPageProps) {
 	);
 
 	useEffect(() => {
-		if (chatCommand?.targetXbdId && chatCommand.targetXbdId !== selectedXbdId) {
+		if (!chatCommand?.targetXbdId) {
+			return;
+		}
+		if (lastAppliedChatSceneIdRef.current === chatCommand.id) {
+			return;
+		}
+		if (chatCommand.targetXbdId !== selectedXbdId) {
 			setSelectedXbdId(chatCommand.targetXbdId);
 		}
+		lastAppliedChatSceneIdRef.current = chatCommand.id;
 	}, [chatCommand, selectedXbdId]);
 
 	const disasterId = resolvedDisasterId ?? 1;
