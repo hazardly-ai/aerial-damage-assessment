@@ -3,6 +3,7 @@ import psycopg  # used to connect to PostgreSQL (Supabase)
 import requests  # used to make HTTP API calls (Mapbox + Nemotron)
 import os  # used to access environment variables
 import json  # used to convert GeoJSON text from PostGIS into a real Python dictionary
+from pathlib import Path
 from urllib.parse import quote  # used to safely encode values inside frontend route URLs
 from dotenv import load_dotenv  # used to load .env file
 
@@ -21,7 +22,8 @@ def save_turn(question, answer):
     chat_history.append({"role": "assistant", "content": answer})
 
 # loading environment variables from backend/.env file so secrets are not hardcoded
-load_dotenv("backend/.env", override=True)
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BACKEND_DIR / ".env", override=True)
 
 
 # default disaster name used when building frontend map routes
