@@ -486,7 +486,7 @@ export function setHighlightedBuildingsByUid(params: {
 	afterMap: mapboxgl.Map;
 	uids: string[];
 	highlightedBuildingIdsRef: MutableRefObject<Array<string | number>>;
-}) {
+}): number {
 	const { beforeMap, afterMap, uids, highlightedBuildingIdsRef } = params;
 
 	for (const featureId of highlightedBuildingIdsRef.current) {
@@ -527,4 +527,5 @@ export function setHighlightedBuildingsByUid(params: {
 	}
 
 	highlightedBuildingIdsRef.current = nextFeatureIds;
+	return nextFeatureIds.length;
 }

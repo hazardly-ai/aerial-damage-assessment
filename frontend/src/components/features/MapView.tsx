@@ -805,12 +805,29 @@ export default function MapView({
 			return true;
 		});
 
-		setHighlightedBuildingsByUid({
-			beforeMap: before,
-			afterMap: after,
-			uids: chatCommand.highlightedBuildingIds,
-			highlightedBuildingIdsRef,
-		});
+		let cancelled = false;
+		const applyHighlights = () => {
+			if (cancelled) return 0;
+			return setHighlightedBuildingsByUid({
+				beforeMap: before,
+				afterMap: after,
+				uids: chatCommand.highlightedBuildingIds,
+				highlightedBuildingIdsRef,
+			});
+		};
+
+		const highlightedCount = applyHighlights();
+		if (
+			highlightedCount === 0 &&
+			chatCommand.highlightedBuildingIds.length > 0
+		) {
+			const retryHighlights = () => {
+				if (cancelled) return;
+				applyHighlights();
+			};
+			before.once("idle", retryHighlights);
+			after.once("idle", retryHighlights);
+		}
 
 		if (chatCommand.highlightedBuildingGeometries.length > 0) {
 			const bounds = new mapboxgl.LngLatBounds();
@@ -848,6 +865,10 @@ export default function MapView({
 				onPopupOpen: openPopup,
 			});
 		}
+
+		return () => {
+			cancelled = true;
+		};
 	}, [chatCommand, openPopup, sceneLoading, selectedXbdId, status]);
 
 	return (
