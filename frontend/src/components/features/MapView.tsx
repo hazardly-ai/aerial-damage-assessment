@@ -51,6 +51,7 @@ interface MapViewProps {
 	onPrev: () => void;
 	onNext: () => void;
 	chatCommand?: ChatMapCommand | null;
+	highlightResetToken?: number;
 }
 
 const CHAT_FOCUS_FALLBACK_ZOOM = 18;
@@ -320,6 +321,7 @@ export default function MapView({
 	onPrev,
 	onNext,
 	chatCommand,
+	highlightResetToken = 0,
 }: MapViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
@@ -889,6 +891,20 @@ export default function MapView({
 			cancelled = true;
 		};
 	}, [chatCommand, openPopup, sceneLoading, selectedXbdId, status]);
+
+	useEffect(() => {
+		if (highlightResetToken === 0) return;
+
+		const before = beforeMapRef.current;
+		const after = afterMapRef.current;
+		if (!before || !after || !layersReadyRef.current) return;
+
+		clearHighlightedBuildings({
+			beforeMap: before,
+			afterMap: after,
+			highlightedBuildingIdsRef,
+		});
+	}, [highlightResetToken]);
 
 	return (
 		<div

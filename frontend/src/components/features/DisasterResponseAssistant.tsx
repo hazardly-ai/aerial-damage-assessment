@@ -1,10 +1,11 @@
 /* DisasterResponsesAssistant.tsx */
-import { Sparkles, Trash2, X } from "lucide-react";
+import { Eraser, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatResponse } from "@/types/chat";
 
 interface DisasterResponseAssistantProps {
 	onChatResponse?: (response: ChatResponse) => void;
+	onClearMapHighlights?: () => void;
 }
 
 const buildMapCommandSummary = (response: ChatResponse): string | undefined => {
@@ -26,6 +27,7 @@ const buildMapCommandSummary = (response: ChatResponse): string | undefined => {
 
 export default function DisasterResponseAssistant({
 	onChatResponse,
+	onClearMapHighlights,
 }: DisasterResponseAssistantProps) {
 	const API_BASE_URL = import.meta.env.VITE_HAZARDLY_API_BASE_URL?.replace(
 		/\/*$/,
@@ -147,6 +149,15 @@ export default function DisasterResponseAssistant({
 						</span>
 					</div>
 					<div className="flex items-center gap-2">
+						<button
+							type="button"
+							onClick={onClearMapHighlights}
+							className="p-1 rounded-md transition-colors duration-200 hover:bg-white/20"
+							aria-label="Clear highlighted buildings"
+							title="Clear highlights"
+						>
+							<Eraser className="h-4 w-4" />
+						</button>
 						<button
 							type="button"
 							onClick={clearChat}

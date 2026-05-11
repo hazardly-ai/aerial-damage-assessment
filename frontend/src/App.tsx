@@ -46,6 +46,7 @@ export default function App() {
 	const location = useLocation();
 	const navigate = useNavigate();
 	const [chatCommand, setChatCommand] = useState<ChatMapCommand | null>(null);
+	const [highlightResetToken, setHighlightResetToken] = useState(0);
 
 	const handleChatResponse = useCallback(
 		(response: ChatResponse) => {
@@ -68,6 +69,10 @@ export default function App() {
 		[location.pathname, location.search, navigate],
 	);
 
+	const handleClearMapHighlights = useCallback(() => {
+		setHighlightResetToken((value) => value + 1);
+	}, []);
+
 	return (
 		<>
 			<Toaster position="bottom-center" richColors closeButton />
@@ -77,13 +82,29 @@ export default function App() {
 					<Route path="/dashboard" element={<Navigate to="/" replace />} />
 					<Route
 						path="/map/:disaster_name?/:xbdid?"
-						element={<MapPage chatCommand={chatCommand} />}
+						element={
+							<MapPage
+								chatCommand={chatCommand}
+								highlightResetToken={highlightResetToken}
+							/>
+						}
 					/>
-					<Route path="/map" element={<MapPage chatCommand={chatCommand} />} />
+					<Route
+						path="/map"
+						element={
+							<MapPage
+								chatCommand={chatCommand}
+								highlightResetToken={highlightResetToken}
+							/>
+						}
+					/>
 					<Route path="*" element={<NotFoundRedirect />} />
 				</Routes>
 			</Suspense>
-			<DisasterResponseAssistant onChatResponse={handleChatResponse} />
+			<DisasterResponseAssistant
+				onChatResponse={handleChatResponse}
+				onClearMapHighlights={handleClearMapHighlights}
+			/>
 		</>
 	);
 }

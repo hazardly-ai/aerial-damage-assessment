@@ -13,9 +13,13 @@ import { getDisasterIdByName } from "@/utils/hazardlyApi.ts";
 
 interface MapPageProps {
 	chatCommand?: ChatMapCommand | null;
+	highlightResetToken?: number;
 }
 
-export default function MapPage({ chatCommand = null }: MapPageProps) {
+export default function MapPage({
+	chatCommand = null,
+	highlightResetToken = 0,
+}: MapPageProps) {
 	const { disaster_name, xbdid } = useParams<{
 		disaster_name: string;
 		xbdid: string;
@@ -201,6 +205,7 @@ export default function MapPage({ chatCommand = null }: MapPageProps) {
 							onPrev={xbdSelector.goPrev}
 							onNext={xbdSelector.goNext}
 							chatCommand={chatCommand}
+							highlightResetToken={highlightResetToken}
 						/>
 					</div>
 					<div className="xl:col-span-3 h-[80vh]">
