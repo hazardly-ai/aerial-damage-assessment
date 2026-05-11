@@ -165,6 +165,31 @@ def extract_in_location_text(question):
     return address_text or None
 
 
+def extract_general_location_text(question):
+    patterns = [
+        r"tell me about\s+(.+?)(?:\?|$)",
+        r"what about\s+(.+?)(?:\?|$)",
+        r"give me stats for\s+(.+?)(?:\?|$)",
+        r"give me information about\s+(.+?)(?:\?|$)",
+        r"overview of\s+(.+?)(?:\?|$)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, question, flags=re.IGNORECASE)
+        if not match:
+            continue
+        location_text = match.group(1).strip(" ?,.")
+        location_text = re.sub(
+            r"\b(damage|damaged|buildings?|properties|records|stats|statistics|information)\b",
+            "",
+            location_text,
+            flags=re.IGNORECASE,
+        ).strip(" ,")
+        return location_text or None
+
+    return None
+
+
 
 
 # function to convert address → latitude/longitude using Mapbox API
@@ -1029,6 +1054,46 @@ def handle_chat_query(question):
             "focus": None,
             "highlighted_buildings": [],
             "action": build_no_action()  # no navigation action
+        }
+
+    general_location_text = extract_general_location_text(question)
+    if general_location_text:
+        geo = geocode_address(general_location_text)
+        all_buildings = []
+        if geo and geo.get("bbox") and len(geo["bbox"]) == 4:
+            min_lon, min_lat, max_lon, max_lat = geo["bbox"]
+            all_buildings = get_all_buildings_in_bbox(
+                min_lon,
+                min_lat,
+                max_lon,
+                max_lat,
+            )
+        if len(all_buildings) == 0:
+            all_buildings = get_all_buildings_by_address_text(general_location_text)
+
+        if len(all_buildings) == 0:
+            answer = f"I could not find relevant damage data for {general_location_text}."
+            save_turn(question, answer)
+            return {
+                "answer": answer,
+                "response": answer,
+                "focus": None,
+                "highlighted_buildings": [],
+                "action": build_no_action(),
+            }
+
+        primary_xbd_id = get_primary_xbd_id(all_buildings)
+        label_text = geo["formatted_address"] if geo else general_location_text
+        counts = count_damage_levels(all_buildings)
+        answer = format_damage_count_response(counts, label_text)
+
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action(),
         }
 
     # block non-disaster queries
