@@ -164,7 +164,7 @@ export default function MapPage() {
 	return (
 		<div className="flex flex-col min-h-screen bg-background text-foreground">
 			<Header />
-			<div className="flex-1 relative w-full max-w-[1700px] mx-auto px-4 md:px-6 py-4 min-h-[85vh]">
+			<div className="relative w-full max-w-[1700px] mx-auto px-4 md:px-6 py-6 ">
 				<div className="grid grid-cols-1 gap-4 xl:grid-cols-10">
 					<div className="xl:col-span-7">
 						<MapView
