@@ -286,7 +286,7 @@ export default function DisasterResponseAssistant({
 								entry.role === "fieldUser"
 									? "ml-auto bg-primary text-primary-foreground border-primary p-3"
 									: entry.id === PENDING_MESSAGE_ID
-										? "bg-card text-foreground border-border shadow-sm px-3 py-2"
+										? "w-fit max-w-[72px] bg-card text-foreground border-border shadow-sm px-3 py-2"
 										: "bg-card text-foreground border-border shadow-sm p-3"
 							}`}
 						>
