@@ -297,21 +297,23 @@ export default function DisasterResponseAssistant({
 									<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" />
 								</div>
 							) : (
-								<AnimatedAssistantText
-									content={entry.content}
-									animate={
-										entry.role === "responseAssistant" &&
-										animatingMessageId === entry.id
-									}
-									onProgress={() =>
-										bottomRef.current?.scrollIntoView({ behavior: "auto" })
-									}
-									onComplete={() => {
-										if (animatingMessageId === entry.id) {
-											setAnimatingMessageId(null);
+								<div className="whitespace-pre-wrap break-words">
+									<AnimatedAssistantText
+										content={entry.content}
+										animate={
+											entry.role === "responseAssistant" &&
+											animatingMessageId === entry.id
 										}
-									}}
-								/>
+										onProgress={() =>
+											bottomRef.current?.scrollIntoView({ behavior: "auto" })
+										}
+										onComplete={() => {
+											if (animatingMessageId === entry.id) {
+												setAnimatingMessageId(null);
+											}
+										}}
+									/>
+								</div>
 							)}
 							{entry.mapCommandSummary ? (
 								<div className="mt-2 border-t border-border/70 pt-2 text-xs text-muted-foreground">

@@ -424,7 +424,10 @@ def fetch_city_damage_stats(limit=20):
       SUM(CASE WHEN b.predicted_damage = 'major-damage' THEN 1 ELSE 0 END) AS major_damage,
       SUM(CASE WHEN b.predicted_damage = 'destroyed' THEN 1 ELSE 0 END) AS destroyed
     FROM buildings b
+    JOIN image_pairs ip ON b.image_pair_id = ip.id
+    JOIN disasters d ON ip.disaster_id = d.id
     WHERE b.address IS NOT NULL
+      AND d.name = %s
       AND POSITION(',' IN b.address) > 0
       AND POSITION(',' IN SUBSTRING(b.address FROM POSITION(',' IN b.address) + 1)) > 0
     GROUP BY TRIM(SPLIT_PART(b.address, ',', 2))
@@ -433,7 +436,7 @@ def fetch_city_damage_stats(limit=20):
     LIMIT %s
     """
 
-    cur.execute(query, (limit,))
+    cur.execute(query, (DEFAULT_DISASTER_NAME, limit))
     rows = cur.fetchall()
 
     cur.close()
@@ -619,7 +622,7 @@ def format_damage_count_response(counts, location_text):
     total = sum(counts.values())
 
     if total == 0:
-        return f"I couldn’t find damage assessment data for {location_text}."
+        return f"I couldn't find damage assessment data for {location_text}."
 
     known_total = (
         counts.get("no-damage", 0)
@@ -642,6 +645,35 @@ def format_damage_count_response(counts, location_text):
         response += f", with {other_total} other or unlabeled records"
 
     return response + "."
+
+
+def format_damage_bullet_summary(counts, location_text):
+    total = sum(counts.values())
+
+    if total == 0:
+        return f"I couldn't find damage assessment data for {location_text}."
+
+    known_total = (
+        counts.get("no-damage", 0)
+        + counts.get("minor-damage", 0)
+        + counts.get("major-damage", 0)
+        + counts.get("destroyed", 0)
+    )
+    other_total = total - known_total
+
+    lines = [
+        f"Here's the dataset summary for {location_text}:",
+        f"- Total buildings: {total}",
+        f"- No damage: {counts.get('no-damage', 0)}",
+        f"- Minor damage: {counts.get('minor-damage', 0)}",
+        f"- Major damage: {counts.get('major-damage', 0)}",
+        f"- Destroyed: {counts.get('destroyed', 0)}",
+    ]
+
+    if other_total > 0:
+        lines.append(f"- Other or unlabeled: {other_total}")
+
+    return "\n".join(lines)
 
 
 
@@ -813,7 +845,7 @@ def fallback_advisory_response(buildings, address):
     severe_total = counts.get("major-damage", 0) + counts.get("destroyed", 0)
 
     if total == 0:
-        return f"I couldn’t find enough nearby damage data to assess conditions around {address}."
+        return f"I couldn't find enough nearby damage data to assess conditions around {address}."
     if severe_total > 0:
         return (
             f"Damage near {address} includes {severe_total} severely affected buildings, "
@@ -830,7 +862,7 @@ def fallback_damage_summary(buildings, address):
     total = sum(counts.values())
 
     if total == 0:
-        return f"I couldn’t find damage assessment data for {address}."
+        return f"I couldn't find damage assessment data for {address}."
 
     return (
         f"For {address}, I found {total} buildings total: "
@@ -987,19 +1019,25 @@ def is_city_list_query(question):
     return any(k in q for k in [
         "what cities are in the dataset",
         "which cities are in the dataset",
+        "what cities are in the data",
+        "which cities are in the data",
+        "what cities are in data",
+        "which cities are in data",
         "what cities are affected",
         "which cities were affected",
         "what cities were affected",
         "which cities are affected",
         "list the affected cities",
         "list cities in the dataset",
+        "list cities in the data",
         "what locations are in the dataset",
+        "what locations are in the data",
     ])
 
 
 def format_city_damage_stats(rows):
     if len(rows) == 0:
-        return "I couldn’t find any city-level address data in the dataset."
+        return "I couldn't find any city-level address data in the dataset."
 
     summary_parts = []
     for row in rows[:8]:
@@ -1073,6 +1111,55 @@ Do not use bullet points.
     return call_nemotron(prompt) or (
         fallback if fallback else "No conversation to summarize yet."
     )
+
+
+def fallback_damage_summary(buildings, address):
+    counts = count_damage_levels(buildings)
+    return format_damage_bullet_summary(counts, address)
+
+
+def format_city_damage_stats(rows):
+    if len(rows) == 0:
+        return "I couldn't find any city-level address data in the dataset."
+
+    lines = ["Cities in the dataset include:"]
+    for row in rows[:8]:
+        city = row[0]
+        total = row[1]
+        destroyed = row[5]
+        major = row[4]
+        lines.append(
+            f"- {city}: {total} total, {major} major-damage, {destroyed} destroyed"
+        )
+
+    return "\n".join(lines)
+
+
+def summarize_damage_data(buildings, address):
+    counts = {}
+
+    for b in buildings:
+        d = b["damage"]
+        counts[d] = counts.get(d, 0) + 1
+
+    prompt = f"""
+You are summarizing disaster damage data.
+
+Location: {address}
+Damage breakdown: {counts}
+
+Write a concise summary of the situation.
+
+- Do NOT say "assistant"
+- Do NOT refer to yourself
+- Speak directly
+- Describe severity and impact
+- Prefer 3-5 short bullet points when the breakdown is multi-part
+
+Keep it concise.
+"""
+
+    return call_nemotron(prompt) or fallback_damage_summary(buildings, address)
 
 
 
@@ -1160,7 +1247,7 @@ def handle_chat_query(question):
         primary_xbd_id = get_primary_xbd_id(all_buildings)
         label_text = geo["formatted_address"] if geo else general_location_text
         counts = count_damage_levels(all_buildings)
-        answer = format_damage_count_response(counts, label_text)
+        answer = format_damage_bullet_summary(counts, label_text)
 
         save_turn(question, answer)
         return {
@@ -1187,7 +1274,7 @@ def handle_chat_query(question):
     # full dataset summary does not have a single map focus
     if is_full_dataset_query(question):
         counts = get_full_dataset_damage_counts()
-        answer = format_damage_count_response(counts, "the full dataset")
+        answer = format_damage_bullet_summary(counts, "the full dataset")
         save_turn(question, answer)
         return {
             "answer": answer,
@@ -1328,7 +1415,7 @@ def handle_chat_query(question):
         advisory = detect_advisory(question)
         if advisory:
             if len(all_buildings) == 0:
-                answer = f"I couldn’t find enough nearby damage data to give a reliable advisory for {address}."
+                answer = f"I couldn't find enough nearby damage data to give a reliable advisory for {address}."
                 action = build_no_action()
             else:
                 answer = advisory_response(question, all_buildings, address)
@@ -1434,7 +1521,7 @@ def handle_chat_query(question):
         )
 
         if len(all_buildings) == 0:
-            answer = "I couldn’t find enough nearby damage data to give a reliable advisory for that area."
+            answer = "I couldn't find enough nearby damage data to give a reliable advisory for that area."
             action = build_no_action()
         else:
             answer = advisory_response(question, all_buildings, geo["formatted_address"])
