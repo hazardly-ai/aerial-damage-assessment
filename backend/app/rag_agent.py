@@ -411,6 +411,37 @@ def get_all_buildings_in_bbox(min_lon, min_lat, max_lon, max_lat):
     return rows_to_buildings(rows)
 
 
+def fetch_city_damage_stats(limit=20):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+      TRIM(SPLIT_PART(b.address, ',', 2)) AS city,
+      COUNT(*) AS total,
+      SUM(CASE WHEN b.predicted_damage = 'no-damage' THEN 1 ELSE 0 END) AS no_damage,
+      SUM(CASE WHEN b.predicted_damage = 'minor-damage' THEN 1 ELSE 0 END) AS minor_damage,
+      SUM(CASE WHEN b.predicted_damage = 'major-damage' THEN 1 ELSE 0 END) AS major_damage,
+      SUM(CASE WHEN b.predicted_damage = 'destroyed' THEN 1 ELSE 0 END) AS destroyed
+    FROM buildings b
+    WHERE b.address IS NOT NULL
+      AND POSITION(',' IN b.address) > 0
+      AND POSITION(',' IN SUBSTRING(b.address FROM POSITION(',' IN b.address) + 1)) > 0
+    GROUP BY TRIM(SPLIT_PART(b.address, ',', 2))
+    HAVING TRIM(SPLIT_PART(b.address, ',', 2)) <> ''
+    ORDER BY total DESC, city ASC
+    LIMIT %s
+    """
+
+    cur.execute(query, (limit,))
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows
+
+
 def get_buildings_by_address_text(address_text, damage_filter):
     conn = get_db_connection()
     cur = conn.cursor()
@@ -950,6 +981,38 @@ def is_conversation_summary_query(question):
         
     ])
 
+
+def is_city_list_query(question):
+    q = question.lower()
+    return any(k in q for k in [
+        "what cities are in the dataset",
+        "which cities are in the dataset",
+        "what cities are affected",
+        "which cities were affected",
+        "what cities were affected",
+        "which cities are affected",
+        "list the affected cities",
+        "list cities in the dataset",
+        "what locations are in the dataset",
+    ])
+
+
+def format_city_damage_stats(rows):
+    if len(rows) == 0:
+        return "I couldn’t find any city-level address data in the dataset."
+
+    summary_parts = []
+    for row in rows[:8]:
+        city = row[0]
+        total = row[1]
+        destroyed = row[5]
+        major = row[4]
+        summary_parts.append(
+            f"{city} ({total} total, {major} major-damage, {destroyed} destroyed)"
+        )
+
+    return "Cities in the dataset include: " + "; ".join(summary_parts) + "."
+
 def summarize_damage_data(buildings, address):
 
     counts = {}
@@ -1054,6 +1117,18 @@ def handle_chat_query(question):
             "focus": None,
             "highlighted_buildings": [],
             "action": build_no_action()  # no navigation action
+        }
+
+    if is_city_list_query(question):
+        rows = fetch_city_damage_stats()
+        answer = format_city_damage_stats(rows)
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action(),
         }
 
     general_location_text = extract_general_location_text(question)
