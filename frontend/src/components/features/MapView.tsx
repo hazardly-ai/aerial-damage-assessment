@@ -9,6 +9,7 @@ import { BuildingPopup } from "@/components/features/BuildingPopup";
 import { MapControls } from "@/components/features/MapControls";
 import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
 import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
+import type { ChatMapCommand } from "@/types/chat";
 import type { MapStatus, SceneMetrics } from "@/types/map.ts";
 import { BUILDINGS_SOURCE_ID } from "@/utils/addBuildingLayer";
 import type { BuildingFeature, BuildingsResponse } from "@/utils/hazardlyApi";
@@ -27,6 +28,7 @@ import {
 	PRE_IMAGE_LAYER_ID,
 	selectBuildingByUid,
 	setBuildingVisibility,
+	setHighlightedBuildingsByUid,
 	setImageryVisibility,
 	setSatelliteOpacity,
 	waitForMapsLoad,
@@ -47,6 +49,36 @@ interface MapViewProps {
 	canGoNext: boolean;
 	onPrev: () => void;
 	onNext: () => void;
+	chatCommand?: ChatMapCommand | null;
+}
+
+const CHAT_FOCUS_FALLBACK_ZOOM = 18;
+const CHAT_FIT_PADDING = 72;
+
+function extendBoundsWithGeometry(
+	bounds: mapboxgl.LngLatBounds,
+	geometry: GeoJSON.Geometry,
+) {
+	const extendCoordinates = (coordinates: number[][]) => {
+		for (const coordinate of coordinates) {
+			bounds.extend([coordinate[0], coordinate[1]]);
+		}
+	};
+
+	if (geometry.type === "Polygon") {
+		for (const ring of geometry.coordinates) {
+			extendCoordinates(ring);
+		}
+		return;
+	}
+
+	if (geometry.type === "MultiPolygon") {
+		for (const polygon of geometry.coordinates) {
+			for (const ring of polygon) {
+				extendCoordinates(ring);
+			}
+		}
+	}
 }
 
 function computeSceneMetrics(
@@ -286,6 +318,7 @@ export default function MapView({
 	canGoNext,
 	onPrev,
 	onNext,
+	chatCommand,
 }: MapViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
@@ -311,6 +344,7 @@ export default function MapView({
 	const loadingOverlay = useLoadingOverlay(status);
 	const popupDataRef = useRef<PopupData | null>(null);
 	const selectedBuildingIdRef = useRef<string | number | null>(null);
+	const highlightedBuildingIdsRef = useRef<Array<string | number>>([]);
 	const imageryVisibleRef = useRef(imageryVisible);
 	const boundsRef = useRef<ImageBounds | null>(null);
 	const scheduleCompareIdleRef = useRef<() => void>(() => {});
@@ -591,6 +625,7 @@ export default function MapView({
 				compareIdleTimerRef.current = null;
 			}
 			selectedBuildingIdRef.current = null;
+			highlightedBuildingIdsRef.current = [];
 			boundsRef.current = null;
 			layersReadyRef.current = false;
 			compareRef.current?.remove();
@@ -751,6 +786,69 @@ export default function MapView({
 			container.removeEventListener("touchstart", handleActivity);
 		};
 	}, [imageryVisible, scheduleCompareIdle]);
+
+	useEffect(() => {
+		if (!chatCommand || status !== "ready" || sceneLoading) return;
+		if (chatCommand.targetXbdId && chatCommand.targetXbdId !== selectedXbdId) {
+			return;
+		}
+
+		const before = beforeMapRef.current;
+		const after = afterMapRef.current;
+		if (!before || !after || !layersReadyRef.current) return;
+
+		setBuildingsVisible((current) => {
+			if (!current) {
+				setBuildingVisibility(before, true);
+				setBuildingVisibility(after, true);
+			}
+			return true;
+		});
+
+		setHighlightedBuildingsByUid({
+			beforeMap: before,
+			afterMap: after,
+			uids: chatCommand.highlightedBuildingIds,
+			highlightedBuildingIdsRef,
+		});
+
+		if (chatCommand.highlightedBuildingGeometries.length > 0) {
+			const bounds = new mapboxgl.LngLatBounds();
+			for (const geometry of chatCommand.highlightedBuildingGeometries) {
+				extendBoundsWithGeometry(bounds, geometry);
+			}
+			if (!bounds.isEmpty()) {
+				before.fitBounds(bounds, {
+					padding: CHAT_FIT_PADDING,
+					duration: 1200,
+					maxZoom: CHAT_FOCUS_FALLBACK_ZOOM,
+				});
+				after.fitBounds(bounds, {
+					padding: CHAT_FIT_PADDING,
+					duration: 1200,
+					maxZoom: CHAT_FOCUS_FALLBACK_ZOOM,
+				});
+			}
+		} else if (chatCommand.focus) {
+			const center: [number, number] = [
+				chatCommand.focus.lon,
+				chatCommand.focus.lat,
+			];
+			const nextZoom = Math.max(before.getZoom(), CHAT_FOCUS_FALLBACK_ZOOM);
+			before.easeTo({ center, zoom: nextZoom, duration: 1200 });
+			after.easeTo({ center, zoom: nextZoom, duration: 1200 });
+		}
+
+		if (chatCommand.targetBuildingUid) {
+			selectBuildingByUid({
+				beforeMap: before,
+				afterMap: after,
+				uid: chatCommand.targetBuildingUid,
+				selectedBuildingIdRef,
+				onPopupOpen: openPopup,
+			});
+		}
+	}, [chatCommand, openPopup, sceneLoading, selectedXbdId, status]);
 
 	return (
 		<div

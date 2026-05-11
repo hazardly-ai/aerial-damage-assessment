@@ -1,27 +1,45 @@
 /* DisasterResponsesAssistant.tsx */
 import { Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import type { ChatMessage, ChatResponse } from "@/types/chat";
 
-interface ResponseMessage {
-	id: string;
-	role: "fieldUser" | "responseAssistant";
-	content: string;
+interface DisasterResponseAssistantProps {
+	onChatResponse?: (response: ChatResponse) => void;
 }
 
-export default function DisasterResponseAssistant() {
+const buildMapCommandSummary = (response: ChatResponse): string | undefined => {
+	if (response.action?.target === "building") {
+		return "Opened the matched building on the map.";
+	}
+	if (response.action?.target === "map" && response.focus?.address) {
+		return `Moved the map to ${response.focus.address}.`;
+	}
+	if (response.highlighted_buildings.length > 0) {
+		const count = response.highlighted_buildings.length;
+		return `Highlighted ${count} building${count === 1 ? "" : "s"} on the map.`;
+	}
+	if (response.focus) {
+		return "Moved the map to the referenced location.";
+	}
+	return undefined;
+};
+
+export default function DisasterResponseAssistant({
+	onChatResponse,
+}: DisasterResponseAssistantProps) {
 	const API_BASE_URL = import.meta.env.VITE_HAZARDLY_API_BASE_URL?.replace(
 		/\/*$/,
 		"",
 	);
 
-	const initialMessage: ResponseMessage = {
+	const initialMessage: ChatMessage = {
 		id: crypto.randomUUID(),
 		role: "responseAssistant",
 		content:
 			"Hi, I'm your Disaster Response Assistant. I can help you review damage severity, impacted areas, and assessment insights. What would you like to explore?",
 	};
 
-	const [responseLog, setResponseLog] = useState<ResponseMessage[]>(() => {
+	const [responseLog, setResponseLog] = useState<ChatMessage[]>(() => {
 		const saved = sessionStorage.getItem("chatHistory");
 		return saved ? JSON.parse(saved) : [initialMessage];
 	});
@@ -53,7 +71,7 @@ export default function DisasterResponseAssistant() {
 
 	const handleQuery = async () => {
 		if (!currentQuery.trim()) return;
-		const userEntry: ResponseMessage = {
+		const userEntry: ChatMessage = {
 			id: crypto.randomUUID(),
 			role: "fieldUser",
 			content: currentQuery,
@@ -65,17 +83,38 @@ export default function DisasterResponseAssistant() {
 			const backendResponse = await fetch(`${API_BASE_URL}/chat`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ query: queryToSend }),
+				body: JSON.stringify({ question: queryToSend }),
 			});
-			const data = await backendResponse.json();
-			const assistantEntry: ResponseMessage = {
+			if (!backendResponse.ok) {
+				setResponseLog((prev) => [
+					...prev,
+					{
+						id: crypto.randomUUID(),
+						role: "responseAssistant",
+						content:
+							"I'm having trouble reaching the backend service right now. Please try again.",
+					},
+				]);
+				return;
+			}
+			const data = (await backendResponse.json()) as ChatResponse;
+			const assistantEntry: ChatMessage = {
 				id: crypto.randomUUID(),
 				role: "responseAssistant",
 				content:
+					data.answer ||
 					data.response ||
 					"Your request has been received. Results will appear here.",
+				mapCommandSummary: buildMapCommandSummary(data),
 			};
 			setResponseLog((prev) => [...prev, assistantEntry]);
+			if (onChatResponse) {
+				try {
+					onChatResponse(data);
+				} catch (error) {
+					console.error("Chat response handling failed:", error);
+				}
+			}
 		} catch {
 			setResponseLog((prev) => [
 				...prev,
@@ -137,6 +176,11 @@ export default function DisasterResponseAssistant() {
 							}`}
 						>
 							{entry.content}
+							{entry.mapCommandSummary ? (
+								<div className="mt-2 border-t border-border/70 pt-2 text-xs text-muted-foreground">
+									{entry.mapCommandSummary}
+								</div>
+							) : null}
 						</div>
 					))}
 					<div ref={bottomRef} />

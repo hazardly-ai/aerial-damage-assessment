@@ -480,3 +480,51 @@ export function createCompareInstance(params: {
 
 	return compare;
 }
+
+export function setHighlightedBuildingsByUid(params: {
+	beforeMap: mapboxgl.Map;
+	afterMap: mapboxgl.Map;
+	uids: string[];
+	highlightedBuildingIdsRef: MutableRefObject<Array<string | number>>;
+}) {
+	const { beforeMap, afterMap, uids, highlightedBuildingIdsRef } = params;
+
+	for (const featureId of highlightedBuildingIdsRef.current) {
+		beforeMap.setFeatureState(
+			{ source: BUILDINGS_SOURCE_ID, id: featureId },
+			{ highlighted: false },
+		);
+		afterMap.setFeatureState(
+			{ source: BUILDINGS_SOURCE_ID, id: featureId },
+			{ highlighted: false },
+		);
+	}
+
+	const nextFeatureIds: Array<string | number> = [];
+	const seenFeatureIds = new Set<string | number>();
+
+	for (const uid of uids) {
+		const features = beforeMap.querySourceFeatures(BUILDINGS_SOURCE_ID, {
+			filter: ["==", ["get", "uid"], uid],
+		});
+
+		for (const feature of features) {
+			if (typeof feature.id !== "string" && typeof feature.id !== "number") {
+				continue;
+			}
+			if (seenFeatureIds.has(feature.id)) continue;
+			seenFeatureIds.add(feature.id);
+			nextFeatureIds.push(feature.id);
+			beforeMap.setFeatureState(
+				{ source: BUILDINGS_SOURCE_ID, id: feature.id },
+				{ highlighted: true },
+			);
+			afterMap.setFeatureState(
+				{ source: BUILDINGS_SOURCE_ID, id: feature.id },
+				{ highlighted: true },
+			);
+		}
+	}
+
+	highlightedBuildingIdsRef.current = nextFeatureIds;
+}

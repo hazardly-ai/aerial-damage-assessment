@@ -3,6 +3,7 @@ import psycopg  # used to connect to PostgreSQL (Supabase)
 import requests  # used to make HTTP API calls (Mapbox + Nemotron)
 import os  # used to access environment variables
 import json  # used to convert GeoJSON text from PostGIS into a real Python dictionary
+import re
 from pathlib import Path
 from urllib.parse import quote  # used to safely encode values inside frontend route URLs
 from dotenv import load_dotenv  # used to load .env file
@@ -124,6 +125,26 @@ def parse_question(question):
     return address, damage
 
 
+def extract_address_filter_text(question):
+    q = question.strip()
+
+    patterns = [
+        r"have\s+an?\s+(.+?)\s+address",
+        r"with\s+an?\s+(.+?)\s+address",
+        r"in\s+(.+?)\s+by\s+address",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, q, flags=re.IGNORECASE)
+        if not match:
+            continue
+        address_text = match.group(1).strip(" ?,.")
+        address_text = re.sub(r"\b(buildings?|properties|records)\b", "", address_text, flags=re.IGNORECASE).strip(" ,")
+        return address_text or None
+
+    return None
+
+
 
 
 # function to convert address → latitude/longitude using Mapbox API
@@ -223,7 +244,7 @@ Keep it 1–2 sentences.
 
 """
      # calling Nemotron LLM to generate final answer
-    return call_nemotron(prompt)
+    return call_nemotron(prompt) or fallback_advisory_response(buildings, address)
 
 
 
@@ -293,6 +314,72 @@ def get_all_buildings_near(lon, lat, radius_m):
     conn.close()  # closing database connection
 
     return rows_to_buildings(rows)  # converting SQL rows into frontend-friendly dictionaries
+
+
+def get_buildings_by_address_text(address_text, damage_filter):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT b.uid, ip.xbd_id, b.predicted_damage, ST_AsGeoJSON(b.geom)
+    FROM buildings b
+    JOIN image_pairs ip ON b.image_pair_id = ip.id
+    WHERE b.address IS NOT NULL
+      AND b.address ILIKE %s
+      AND b.predicted_damage = %s
+    """
+
+    cur.execute(query, (f"%{address_text}%", damage_filter))
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows_to_buildings(rows)
+
+
+def get_all_buildings_by_address_text(address_text):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT b.uid, ip.xbd_id, b.predicted_damage, ST_AsGeoJSON(b.geom)
+    FROM buildings b
+    JOIN image_pairs ip ON b.image_pair_id = ip.id
+    WHERE b.address IS NOT NULL
+      AND b.address ILIKE %s
+    """
+
+    cur.execute(query, (f"%{address_text}%",))
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows_to_buildings(rows)
+
+
+def build_map_action_from_buildings(buildings, address_text=None):
+    xbd_ids = sorted({
+        b.get("xbd_id")
+        for b in buildings
+        if b.get("xbd_id") is not None
+    })
+
+    primary_xbd_id = xbd_ids[0] if len(xbd_ids) == 1 else (xbd_ids[0] if xbd_ids else None)
+
+    return {
+        "type": "navigate",
+        "target": "map",
+        "reason": "address_query" if address_text else "building_query",
+        "url": build_map_route(DEFAULT_DISASTER_NAME, primary_xbd_id),
+        "params": {
+            "disaster_name": DEFAULT_DISASTER_NAME,
+            "xbd_id": primary_xbd_id,
+            "address": address_text,
+            "building_ids": [b["uid"] for b in buildings],
+        }
+    }
 
 
 
@@ -495,7 +582,7 @@ def call_nemotron(prompt):
 
     # checking if config exists
     if not url or not api_key:
-        return "Nemotron not configured"
+        return None
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -514,14 +601,57 @@ def call_nemotron(prompt):
         "max_tokens": 300
     }
 
-    response = requests.post(url, headers=headers, json=payload)
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
 
-    if response.status_code != 200:
-        return f"Error: {response.text}"
+        if response.status_code != 200:
+            return None
 
-    data = response.json()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"].strip('"')
+        return content if content else None
+    except Exception:
+        return None
 
-    return data["choices"][0]["message"]["content"].strip('"')
+
+def fallback_damage_answer(total, address, damage_type):
+    clean_damage = damage_type.replace("-", " ")
+    building_label = "building" if total == 1 else "buildings"
+    return f"I found {total} {clean_damage} {building_label} near {address}."
+
+
+def fallback_advisory_response(buildings, address):
+    counts = count_damage_levels(buildings)
+    total = sum(counts.values())
+    severe_total = counts.get("major-damage", 0) + counts.get("destroyed", 0)
+
+    if total == 0:
+        return f"I couldn’t find enough nearby damage data to assess conditions around {address}."
+    if severe_total > 0:
+        return (
+            f"Damage near {address} includes {severe_total} severely affected buildings, "
+            "so responders should expect disrupted conditions and verify access before deployment."
+        )
+    return (
+        f"Damage near {address} appears limited in this dataset, but field conditions should still be "
+        "verified before making operational decisions."
+    )
+
+
+def fallback_damage_summary(buildings, address):
+    counts = count_damage_levels(buildings)
+    total = sum(counts.values())
+
+    if total == 0:
+        return f"I couldn’t find damage assessment data for {address}."
+
+    return (
+        f"For {address}, I found {total} buildings total: "
+        f"{counts.get('no-damage', 0)} no-damage, "
+        f"{counts.get('minor-damage', 0)} minor-damage, "
+        f"{counts.get('major-damage', 0)} major-damage, and "
+        f"{counts.get('destroyed', 0)} destroyed."
+    )
 
 
 
@@ -538,7 +668,7 @@ class NemotronLLM(CustomLLM):
         }
 
     def complete(self, prompt, **kwargs):
-        result = call_nemotron(prompt)
+        result = call_nemotron(prompt) or ""
         return CompletionResponse(text=result)
 
     def stream_complete(self, prompt, **kwargs):
@@ -577,7 +707,10 @@ Rules:
 - Sound professional and natural.
 """
 
-    return str(Settings.llm.complete(prompt)).strip('"').split(")*")[0]
+    result = str(Settings.llm.complete(prompt)).strip('"').split(")*")[0].strip()
+    if not result:
+        return fallback_damage_answer(total, address, damage_type)
+    return result
 
 
 def is_disaster_related(question):
@@ -685,7 +818,7 @@ Write a short, clear summary of the situation.
 Keep it 1–2 sentences.
 """
 
-    return call_nemotron(prompt)
+    return call_nemotron(prompt) or fallback_damage_summary(buildings, address)
 
 
 def summarize_conversation():
@@ -711,7 +844,16 @@ Write a short plain-English recap in 2-3 sentences.
 Do not use bullet points.
 """
 
-    return call_nemotron(prompt)
+    fallback_lines = [
+        m["content"]
+        for m in chat_history[-6:]
+        if m.get("content")
+    ]
+    fallback = " ".join(fallback_lines)[:280].strip()
+
+    return call_nemotron(prompt) or (
+        fallback if fallback else "No conversation to summarize yet."
+    )
 
 
 
@@ -784,21 +926,132 @@ def handle_chat_query(question):
             "action": build_no_action()  # full dataset does not navigate to one route
         }
 
+    _, damage_type = parse_question(question)
+
+    address_filter_text = extract_address_filter_text(question)
+    if address_filter_text:
+        buildings = get_buildings_by_address_text(address_filter_text, damage_type)
+        geo = geocode_address(address_filter_text)
+
+        if len(buildings) == 0:
+            answer = f"I could not find relevant damage data for addresses matching {address_filter_text}."
+            save_turn(question, answer)
+            return {
+                "answer": answer,
+                "response": answer,
+                "focus": {
+                    "lat": geo["lat"],
+                    "lon": geo["lon"],
+                    "address": geo["formatted_address"]
+                } if geo else None,
+                "highlighted_buildings": [],
+                "action": build_no_action()
+            }
+
+        label_text = geo["formatted_address"] if geo else address_filter_text
+        if damage_type == "no-damage":
+            answer = f"{len(buildings)} buildings with addresses matching {label_text} appear to have no visible damage."
+        else:
+            answer = generate_llm_answer(buildings, label_text, damage_type)
+
+        action = (
+            build_building_action(buildings[0])
+            if len(buildings) == 1
+            else build_map_action_from_buildings(buildings, label_text)
+        )
+
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": {
+                "lat": geo["lat"],
+                "lon": geo["lon"],
+                "address": geo["formatted_address"]
+            } if geo else None,
+            "highlighted_buildings": buildings,
+            "action": action
+        }
 
     # location-based queries
     address, damage_type = parse_question(question)
     geo = geocode_address(address)
 
     if not geo:
-        answer = "Could not find that location. Try a different place."
-        save_turn(question, answer)
-        return {
+        all_buildings = get_all_buildings_by_address_text(address)
+        filtered_buildings = [
+            b for b in all_buildings
+            if b.get("damage") == damage_type
+        ]
+
+        if is_data_summary_query(question):
+            counts = count_damage_levels(all_buildings)
+            answer = format_damage_count_response(counts, address)
+            action = (
+                build_map_action_from_buildings(all_buildings, address)
+                if len(all_buildings) > 0
+                else build_no_action()
+            )
+            payload = {
+                "answer": answer,
+                "response": answer,
+                "focus": None,
+                "highlighted_buildings": all_buildings,
+                "action": action,
+            }
+            save_turn(question, answer)
+            return payload
+
+        advisory = detect_advisory(question)
+        if advisory:
+            if len(all_buildings) == 0:
+                answer = f"I couldn’t find enough nearby damage data to give a reliable advisory for {address}."
+                action = build_no_action()
+            else:
+                answer = advisory_response(question, all_buildings, address)
+                action = build_map_action_from_buildings(all_buildings, address)
+
+            payload = {
+                "answer": answer,
+                "response": answer,
+                "focus": None,
+                "highlighted_buildings": all_buildings,
+                "action": action,
+            }
+            save_turn(question, answer)
+            return payload
+
+        if len(filtered_buildings) == 0:
+            answer = "I could not find relevant damage data for that area. Try a different location."
+            save_turn(question, answer)
+            return {
+                "answer": answer,
+                "response": answer,
+                "focus": None,
+                "highlighted_buildings": [],
+                "action": build_no_action()
+            }
+
+        if damage_type == "no-damage":
+            answer = f"{len(filtered_buildings)} buildings in {address} appear to have no visible damage."
+        else:
+            answer = generate_llm_answer(filtered_buildings, address, damage_type)
+
+        action = (
+            build_building_action(filtered_buildings[0])
+            if len(filtered_buildings) == 1
+            else build_map_action_from_buildings(filtered_buildings, address)
+        )
+
+        payload = {
             "answer": answer,
-            "response": answer,  # same text for frontend compatibility
+            "response": answer,
             "focus": None,
-            "highlighted_buildings": [],
-            "action": build_no_action()  # no route because location was not found
+            "highlighted_buildings": filtered_buildings,
+            "action": action,
         }
+        save_turn(question, answer)
+        return payload
 
 
     # city/street overall damage summary
