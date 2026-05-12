@@ -50,6 +50,7 @@ export interface ChatMessage {
 	id: string;
 	role: "fieldUser" | "responseAssistant";
 	content: string;
+	isPending?: boolean;
 	mapCommandSummary?: string;
 	suggestedActionLabel?: string;
 	actionPayload?: ChatResponse;

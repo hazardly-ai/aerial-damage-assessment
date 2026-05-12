@@ -9,8 +9,6 @@ interface DisasterResponseAssistantProps {
 	onRunSuggestedAction?: (response: ChatResponse) => void;
 }
 
-const PENDING_MESSAGE_ID = "assistant-pending";
-
 const stripInlineMarkdown = (content: string): string =>
 	content
 		.replace(/\*\*(.*?)\*\*/g, "$1")
@@ -75,12 +73,64 @@ const requiresExplicitExampleAction = (response: ChatResponse): boolean =>
 	response.action?.target === "map" &&
 	!response.focus;
 
+const shouldAutoRunExplicitExample = (
+	query: string,
+	response: ChatResponse,
+): boolean => {
+	if (!requiresExplicitExampleAction(response)) {
+		return false;
+	}
+
+	const normalizedQuery = query.trim().toLowerCase();
+	return (
+		normalizedQuery.startsWith("show ") ||
+		normalizedQuery.startsWith("show me ") ||
+		normalizedQuery.startsWith("take me ") ||
+		normalizedQuery.startsWith("open ") ||
+		normalizedQuery.startsWith("go to ")
+	);
+};
+
+const buildExplicitExampleSummary = (
+	response: ChatResponse,
+): string | undefined => {
+	const targetXbdId = response.action?.params?.xbd_id;
+	const addressText =
+		typeof response.action?.params?.address === "string"
+			? response.action.params.address
+			: undefined;
+
+	if (addressText && typeof targetXbdId === "number") {
+		return `Matched buildings for ${addressText}. Representative scene available on XBD ${targetXbdId}.`;
+	}
+	if (addressText) {
+		return `Matched buildings for ${addressText}. Representative scene available.`;
+	}
+	if (typeof targetXbdId === "number") {
+		return `Representative scene available on XBD ${targetXbdId}.`;
+	}
+	return "Representative scene available.";
+};
+
 const buildMapCommandSummary = (response: ChatResponse): string | undefined => {
 	const targetXbdId = response.action?.params?.xbd_id;
+	const actionAddress =
+		typeof response.action?.params?.address === "string"
+			? response.action.params.address
+			: undefined;
 	if (response.action?.target === "building") {
 		return typeof targetXbdId === "number"
 			? `Opened the matched building on XBD ${targetXbdId}.`
 			: "Opened the matched building on the map.";
+	}
+	if (
+		response.action?.reason === "address_query" &&
+		actionAddress &&
+		response.action?.target === "map"
+	) {
+		return typeof targetXbdId === "number"
+			? `Moved the map to ${actionAddress} on XBD ${targetXbdId}.`
+			: `Moved the map to ${actionAddress}.`;
 	}
 	if (response.action?.target === "map" && response.focus?.address) {
 		return typeof targetXbdId === "number"
@@ -114,9 +164,33 @@ export default function DisasterResponseAssistant({
 			"Hi, I'm your Disaster Response Assistant. I can help you review damage severity, impacted areas, and assessment insights. What would you like to explore?",
 	};
 
+	const sanitizeStoredMessages = (
+		messages: ChatMessage[] | null | undefined,
+	): ChatMessage[] => {
+		if (!Array.isArray(messages) || messages.length === 0) {
+			return [initialMessage];
+		}
+
+		const cleanedMessages = messages.filter(
+			(entry) =>
+				!(
+					entry.isPending ||
+					(entry.role === "responseAssistant" &&
+						entry.content === "" &&
+						!entry.mapCommandSummary &&
+						!entry.suggestedActionLabel &&
+						!entry.actionPayload)
+				),
+		);
+
+		return cleanedMessages.length > 0 ? cleanedMessages : [initialMessage];
+	};
+
 	const [responseLog, setResponseLog] = useState<ChatMessage[]>(() => {
 		const saved = sessionStorage.getItem("chatHistory");
-		return saved ? JSON.parse(saved) : [initialMessage];
+		return saved
+			? sanitizeStoredMessages(JSON.parse(saved) as ChatMessage[])
+			: [initialMessage];
 	});
 
 	// Persist only for the current browser tab/session.
@@ -160,7 +234,8 @@ export default function DisasterResponseAssistant({
 	}, [responseLog]);
 
 	useEffect(() => {
-		sessionStorage.setItem("chatHistory", JSON.stringify(responseLog));
+		const persistedMessages = responseLog.filter((entry) => !entry.isPending);
+		sessionStorage.setItem("chatHistory", JSON.stringify(persistedMessages));
 		sessionStorage.setItem("chatOpen", isOpen.toString());
 	}, [responseLog, isOpen]);
 
@@ -168,6 +243,7 @@ export default function DisasterResponseAssistant({
 		setResponseLog([initialMessage]);
 		setIsAwaitingResponse(false);
 		setAnimatingMessageId(null);
+		setCurrentQuery("");
 		sessionStorage.removeItem("chatHistory");
 	};
 
@@ -178,16 +254,19 @@ export default function DisasterResponseAssistant({
 			role: "fieldUser",
 			content: currentQuery,
 		};
+		const pendingMessageId = crypto.randomUUID();
 		setResponseLog((prev) => [...prev, userEntry]);
 		const queryToSend = currentQuery;
 		setCurrentQuery("");
+		window.requestAnimationFrame(() => resizeComposer());
 		setIsAwaitingResponse(true);
 		setResponseLog((prev) => [
 			...prev,
 			{
-				id: PENDING_MESSAGE_ID,
+				id: pendingMessageId,
 				role: "responseAssistant",
 				content: "",
+				isPending: true,
 			},
 		]);
 		try {
@@ -199,7 +278,7 @@ export default function DisasterResponseAssistant({
 			if (!backendResponse.ok) {
 				setResponseLog((prev) =>
 					prev.map((entry) =>
-						entry.id === PENDING_MESSAGE_ID
+						entry.id === pendingMessageId
 							? {
 									id: crypto.randomUUID(),
 									role: "responseAssistant",
@@ -213,6 +292,10 @@ export default function DisasterResponseAssistant({
 				return;
 			}
 			const data = (await backendResponse.json()) as ChatResponse;
+			const autoRunExplicitExample = shouldAutoRunExplicitExample(
+				queryToSend,
+				data,
+			);
 			const assistantEntry: ChatMessage = {
 				id: crypto.randomUUID(),
 				role: "responseAssistant",
@@ -221,23 +304,31 @@ export default function DisasterResponseAssistant({
 					data.response ||
 					"Your request has been received. Results will appear here.",
 				mapCommandSummary: requiresExplicitExampleAction(data)
-					? typeof data.action?.params?.xbd_id === "number"
-						? `Representative scene available on XBD ${data.action.params.xbd_id}.`
-						: "Representative scene available."
+					? autoRunExplicitExample
+						? buildMapCommandSummary(data)
+						: buildExplicitExampleSummary(data)
 					: buildMapCommandSummary(data),
 				suggestedActionLabel: requiresExplicitExampleAction(data)
-					? "Show example XBD"
+					? autoRunExplicitExample
+						? undefined
+						: "Show example XBD"
 					: undefined,
-				actionPayload: requiresExplicitExampleAction(data) ? data : undefined,
+				actionPayload:
+					requiresExplicitExampleAction(data) && !autoRunExplicitExample
+						? data
+						: undefined,
 			};
 			setResponseLog((prev) =>
 				prev.map((entry) =>
-					entry.id === PENDING_MESSAGE_ID ? assistantEntry : entry,
+					entry.id === pendingMessageId ? assistantEntry : entry,
 				),
 			);
 			setIsAwaitingResponse(false);
 			setAnimatingMessageId(assistantEntry.id);
-			if (onChatResponse && !requiresExplicitExampleAction(data)) {
+			if (
+				onChatResponse &&
+				(!requiresExplicitExampleAction(data) || autoRunExplicitExample)
+			) {
 				try {
 					onChatResponse(data);
 				} catch (error) {
@@ -247,7 +338,7 @@ export default function DisasterResponseAssistant({
 		} catch {
 			setResponseLog((prev) =>
 				prev.map((entry) =>
-					entry.id === PENDING_MESSAGE_ID
+					entry.id === pendingMessageId
 						? {
 								id: crypto.randomUUID(),
 								role: "responseAssistant",
@@ -335,12 +426,12 @@ export default function DisasterResponseAssistant({
 								className={`rounded-2xl border transition-colors duration-theme ease-theme ${
 									entry.role === "fieldUser"
 										? "bg-primary px-3.5 py-3 text-primary-foreground border-primary shadow-sm"
-										: entry.id === PENDING_MESSAGE_ID
+										: entry.isPending
 											? "w-fit max-w-[72px] border-border bg-card px-3 py-2 text-foreground shadow-sm"
 											: "border-border bg-card px-3.5 py-3 text-foreground shadow-sm"
 								}`}
 							>
-								{entry.id === PENDING_MESSAGE_ID ? (
+								{entry.isPending ? (
 									<div className="flex items-center gap-1.5 py-1">
 										<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
 										<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
