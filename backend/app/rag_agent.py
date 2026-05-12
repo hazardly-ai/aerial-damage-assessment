@@ -699,7 +699,15 @@ def get_ranking_metric(question):
         return "major-damage"
     if "minor" in q:
         return "minor-damage"
-    if any(term in q for term in ["no damage", "no-damage", "undamaged", "least damage"]):
+    if any(term in q for term in [
+        "no damage",
+        "no-damage",
+        "undamaged",
+        "non-damaged",
+        "non damaged",
+        "not damaged",
+        "least damage",
+    ]):
         return "no-damage"
     return "total"
 
@@ -722,9 +730,9 @@ def format_city_ranking(rows, metric, limit):
     sorted_rows = sort_city_rows(rows, metric)[:limit]
     metric_label = {
         "total": "total buildings",
-        "no-damage": "no-damage buildings",
-        "minor-damage": "minor-damage buildings",
-        "major-damage": "major-damage buildings",
+        "no-damage": "undamaged buildings",
+        "minor-damage": "minorly damaged buildings",
+        "major-damage": "majorly damaged buildings",
         "destroyed": "destroyed buildings",
     }[metric]
 
@@ -739,30 +747,7 @@ def format_city_ranking(rows, metric, limit):
 
 
 def synthesize_city_ranking_answer(rows, metric, limit):
-    fallback = format_city_ranking(rows, metric, limit)
-    metric_label = {
-        "total": "total buildings",
-        "no-damage": "no-damage buildings",
-        "minor-damage": "minor-damage buildings",
-        "major-damage": "major-damage buildings",
-        "destroyed": "destroyed buildings",
-    }[metric]
-    prompt = f"""
-You are Hazardly, a disaster damage assessment assistant.
-
-Use only these exact facts:
-Ranking metric: {metric_label}
-Top rows: {sort_city_rows(rows, metric)[:limit]}
-
-Write a concise answer for the user.
-
-Rules:
-- Use 3 to 5 short bullet points.
-- Keep the city names and numbers exact.
-- Mention which metric is being ranked.
-- Do not invent extra numbers or places.
-"""
-    return synthesize_structured_answer(prompt, fallback)
+    return format_city_ranking(rows, metric, limit)
 
 
 def format_percentage_response(location_text, damage_type, total, matching_total):
@@ -1863,6 +1848,168 @@ def classify_query_intent(question):
     return "unsupported"
 
 
+def extract_damage_filter(question):
+    q = question.lower()
+    if any(word in q for word in [
+        "fine", "no damage", "no-damage", "no damaged", "undamaged", "unaffected"
+    ]):
+        return "no-damage"
+    if "minor" in q:
+        return "minor-damage"
+    if "destroyed" in q:
+        return "destroyed"
+    if "major" in q or "damaged" in q or "damage" in q:
+        return "major-damage"
+    return None
+
+
+def normalize_location_candidate(location_text):
+    if not location_text:
+        return None
+
+    normalized = location_text.strip(" ?,.")
+    normalized = re.sub(
+        r"^(?:the\s+)?cities?\s+of\s+",
+        "",
+        normalized,
+        flags=re.IGNORECASE,
+    ).strip(" ,")
+    normalized = re.sub(r"\s+", " ", normalized).strip(" ,")
+    return normalized or None
+
+
+def infer_scope(location_text, explicit_scene_id=None):
+    if explicit_scene_id is not None:
+        return "scene"
+    if not location_text:
+        return "dataset"
+    if looks_like_exact_address(location_text):
+        return "address"
+    if looks_like_street_address(location_text):
+        return "street"
+    if "," in location_text:
+        return "area"
+    return "city"
+
+
+def parse_structured_query(question):
+    raw_intent = classify_query_intent(question)
+    mapped_intent = {
+        "full_dataset_summary": "dataset_overview",
+        "city_list": "city_list",
+        "city_count": "city_count",
+        "damage_labels": "damage_label_query",
+        "city_ranking": "city_ranking",
+        "location_comparison": "location_comparison",
+        "location_percentage": "location_percentage",
+        "conversation_summary": "conversation_summary",
+        "vlm": "vlm_query",
+        "xbd_query": "scene_query",
+        "general_location_overview": "location_overview",
+        "location_query": "location_query",
+        "unsupported": "unsupported",
+    }.get(raw_intent, raw_intent)
+
+    explicit_scene_id = extract_xbd_query_id(question)
+    comparison_locations = extract_comparison_locations(question)
+    percentage_location_text = extract_percentage_location_text(question)
+    general_location_text = extract_general_location_text(question)
+    on_location_text = (
+        extract_on_location_text(question)
+        if "near" not in question.lower()
+        else None
+    )
+    address_filter_text = extract_address_filter_text(question)
+    in_location_text = (
+        extract_in_location_text(question)
+        if "near" not in question.lower()
+        else None
+    )
+    parsed_address, parsed_default_damage = parse_question(question)
+
+    locations = []
+    query_mode = "generic_location"
+    primary_location = None
+
+    if mapped_intent == "location_comparison" and comparison_locations:
+        first_location = normalize_location_candidate(comparison_locations[0])
+        second_location = normalize_location_candidate(comparison_locations[1])
+        locations = [location for location in [first_location, second_location] if location]
+        primary_location = locations[0] if locations else None
+        query_mode = "comparison"
+    elif mapped_intent == "location_percentage" and percentage_location_text:
+        primary_location = normalize_location_candidate(percentage_location_text)
+        locations = [primary_location] if primary_location else []
+        query_mode = "percentage"
+    elif mapped_intent == "location_overview" and general_location_text:
+        primary_location = normalize_location_candidate(general_location_text)
+        locations = [primary_location] if primary_location else []
+        query_mode = "overview"
+    elif on_location_text:
+        primary_location = normalize_location_candidate(on_location_text)
+        locations = [primary_location] if primary_location else []
+        query_mode = "on_address"
+    elif address_filter_text:
+        primary_location = normalize_location_candidate(address_filter_text)
+        locations = [primary_location] if primary_location else []
+        query_mode = "address_filter"
+    elif in_location_text:
+        primary_location = normalize_location_candidate(in_location_text)
+        locations = [primary_location] if primary_location else []
+        query_mode = "in_location"
+    elif explicit_scene_id is not None:
+        primary_location = f"XBD {explicit_scene_id}"
+        locations = [primary_location]
+        query_mode = "scene"
+    else:
+        primary_location = normalize_location_candidate(parsed_address)
+        locations = [primary_location] if primary_location else []
+
+    damage_filter = extract_damage_filter(question)
+    if mapped_intent == "location_query" and damage_filter is None:
+        damage_filter = parsed_default_damage
+    if mapped_intent in {"location_overview", "dataset_overview", "city_list", "city_count"}:
+        damage_filter = None
+
+    wants_navigation = any(
+        phrase in question.lower()
+        for phrase in ["show ", "show me", "take me", "open ", "go to ", "navigate"]
+    )
+    wants_summary = mapped_intent in {
+        "dataset_overview",
+        "location_overview",
+        "location_comparison",
+        "location_percentage",
+        "city_list",
+        "city_count",
+        "damage_label_query",
+        "conversation_summary",
+    }
+
+    entity_type = "place"
+    if explicit_scene_id is not None:
+        entity_type = "scene"
+    elif query_mode in {"on_address", "address_filter", "in_location"}:
+        entity_type = "address"
+
+    return {
+        "intent": mapped_intent,
+        "locations": locations,
+        "comparison": mapped_intent == "location_comparison",
+        "damage_filter": damage_filter,
+        "needs_map": wants_navigation or mapped_intent == "location_query",
+        "scope": infer_scope(primary_location, explicit_scene_id),
+        "entity_type": entity_type,
+        "explicit_scene_id": explicit_scene_id,
+        "wants_summary": wants_summary,
+        "wants_all_buildings": is_all_buildings_query(question),
+        "advisory": detect_advisory(question),
+        "query_mode": query_mode,
+        "primary_location": primary_location,
+        "raw_question": question,
+    }
+
+
 def format_city_damage_stats(rows):
     if len(rows) == 0:
         return "I couldn't find any city-level address data in the dataset."
@@ -2029,9 +2176,15 @@ def handle_chat_query(question):
             "action": build_no_action()  # no navigation action
         }
 
-    intent = classify_query_intent(question)
+    parsed_query = parse_structured_query(question)
+    intent = parsed_query["intent"]
+    damage_type = parsed_query["damage_filter"] or "major-damage"
+    wants_all_buildings = parsed_query["wants_all_buildings"]
+    primary_location = parsed_query["primary_location"]
+    advisory = parsed_query["advisory"]
+    xbd_query_id = parsed_query["explicit_scene_id"]
 
-    if intent == "vlm":
+    if intent == "vlm_query":
         answer = vlm_guidance_response()
         save_turn(question, answer)
         return {
@@ -2113,9 +2266,8 @@ def handle_chat_query(question):
             "action": build_no_action(),
         }
 
-    comparison_locations = extract_comparison_locations(question)
-    if intent == "location_comparison" and comparison_locations:
-        first_location, second_location = comparison_locations
+    if intent == "location_comparison" and len(parsed_query["locations"]) >= 2:
+        first_location, second_location = parsed_query["locations"][:2]
         first_geo, first_label, first_buildings = resolve_location_buildings(first_location)
         second_geo, second_label, second_buildings = resolve_location_buildings(second_location)
 
@@ -2134,10 +2286,8 @@ def handle_chat_query(question):
             "action": build_no_action(),
         }
 
-    percentage_location_text = extract_percentage_location_text(question)
-    if intent == "location_percentage" and percentage_location_text:
-        _, damage_type = parse_question(question)
-        geo, label_text, all_buildings = resolve_location_buildings(percentage_location_text)
+    if intent == "location_percentage" and primary_location:
+        geo, label_text, all_buildings = resolve_location_buildings(primary_location)
         matching_buildings = filter_buildings_by_damage(all_buildings, damage_type)
         answer = synthesize_percentage_answer(
             label_text,
@@ -2154,12 +2304,11 @@ def handle_chat_query(question):
             "action": build_no_action(),
         }
 
-    general_location_text = extract_general_location_text(question)
-    if intent == "general_location_overview" and general_location_text:
-        geo, label_text, all_buildings = resolve_location_buildings(general_location_text)
+    if intent == "location_overview" and primary_location:
+        geo, label_text, all_buildings = resolve_location_buildings(primary_location)
 
         if len(all_buildings) == 0:
-            answer = f"I could not find relevant damage data for {general_location_text}."
+            answer = f"I could not find relevant damage data for {primary_location}."
             save_turn(question, answer)
             return {
                 "answer": answer,
@@ -2193,7 +2342,7 @@ def handle_chat_query(question):
         }
             
     # full dataset summary does not have a single map focus
-    if intent == "full_dataset_summary":
+    if intent == "dataset_overview":
         counts = get_full_dataset_damage_counts()
         answer = synthesize_location_overview_answer("the full dataset", counts)
         save_turn(question, answer)
@@ -2205,11 +2354,7 @@ def handle_chat_query(question):
             "action": build_no_action()  # full dataset does not navigate to one route
         }
 
-    _, damage_type = parse_question(question)
-    wants_all_buildings = is_all_buildings_query(question)
-    xbd_query_id = extract_xbd_query_id(question)
-
-    if xbd_query_id is not None:
+    if intent == "scene_query" and xbd_query_id is not None:
         requested_damage = None if wants_all_buildings else damage_type
         buildings = get_buildings_for_xbd(xbd_query_id, requested_damage)
 
@@ -2254,8 +2399,8 @@ def handle_chat_query(question):
             "action": action,
         }
 
-    on_location_text = extract_on_location_text(question)
-    if on_location_text and "near" not in question.lower():
+    if intent == "location_query" and parsed_query["query_mode"] == "on_address" and primary_location:
+        on_location_text = primary_location
         has_explicit_region = "," in on_location_text
         requested_damage = None if wants_all_buildings else damage_type
         buildings = get_buildings_on_address_text(on_location_text, requested_damage)
@@ -2302,8 +2447,8 @@ def handle_chat_query(question):
             "action": action
         }
 
-    address_filter_text = extract_address_filter_text(question)
-    if address_filter_text:
+    if intent == "location_query" and parsed_query["query_mode"] == "address_filter" and primary_location:
+        address_filter_text = primary_location
         buildings = get_buildings_by_address_text(address_filter_text, damage_type)
         primary_xbd_id = get_dominant_xbd_id(buildings)
         scene_buildings = get_buildings_for_primary_scene(buildings, primary_xbd_id)
@@ -2345,8 +2490,8 @@ def handle_chat_query(question):
             "action": action
         }
 
-    in_location_text = extract_in_location_text(question)
-    if in_location_text and "near" not in question.lower():
+    if intent == "location_query" and parsed_query["query_mode"] == "in_location" and primary_location:
+        in_location_text = primary_location
         geo = geocode_address(in_location_text)
         buildings = []
         if geo and geo.get("bbox") and len(geo["bbox"]) == 4:
@@ -2395,8 +2540,19 @@ def handle_chat_query(question):
             "action": action
         }
 
-    # location-based queries
-    address, damage_type = parse_question(question)
+    # generic location-based queries
+    address = primary_location
+    if not address:
+        answer = "I could not determine which location or scene you meant."
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action(),
+        }
+
     geo = geocode_address(address)
 
     if not geo:
@@ -2410,7 +2566,7 @@ def handle_chat_query(question):
         scene_all_buildings = get_buildings_for_primary_scene(all_buildings, primary_all_xbd_id)
         scene_filtered_buildings = get_buildings_for_primary_scene(filtered_buildings, primary_filtered_xbd_id)
 
-        if is_data_summary_query(question):
+        if parsed_query["wants_summary"]:
             counts = count_damage_levels(all_buildings)
             answer = format_damage_count_response(counts, address)
             action = (
@@ -2428,7 +2584,6 @@ def handle_chat_query(question):
             save_turn(question, answer)
             return payload
 
-        advisory = detect_advisory(question)
         if advisory:
             if len(all_buildings) == 0:
                 answer = f"I couldn't find enough nearby damage data to give a reliable advisory for {address}."
@@ -2481,7 +2636,7 @@ def handle_chat_query(question):
 
 
     # city/street overall damage summary
-    if is_data_summary_query(question):
+    if parsed_query["wants_summary"]:
         all_buildings = get_all_buildings_near(
             geo["lon"],
             geo["lat"],
@@ -2510,8 +2665,6 @@ def handle_chat_query(question):
         return payload
 
     # advisory questions use all nearby damage levels
-    advisory = detect_advisory(question)
-
     if advisory:
         all_buildings = get_all_buildings_near(
             geo["lon"],
