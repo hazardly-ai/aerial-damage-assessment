@@ -445,6 +445,205 @@ def fetch_city_damage_stats(limit=20):
     return rows
 
 
+def resolve_location_buildings(location_text):
+    normalized_location = location_text.strip()
+    has_explicit_region = "," in normalized_location
+    geocode_query = normalized_location
+
+    if not has_explicit_region:
+        buildings = get_all_buildings_by_address_text(normalized_location)
+        if len(buildings) > 0:
+            return None, normalized_location, buildings
+        if DEFAULT_DISASTER_NAME == "hurricane-harvey":
+            geocode_query = f"{normalized_location}, Texas"
+
+    geo = geocode_address(geocode_query)
+    buildings = []
+
+    if geo and geo.get("bbox") and len(geo["bbox"]) == 4:
+        min_lon, min_lat, max_lon, max_lat = geo["bbox"]
+        buildings = get_all_buildings_in_bbox(min_lon, min_lat, max_lon, max_lat)
+
+    if len(buildings) == 0:
+        buildings = get_all_buildings_by_address_text(normalized_location)
+
+    if len(buildings) > 0 and not has_explicit_region:
+        label_text = normalized_location
+    else:
+        label_text = geo["formatted_address"] if geo else normalized_location
+
+    return geo, label_text, buildings
+
+
+def filter_buildings_by_damage(buildings, damage_type):
+    return [b for b in buildings if b.get("damage") == damage_type]
+
+
+def extract_percentage_location_text(question):
+    patterns = [
+        r"percentage of\s+(.+?)\s+buildings",
+        r"share of\s+(.+?)\s+buildings",
+        r"what percentage of\s+(.+?)\s+is",
+        r"what percent of\s+(.+?)\s+is",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, question, flags=re.IGNORECASE)
+        if not match:
+            continue
+        location_text = match.group(1).strip(" ?,.")
+        return location_text or None
+
+    return None
+
+
+def extract_comparison_locations(question):
+    patterns = [
+        r"compare\s+(.+?)\s+and\s+(.+?)(?:\?|$)",
+        r"compare\s+(.+?)\s+to\s+(.+?)(?:\?|$)",
+        r"which is worse,\s+(.+?)\s+or\s+(.+?)(?:\?|$)",
+        r"which is worse:\s+(.+?)\s+or\s+(.+?)(?:\?|$)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, question, flags=re.IGNORECASE)
+        if not match:
+            continue
+        first = match.group(1).strip(" ?,.")
+        second = match.group(2).strip(" ?,.")
+        if first and second:
+            return first, second
+
+    return None
+
+
+def is_city_comparison_query(question):
+    q = question.lower()
+    return "compare " in q or "which is worse" in q
+
+
+def is_city_ranking_query(question):
+    q = question.lower()
+    ranking_signals = [
+        "top ",
+        "most ",
+        "least ",
+        "hardest-hit",
+        "hardest hit",
+        "hit hardest",
+        "where is major damage concentrated",
+        "which cities have",
+        "what areas have",
+    ]
+    return any(signal in q for signal in ranking_signals)
+
+
+def extract_top_n(question, default=5):
+    match = re.search(r"\btop\s+(\d+)\b", question, flags=re.IGNORECASE)
+    if not match:
+        return default
+    try:
+        return max(1, min(int(match.group(1)), 10))
+    except ValueError:
+        return default
+
+
+def get_ranking_metric(question):
+    q = question.lower()
+    if any(term in q for term in ["destroyed", "hardest-hit", "hardest hit", "hit hardest"]):
+        return "destroyed"
+    if "major" in q:
+        return "major-damage"
+    if "minor" in q:
+        return "minor-damage"
+    if any(term in q for term in ["no damage", "no-damage", "undamaged", "least damage"]):
+        return "no-damage"
+    return "total"
+
+
+def sort_city_rows(rows, metric):
+    metric_index = {
+        "total": 1,
+        "no-damage": 2,
+        "minor-damage": 3,
+        "major-damage": 4,
+        "destroyed": 5,
+    }[metric]
+    return sorted(rows, key=lambda row: (-row[metric_index], row[0]))
+
+
+def format_city_ranking(rows, metric, limit):
+    if len(rows) == 0:
+        return "I couldn't find any city-level data for the active disaster dataset."
+
+    sorted_rows = sort_city_rows(rows, metric)[:limit]
+    metric_label = {
+        "total": "total buildings",
+        "no-damage": "no-damage buildings",
+        "minor-damage": "minor-damage buildings",
+        "major-damage": "major-damage buildings",
+        "destroyed": "destroyed buildings",
+    }[metric]
+
+    lines = [f"Top cities by {metric_label}:"]
+    for row in sorted_rows:
+        city = row[0]
+        value = row[{ "total": 1, "no-damage": 2, "minor-damage": 3, "major-damage": 4, "destroyed": 5 }[metric]]
+        total = row[1]
+        lines.append(f"- {city}: {value} {metric_label}, {total} total")
+
+    return "\n".join(lines)
+
+
+def format_percentage_response(location_text, damage_type, total, matching_total):
+    if total == 0:
+        return f"I couldn't find damage assessment data for {location_text}."
+
+    percentage = round((matching_total / total) * 100, 1)
+    damage_label = damage_type.replace("-", " ")
+
+    lines = [
+        f"Here's the percentage breakdown for {location_text}:",
+        f"- Total buildings: {total}",
+        f"- {damage_label.title()}: {matching_total}",
+        f"- Share of total: {percentage}%",
+    ]
+    return "\n".join(lines)
+
+
+def format_location_comparison(first_label, first_buildings, second_label, second_buildings):
+    first_counts = count_damage_levels(first_buildings)
+    second_counts = count_damage_levels(second_buildings)
+    first_total = sum(first_counts.values())
+    second_total = sum(second_counts.values())
+    first_severe = first_counts.get("major-damage", 0) + first_counts.get("destroyed", 0)
+    second_severe = second_counts.get("major-damage", 0) + second_counts.get("destroyed", 0)
+
+    if first_total == 0 and second_total == 0:
+        return "I couldn't find damage assessment data for either location."
+
+    if first_total == 0:
+        return f"I couldn't find damage assessment data for {first_label}, but I did for {second_label}."
+
+    if second_total == 0:
+        return f"I couldn't find damage assessment data for {second_label}, but I did for {first_label}."
+
+    if first_severe > second_severe:
+        worse_line = f"- Higher severe-damage load: {first_label}"
+    elif second_severe > first_severe:
+        worse_line = f"- Higher severe-damage load: {second_label}"
+    else:
+        worse_line = "- Higher severe-damage load: tied"
+
+    lines = [
+        f"Comparison of {first_label} and {second_label}:",
+        f"- {first_label}: {first_total} total, {first_counts.get('major-damage', 0)} major-damage, {first_counts.get('destroyed', 0)} destroyed",
+        f"- {second_label}: {second_total} total, {second_counts.get('major-damage', 0)} major-damage, {second_counts.get('destroyed', 0)} destroyed",
+        worse_line,
+    ]
+    return "\n".join(lines)
+
+
 def get_buildings_by_address_text(address_text, damage_filter):
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1035,6 +1234,27 @@ def is_city_list_query(question):
     ])
 
 
+def is_city_count_query(question):
+    q = question.lower()
+    return any(k in q for k in [
+        "how many cities are represented",
+        "how many cities are in the data",
+        "how many cities are in the dataset",
+        "how many locations are in the data",
+        "how many locations are in the dataset",
+    ])
+
+
+def is_damage_label_query(question):
+    q = question.lower()
+    return any(k in q for k in [
+        "what kinds of damage labels exist",
+        "what damage labels exist",
+        "what damage levels exist",
+        "what labels are in the dataset",
+    ])
+
+
 def format_city_damage_stats(rows):
     if len(rows) == 0:
         return "I couldn't find any city-level address data in the dataset."
@@ -1206,6 +1426,38 @@ def handle_chat_query(question):
             "action": build_no_action()  # no navigation action
         }
 
+    if is_city_count_query(question):
+        rows = fetch_city_damage_stats(limit=500)
+        city_total = len(rows)
+        answer = (
+            f"The active disaster dataset includes {city_total} cities or named locations with address data."
+        )
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action(),
+        }
+
+    if is_damage_label_query(question):
+        answer = "\n".join([
+            "The dataset uses these damage labels:",
+            "- No damage",
+            "- Minor damage",
+            "- Major damage",
+            "- Destroyed",
+        ])
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action(),
+        }
+
     if is_city_list_query(question):
         rows = fetch_city_damage_stats()
         answer = format_city_damage_stats(rows)
@@ -1218,20 +1470,66 @@ def handle_chat_query(question):
             "action": build_no_action(),
         }
 
+    if is_city_ranking_query(question):
+        rows = fetch_city_damage_stats()
+        answer = format_city_ranking(
+            rows,
+            get_ranking_metric(question),
+            extract_top_n(question),
+        )
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action(),
+        }
+
+    comparison_locations = extract_comparison_locations(question)
+    if comparison_locations and is_city_comparison_query(question):
+        first_location, second_location = comparison_locations
+        first_geo, first_label, first_buildings = resolve_location_buildings(first_location)
+        second_geo, second_label, second_buildings = resolve_location_buildings(second_location)
+
+        answer = format_location_comparison(
+            first_label,
+            first_buildings,
+            second_label,
+            second_buildings,
+        )
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action(),
+        }
+
+    percentage_location_text = extract_percentage_location_text(question)
+    if percentage_location_text:
+        _, damage_type = parse_question(question)
+        geo, label_text, all_buildings = resolve_location_buildings(percentage_location_text)
+        matching_buildings = filter_buildings_by_damage(all_buildings, damage_type)
+        answer = format_percentage_response(
+            label_text,
+            damage_type,
+            len(all_buildings),
+            len(matching_buildings),
+        )
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action(),
+        }
+
     general_location_text = extract_general_location_text(question)
     if general_location_text:
-        geo = geocode_address(general_location_text)
-        all_buildings = []
-        if geo and geo.get("bbox") and len(geo["bbox"]) == 4:
-            min_lon, min_lat, max_lon, max_lat = geo["bbox"]
-            all_buildings = get_all_buildings_in_bbox(
-                min_lon,
-                min_lat,
-                max_lon,
-                max_lat,
-            )
-        if len(all_buildings) == 0:
-            all_buildings = get_all_buildings_by_address_text(general_location_text)
+        geo, label_text, all_buildings = resolve_location_buildings(general_location_text)
 
         if len(all_buildings) == 0:
             answer = f"I could not find relevant damage data for {general_location_text}."
@@ -1244,8 +1542,6 @@ def handle_chat_query(question):
                 "action": build_no_action(),
             }
 
-        primary_xbd_id = get_primary_xbd_id(all_buildings)
-        label_text = geo["formatted_address"] if geo else general_location_text
         counts = count_damage_levels(all_buildings)
         answer = format_damage_bullet_summary(counts, label_text)
 
