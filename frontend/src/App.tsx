@@ -4,6 +4,7 @@ import { Toaster, toast } from "sonner";
 import Dashboard from "@/pages/Dashboard";
 
 const MapPage = lazy(() => import("@/pages/MapPage.tsx"));
+const VlmEvaluationPage = lazy(() => import("@/pages/VlmEvaluationPage.tsx"));
 
 function NotFoundRedirect() {
 	useEffect(() => {
@@ -25,6 +26,7 @@ export default function App() {
 					<Route path="/dashboard" element={<Navigate to="/" replace />} />
 					<Route path="/map/:disaster_name?/:xbdid?" element={<MapPage />} />
 					<Route path="/map" element={<MapPage />} />
+					<Route path="/vlm" element={<VlmEvaluationPage />} />
 					<Route path="*" element={<NotFoundRedirect />} />
 				</Routes>
 			</Suspense>
