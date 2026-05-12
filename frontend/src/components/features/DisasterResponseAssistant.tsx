@@ -1,5 +1,5 @@
 /* DisasterResponsesAssistant.tsx */
-import { Eraser, SendHorizontal, Sparkles, Trash2, X } from "lucide-react";
+import { Eraser, MessageCircle, SendHorizontal, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatResponse } from "@/types/chat";
 
@@ -161,7 +161,7 @@ export default function DisasterResponseAssistant({
 		id: crypto.randomUUID(),
 		role: "responseAssistant",
 		content:
-			"Hi, I'm your Disaster Response Assistant. I can help you review damage severity, impacted areas, and assessment insights. What would you like to explore?",
+			"Hi, I'm Hazardly. I can help you review damage severity, impacted areas, and assessment insights. What would you like to explore?",
 	};
 
 	const sanitizeStoredMessages = (
@@ -364,8 +364,8 @@ export default function DisasterResponseAssistant({
 				<div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-primary via-primary to-indigo-500 px-4 py-3 text-white">
 					<div className="flex flex-col">
 						<span className="flex items-center gap-2 font-semibold">
-							<Sparkles className="h-4 w-4" />
-							Disaster Response Assistant
+							<MessageCircle className="h-4 w-4" />
+							Hazardly
 						</span>
 						<span className="text-[11px] opacity-80">
 							Chat history persists in session
@@ -501,7 +501,7 @@ export default function DisasterResponseAssistant({
 							disabled={isAwaitingResponse}
 							rows={1}
 							className="min-h-[44px] min-w-0 flex-1 resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-70"
-							placeholder="Ask Disaster Response Assistant..."
+							placeholder="Ask Hazardly..."
 						/>
 						<button
 							type="button"
@@ -526,7 +526,7 @@ export default function DisasterResponseAssistant({
 					<X className="h-5 w-5" />
 				) : (
 					<>
-						<Sparkles className="h-6 w-6" />
+						<MessageCircle className="h-6 w-6" />
 						<span className="absolute -bottom-1 -right-1 bg-background text-foreground text-[9px] font-semibold px-1.5 py-0.5 rounded-full border border-border">
 							AI
 						</span>
