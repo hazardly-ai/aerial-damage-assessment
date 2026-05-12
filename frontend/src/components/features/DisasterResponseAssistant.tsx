@@ -1,6 +1,12 @@
 /* DisasterResponsesAssistant.tsx */
 import { Eraser, MessageCircle, SendHorizontal, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import type { ChatMessage, ChatResponse } from "@/types/chat";
 
 interface DisasterResponseAssistantProps {
@@ -16,6 +22,8 @@ const stripInlineMarkdown = (content: string): string =>
 		.replace(/\*(.*?)\*/g, "$1")
 		.replace(/_(.*?)_/g, "$1")
 		.replace(/`(.*?)`/g, "$1");
+
+const normalizeMessageContent = (content: string): string => content.trim();
 
 function AnimatedAssistantText({
 	content,
@@ -66,6 +74,47 @@ function AnimatedAssistantText({
 	}, [animate, content]);
 
 	return <>{content.slice(0, visibleLength)}</>;
+}
+
+function SelectableMessageText({
+	children,
+	enableTripleClickSelectAll,
+}: {
+	children: ReactNode;
+	enableTripleClickSelectAll: boolean;
+}) {
+	const containerRef = useRef<HTMLSpanElement | null>(null);
+
+	useEffect(() => {
+		const node = containerRef.current;
+		if (!node || !enableTripleClickSelectAll) {
+			return;
+		}
+
+		const handleMouseDown = (event: MouseEvent) => {
+			if (event.detail !== 3) {
+				return;
+			}
+
+			const selection = window.getSelection();
+			if (!selection) {
+				return;
+			}
+
+			const range = document.createRange();
+			range.selectNodeContents(node);
+			selection.removeAllRanges();
+			selection.addRange(range);
+			event.preventDefault();
+		};
+
+		node.addEventListener("mousedown", handleMouseDown);
+		return () => {
+			node.removeEventListener("mousedown", handleMouseDown);
+		};
+	}, [enableTripleClickSelectAll]);
+
+	return <span ref={containerRef}>{children}</span>;
 }
 
 const requiresExplicitExampleAction = (response: ChatResponse): boolean =>
@@ -195,7 +244,14 @@ export default function DisasterResponseAssistant({
 				),
 		);
 
-		return cleanedMessages.length > 0 ? cleanedMessages : [initialMessage];
+		const normalizedMessages = cleanedMessages.map((entry) => ({
+			...entry,
+			content: normalizeMessageContent(entry.content),
+		}));
+
+		return normalizedMessages.length > 0
+			? normalizedMessages
+			: [initialMessage];
 	};
 
 	const [responseLog, setResponseLog] = useState<ChatMessage[]>(() => {
@@ -264,7 +320,7 @@ export default function DisasterResponseAssistant({
 		const userEntry: ChatMessage = {
 			id: crypto.randomUUID(),
 			role: "fieldUser",
-			content: currentQuery,
+			content: normalizeMessageContent(currentQuery),
 		};
 		const pendingMessageId = crypto.randomUUID();
 		setResponseLog((prev) => [...prev, userEntry]);
@@ -311,10 +367,11 @@ export default function DisasterResponseAssistant({
 			const assistantEntry: ChatMessage = {
 				id: crypto.randomUUID(),
 				role: "responseAssistant",
-				content:
+				content: normalizeMessageContent(
 					data.answer ||
-					data.response ||
-					"Your request has been received. Results will appear here.",
+						data.response ||
+						"Your request has been received. Results will appear here.",
+				),
 				mapCommandSummary: requiresExplicitExampleAction(data)
 					? autoRunExplicitExample
 						? buildMapCommandSummary(data)
@@ -451,21 +508,27 @@ export default function DisasterResponseAssistant({
 									</div>
 								) : (
 									<div className="whitespace-pre-wrap break-words leading-6">
-										<AnimatedAssistantText
-											content={stripInlineMarkdown(entry.content)}
-											animate={
-												entry.role === "responseAssistant" &&
-												animatingMessageId === entry.id
-											}
-											onProgress={() =>
-												bottomRef.current?.scrollIntoView({ behavior: "auto" })
-											}
-											onComplete={() => {
-												if (animatingMessageId === entry.id) {
-													setAnimatingMessageId(null);
+										<SelectableMessageText
+											enableTripleClickSelectAll={entry.role === "fieldUser"}
+										>
+											<AnimatedAssistantText
+												content={stripInlineMarkdown(entry.content)}
+												animate={
+													entry.role === "responseAssistant" &&
+													animatingMessageId === entry.id
 												}
-											}}
-										/>
+												onProgress={() =>
+													bottomRef.current?.scrollIntoView({
+														behavior: "auto",
+													})
+												}
+												onComplete={() => {
+													if (animatingMessageId === entry.id) {
+														setAnimatingMessageId(null);
+													}
+												}}
+											/>
+										</SelectableMessageText>
 									</div>
 								)}
 								{entry.mapCommandSummary ? (
