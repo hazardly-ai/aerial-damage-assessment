@@ -1,6 +1,13 @@
 import mapboxgl from "mapbox-gl";
 import type Compare from "mapbox-gl-compare";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 
@@ -113,9 +120,16 @@ export default function MapView({
 	const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
 		null,
 	);
+	const [popupPlacement, setPopupPlacement] = useState<"above" | "below">(
+		"above",
+	);
 
 	const loadingOverlay = useLoadingOverlay(status);
 	const popupDataRef = useRef<PopupData | null>(null);
+	const popupPosRef = useRef<{ x: number; y: number } | null>(null);
+	const popupOverlayRef = useRef<HTMLDivElement>(null);
+	const popupPlacementObserverRef = useRef<ResizeObserver | null>(null);
+	const popupPlacementSessionRef = useRef<string | null>(null);
 	const selectedBuildingIdRef = useRef<string | number | null>(null);
 	const imageryVisibleRef = useRef(imageryVisible);
 	const boundsRef = useRef<ImageBounds | null>(null);
@@ -133,9 +147,60 @@ export default function MapView({
 	const updatePopupPos = useCallback(() => {
 		if (popupDataRef.current && afterMapRef.current) {
 			const { x, y } = afterMapRef.current.project(popupDataRef.current.lngLat);
-			setPopupPos({ x, y });
+			const next = { x, y };
+			popupPosRef.current = next;
+			setPopupPos(next);
 		}
 	}, []);
+
+	const applyPopupPlacement = useCallback(() => {
+		const pos = popupPosRef.current;
+		const node = popupOverlayRef.current;
+		const mapContainer = containerRef.current;
+		if (!pos || !node || !mapContainer || !popupDataRef.current) return;
+
+		const margin = 12;
+		const arrowSlack = 10;
+		const needed = node.offsetHeight + margin + arrowSlack;
+		const spaceAbove = pos.y;
+		const spaceBelow = mapContainer.clientHeight - pos.y;
+
+		let next: "above" | "below";
+		if (spaceAbove >= needed) {
+			next = "above";
+		} else if (spaceBelow >= needed) {
+			next = "below";
+		} else {
+			next = spaceAbove >= spaceBelow ? "above" : "below";
+		}
+
+		setPopupPlacement((prev) => (prev === next ? prev : next));
+	}, []);
+
+	/** Flip popup below the anchor when it would clip the top of the map; prefer the roomier side if both are tight. */
+	useLayoutEffect(() => {
+		if (!popupData || !popupPos) {
+			popupPlacementObserverRef.current?.disconnect();
+			popupPlacementObserverRef.current = null;
+			popupPlacementSessionRef.current = null;
+			return;
+		}
+
+		const el = popupOverlayRef.current;
+		if (!el) return;
+
+		applyPopupPlacement();
+
+		const sessionKey = popupData.uid;
+		if (popupPlacementSessionRef.current !== sessionKey) {
+			popupPlacementObserverRef.current?.disconnect();
+			popupPlacementObserverRef.current = new ResizeObserver(
+				applyPopupPlacement,
+			);
+			popupPlacementObserverRef.current.observe(el);
+			popupPlacementSessionRef.current = sessionKey;
+		}
+	}, [popupData, popupPos, applyPopupPlacement]);
 
 	const scheduleCompareIdle = useCallback(() => {
 		if (compareIdleTimerRef.current !== null) {
@@ -164,8 +229,10 @@ export default function MapView({
 		}
 		selectedBuildingIdRef.current = null;
 		popupDataRef.current = null;
+		popupPosRef.current = null;
 		setPopupData(null);
 		setPopupPos(null);
+		setPopupPlacement("above");
 	}, []);
 
 	const openPopup = useCallback(
@@ -462,8 +529,10 @@ export default function MapView({
 
 				selectedBuildingIdRef.current = null;
 				popupDataRef.current = null;
+				popupPosRef.current = null;
 				setPopupData(null);
 				setPopupPos(null);
+				setPopupPlacement("above");
 
 				const beforeSource = _before.getSource(
 					BUILDINGS_SOURCE_ID,
@@ -617,7 +686,8 @@ export default function MapView({
 
 			{popupData && popupPos && (
 				<div
-					className="popup-overlay"
+					ref={popupOverlayRef}
+					className={`popup-overlay${popupPlacement === "below" ? " popup-overlay--below" : ""}`}
 					style={{ left: popupPos.x, top: popupPos.y }}
 				>
 					<BuildingPopup
@@ -628,6 +698,7 @@ export default function MapView({
 						actualDamage={popupData.actualDamage}
 						actualDamageColor={popupData.actualDamageColor}
 						onClose={closePopup}
+						placement={popupPlacement}
 					/>
 				</div>
 			)}

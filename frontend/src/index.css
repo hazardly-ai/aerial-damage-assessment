@@ -792,8 +792,17 @@ body {
 	pointer-events: auto;
 }
 
-.popup-card {
+.popup-overlay--below {
+	transform: translate(-50%, 12px);
+}
+
+.popup-root {
+	position: relative;
 	width: 260px;
+}
+
+.popup-card {
+	width: 100%;
 	background: hsl(var(--card));
 	color: hsl(var(--card-foreground));
 	border-radius: 12px;
@@ -801,18 +810,30 @@ body {
 	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
 }
 
+/* Border triangles — reliable direction vs. rotate + clip-path. */
 .popup-arrow {
 	position: absolute;
-	bottom: -7px;
+	bottom: -9px;
 	left: 50%;
-	width: 14px;
-	height: 14px;
+	width: 0;
+	height: 0;
 	padding: 0;
-	background: hsl(var(--card));
-	border-radius: 2px;
+	margin: 0;
+	transform: translateX(-50%);
+	border-left: 8px solid transparent;
+	border-right: 8px solid transparent;
+	border-top: 9px solid hsl(var(--card));
+	border-bottom: none;
+	background: none;
+	border-radius: 0;
 	box-shadow: none;
-	transform: translateX(-50%) rotate(45deg);
-	clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+.popup-arrow--up {
+	bottom: auto;
+	top: -9px;
+	border-top: none;
+	border-bottom: 9px solid hsl(var(--card));
 }
 
 .popup-header {
