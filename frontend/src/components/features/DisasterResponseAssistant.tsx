@@ -151,7 +151,7 @@ export default function DisasterResponseAssistant({
 
 	useEffect(() => {
 		resizeComposer();
-	}, [currentQuery, isOpen, resizeComposer]);
+	}, [resizeComposer]);
 
 	useEffect(() => {
 		if (responseLog.length > 0) {
