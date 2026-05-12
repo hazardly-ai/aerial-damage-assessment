@@ -118,6 +118,14 @@ const buildMapCommandSummary = (response: ChatResponse): string | undefined => {
 		typeof response.action?.params?.address === "string"
 			? response.action.params.address
 			: undefined;
+	const displayAddress = response.focus?.address ?? actionAddress;
+	const totalMatchedBuildings =
+		response.action?.params?.building_ids?.length ?? 0;
+	const showingRepresentativeScene =
+		typeof targetXbdId === "number" &&
+		totalMatchedBuildings > 0 &&
+		response.highlighted_buildings.length > 0 &&
+		totalMatchedBuildings > response.highlighted_buildings.length;
 	if (response.action?.target === "building") {
 		return typeof targetXbdId === "number"
 			? `Opened the matched building on XBD ${targetXbdId}.`
@@ -125,16 +133,20 @@ const buildMapCommandSummary = (response: ChatResponse): string | undefined => {
 	}
 	if (
 		response.action?.reason === "address_query" &&
-		actionAddress &&
+		displayAddress &&
 		response.action?.target === "map"
 	) {
 		return typeof targetXbdId === "number"
-			? `Moved the map to ${actionAddress} on XBD ${targetXbdId}.`
-			: `Moved the map to ${actionAddress}.`;
+			? showingRepresentativeScene
+				? `Moved the map to ${displayAddress}, showing representative XBD ${targetXbdId}.`
+				: `Moved the map to ${displayAddress} on XBD ${targetXbdId}.`
+			: `Moved the map to ${displayAddress}.`;
 	}
 	if (response.action?.target === "map" && response.focus?.address) {
 		return typeof targetXbdId === "number"
-			? `Moved the map to ${response.focus.address} on XBD ${targetXbdId}.`
+			? showingRepresentativeScene
+				? `Moved the map to ${response.focus.address}, showing representative XBD ${targetXbdId}.`
+				: `Moved the map to ${response.focus.address} on XBD ${targetXbdId}.`
 			: `Moved the map to ${response.focus.address}.`;
 	}
 	if (response.highlighted_buildings.length > 0) {

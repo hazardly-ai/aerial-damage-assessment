@@ -34,6 +34,7 @@ load_dotenv(BACKEND_DIR / ".env", override=True)
 DEFAULT_DISASTER_NAME = os.getenv("DEFAULT_DISASTER_NAME", "hurricane-harvey")
 STREET_ADDRESS_OVERVIEW_RADIUS_M = 300
 EXACT_ADDRESS_OVERVIEW_RADIUS_M = 75
+NAMED_LOCATION_OVERVIEW_RADIUS_M = 5000
 
 
 # function to connect to database using environment variables
@@ -548,7 +549,16 @@ def resolve_location_buildings(location_text):
     if not has_explicit_region:
         buildings = get_all_buildings_by_address_text(normalized_location)
         if len(buildings) > 0:
-            return None, normalized_location, buildings
+            if looks_like_street_address(normalized_location):
+                return None, normalized_location, buildings
+
+            geo = geocode_address(
+                f"{normalized_location}, Texas"
+                if DEFAULT_DISASTER_NAME == "hurricane-harvey"
+                else normalized_location
+            )
+            label_text = geo["formatted_address"] if geo else normalized_location
+            return geo, label_text, buildings
         if DEFAULT_DISASTER_NAME == "hurricane-harvey":
             geocode_query = f"{normalized_location}, Texas"
 
@@ -1595,7 +1605,13 @@ def is_full_dataset_query(question):
         "all buildings",
         "overall dataset",
         "dataset summary",
-        "overall damage in the dataset"
+        "overall damage in the dataset",
+        "tell me about the data",
+        "tell me about the dataset",
+        "about the data",
+        "about the dataset",
+        "describe the data",
+        "describe the dataset",
     ])
     if not has_dataset_phrase:
         return False
@@ -2336,29 +2352,34 @@ def handle_chat_query(question):
         save_turn(question, answer)
         return payload
 
-    # exact damage count questions use filtered buildings
-    buildings = get_buildings_near(
-        geo["lon"],
-        geo["lat"],
-        5000,
-        damage_type
+    resolved_geo, resolved_label_text, all_buildings = resolve_location_buildings(
+        address
     )
-    all_nearby_buildings = get_all_buildings_near(
-        geo["lon"],
-        geo["lat"],
-        5000
-    )
-    used_address_fallback = len(buildings) == 0
-    if used_address_fallback:
-        buildings = get_buildings_by_address_text(address, damage_type)
+    map_geo = resolved_geo or geo
+    location_label = resolved_label_text or geo["formatted_address"]
+
+    if len(all_buildings) == 0 and geo:
+        all_buildings = get_all_buildings_near(
+            geo["lon"],
+            geo["lat"],
+            NAMED_LOCATION_OVERVIEW_RADIUS_M,
+        )
+        if len(all_buildings) > 0:
+            resolved_geo = geo
+            map_geo = geo
+            location_label = geo["formatted_address"]
+
+    # exact damage count queries should count from the full resolved location set,
+    # then choose one representative scene only for map visualization.
+    buildings = filter_buildings_by_damage(all_buildings, damage_type)
     primary_buildings_xbd_id = (
-        get_nearest_xbd_id(all_nearby_buildings)
-        if len(all_nearby_buildings) > 0
-        else get_nearest_xbd_id(buildings)
+        get_primary_xbd_id(buildings)
+        if len(buildings) > 0
+        else get_primary_xbd_id(all_buildings)
     )
     scene_buildings = get_buildings_for_primary_scene(buildings, primary_buildings_xbd_id)
     if len(scene_buildings) == 0:
-        primary_buildings_xbd_id = get_nearest_xbd_id(buildings)
+        primary_buildings_xbd_id = get_primary_xbd_id(buildings)
         scene_buildings = get_buildings_for_primary_scene(buildings, primary_buildings_xbd_id)
 
     if len(buildings) == 0:
@@ -2368,18 +2389,18 @@ def handle_chat_query(question):
             "answer": answer,  # chatbot response text
             "response": answer,  # same text for frontend compatibility
             "focus": {
-                "lat": geo["lat"],  # latitude of the searched location
-                "lon": geo["lon"],  # longitude of the searched location
-                "address": geo["formatted_address"]  # readable searched address
+                "lat": map_geo["lat"],  # latitude of the searched location
+                "lon": map_geo["lon"],  # longitude of the searched location
+                "address": map_geo["formatted_address"]  # readable searched address
             },
             "highlighted_buildings": [],  # no buildings matched
             "action": build_no_action()  # no navigation target because no building was found
         }
 
     if damage_type == "no-damage":
-        answer = f"{len(buildings)} buildings in {geo['formatted_address']} appear to have no visible damage."
+        answer = f"{len(buildings)} buildings in {location_label} appear to have no visible damage."
     else:
-        answer = generate_llm_answer(buildings, geo["formatted_address"], damage_type)
+        answer = generate_llm_answer(buildings, location_label, damage_type)
 
     # if only one building matched, frontend can route directly to that building
     if len(buildings) == 1:
@@ -2387,10 +2408,14 @@ def handle_chat_query(question):
 
     # if multiple buildings matched, frontend should route/focus to the map view
     else:
-        action = build_map_action_from_buildings(buildings, geo["formatted_address"], primary_buildings_xbd_id)
+        action = build_map_action_from_buildings(
+            buildings,
+            location_label,
+            primary_buildings_xbd_id,
+        )
 
     # package chatbot answer, map focus, highlighted buildings, and navigation action
-    payload = build_map_payload(answer, geo, scene_buildings, action)
+    payload = build_map_payload(answer, map_geo, scene_buildings, action)
     save_turn(question, answer)
     return payload
 
