@@ -1,6 +1,6 @@
 /* DisasterResponsesAssistant.tsx */
 import { Eraser, SendHorizontal, Sparkles, Trash2, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatResponse } from "@/types/chat";
 
 interface DisasterResponseAssistantProps {
@@ -132,12 +132,26 @@ export default function DisasterResponseAssistant({
 	const bottomRef = useRef<HTMLDivElement | null>(null);
 	const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-	useEffect(() => {
+	const resizeComposer = useCallback(() => {
 		const textarea = inputRef.current;
 		if (!textarea) return;
-		textarea.style.height = "0px";
-		textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+		const computedStyle = window.getComputedStyle(textarea);
+		const lineHeight = Number.parseFloat(computedStyle.lineHeight) || 20;
+		const verticalPadding =
+			Number.parseFloat(computedStyle.paddingTop) +
+				Number.parseFloat(computedStyle.paddingBottom) || 0;
+		const maxHeight = lineHeight * 6 + verticalPadding;
+
+		textarea.style.height = "auto";
+		const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+		textarea.style.height = `${nextHeight}px`;
+		textarea.style.overflowY =
+			textarea.scrollHeight > maxHeight ? "auto" : "hidden";
 	}, []);
+
+	useEffect(() => {
+		resizeComposer();
+	}, [currentQuery, isOpen, resizeComposer]);
 
 	useEffect(() => {
 		if (responseLog.length > 0) {
@@ -383,7 +397,10 @@ export default function DisasterResponseAssistant({
 						<textarea
 							ref={inputRef}
 							value={currentQuery}
-							onChange={(e) => setCurrentQuery(e.target.value)}
+							onChange={(e) => {
+								setCurrentQuery(e.target.value);
+								resizeComposer();
+							}}
 							onKeyDown={(e) => {
 								if (e.key === "Enter" && !e.shiftKey) {
 									e.preventDefault();
@@ -392,7 +409,7 @@ export default function DisasterResponseAssistant({
 							}}
 							disabled={isAwaitingResponse}
 							rows={1}
-							className="max-h-40 min-h-[44px] min-w-0 flex-1 resize-none overflow-y-hidden rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-70"
+							className="min-h-[44px] min-w-0 flex-1 resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-70"
 							placeholder="Ask Disaster Response Assistant..."
 						/>
 						<button
