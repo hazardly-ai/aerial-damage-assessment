@@ -1,5 +1,5 @@
 /* DisasterResponsesAssistant.tsx */
-import { Eraser, Sparkles, Trash2, X } from "lucide-react";
+import { Eraser, SendHorizontal, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatResponse } from "@/types/chat";
 
@@ -10,6 +10,14 @@ interface DisasterResponseAssistantProps {
 }
 
 const PENDING_MESSAGE_ID = "assistant-pending";
+
+const stripInlineMarkdown = (content: string): string =>
+	content
+		.replace(/\*\*(.*?)\*\*/g, "$1")
+		.replace(/__(.*?)__/g, "$1")
+		.replace(/\*(.*?)\*/g, "$1")
+		.replace(/_(.*?)_/g, "$1")
+		.replace(/`(.*?)`/g, "$1");
 
 function AnimatedAssistantText({
 	content,
@@ -243,12 +251,12 @@ export default function DisasterResponseAssistant({
 	return (
 		<div className="pointer-events-none fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-3">
 			<div
-				className={`chat-panel-container pointer-events-auto w-[min(360px,calc(100vw-3rem))] h-[min(calc(100dvh-12rem),700px)] bg-card text-card-foreground border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden ${
+				className={`chat-panel-container pointer-events-auto w-[min(408px,calc(100vw-2rem))] h-[min(calc(100dvh-10rem),720px)] overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl backdrop-blur-sm flex flex-col ${
 					isOpen ? "chat-panel-open" : "chat-panel-closed"
 				}`}
 			>
 				{/* Header */}
-				<div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-primary to-indigo-500 text-white">
+				<div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-primary via-primary to-indigo-500 px-4 py-3 text-white">
 					<div className="flex flex-col">
 						<span className="flex items-center gap-2 font-semibold">
 							<Sparkles className="h-4 w-4" />
@@ -262,7 +270,7 @@ export default function DisasterResponseAssistant({
 						<button
 							type="button"
 							onClick={onClearMapHighlights}
-							className="p-1 rounded-md transition-colors duration-200 hover:bg-white/20"
+							className="rounded-md p-1.5 transition-colors duration-200 hover:bg-white/15"
 							aria-label="Clear highlighted buildings"
 							title="Clear highlights"
 						>
@@ -271,14 +279,18 @@ export default function DisasterResponseAssistant({
 						<button
 							type="button"
 							onClick={clearChat}
-							className="p-1 rounded-md transition-colors duration-200 hover:bg-white/20"
+							className="rounded-md p-1.5 transition-colors duration-200 hover:bg-white/15"
+							aria-label="Clear chat"
+							title="Clear chat"
 						>
 							<Trash2 className="h-4 w-4" />
 						</button>
 						<button
 							type="button"
 							onClick={() => setIsOpen(false)}
-							className="ui-fade-opacity hover:opacity-80"
+							className="rounded-md p-1.5 transition-colors duration-200 hover:bg-white/15"
+							aria-label="Close chat"
+							title="Close"
 						>
 							<X className="h-4 w-4" />
 						</button>
@@ -286,71 +298,88 @@ export default function DisasterResponseAssistant({
 				</div>
 
 				{/* Messages */}
-				<div className="flex-1 p-4 overflow-y-auto text-sm space-y-4 bg-background">
+				<div className="flex-1 space-y-4 overflow-y-auto bg-muted/20 p-4 text-sm">
 					{responseLog.map((entry) => (
 						<div
 							key={entry.id}
-							className={`rounded-xl max-w-[85%] border transition-colors duration-theme ease-theme ${
+							className={
 								entry.role === "fieldUser"
-									? "ml-auto bg-primary text-primary-foreground border-primary p-3"
-									: entry.id === PENDING_MESSAGE_ID
-										? "w-fit max-w-[72px] bg-card text-foreground border-border shadow-sm px-3 py-2"
-										: "bg-card text-foreground border-border shadow-sm p-3"
-							}`}
+									? "ml-auto max-w-[88%]"
+									: "max-w-[88%]"
+							}
 						>
-							{entry.id === PENDING_MESSAGE_ID ? (
-								<div className="flex items-center gap-1.5 py-1">
-									<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
-									<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
-									<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" />
-								</div>
-							) : (
-								<div className="whitespace-pre-wrap break-words">
-									<AnimatedAssistantText
-										content={entry.content}
-										animate={
-											entry.role === "responseAssistant" &&
-											animatingMessageId === entry.id
-										}
-										onProgress={() =>
-											bottomRef.current?.scrollIntoView({ behavior: "auto" })
-										}
-										onComplete={() => {
-											if (animatingMessageId === entry.id) {
-												setAnimatingMessageId(null);
+							<div
+								className={`mb-1 px-1 text-[11px] font-medium uppercase tracking-[0.08em] ${
+									entry.role === "fieldUser"
+										? "text-right text-primary/80"
+										: "text-muted-foreground"
+								}`}
+							>
+								{entry.role === "fieldUser" ? "You" : "Assistant"}
+							</div>
+							<div
+								className={`rounded-2xl border transition-colors duration-theme ease-theme ${
+									entry.role === "fieldUser"
+										? "bg-primary px-3.5 py-3 text-primary-foreground border-primary shadow-sm"
+										: entry.id === PENDING_MESSAGE_ID
+											? "w-fit max-w-[72px] border-border bg-card px-3 py-2 text-foreground shadow-sm"
+											: "border-border bg-card px-3.5 py-3 text-foreground shadow-sm"
+								}`}
+							>
+								{entry.id === PENDING_MESSAGE_ID ? (
+									<div className="flex items-center gap-1.5 py-1">
+										<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
+										<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
+										<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" />
+									</div>
+								) : (
+									<div className="whitespace-pre-wrap break-words leading-6">
+										<AnimatedAssistantText
+											content={stripInlineMarkdown(entry.content)}
+											animate={
+												entry.role === "responseAssistant" &&
+												animatingMessageId === entry.id
 											}
-										}}
-									/>
-								</div>
-							)}
-							{entry.mapCommandSummary ? (
-								<div className="mt-2 border-t border-border/70 pt-2 text-xs text-muted-foreground">
-									{entry.mapCommandSummary}
-								</div>
-							) : null}
-							{entry.suggestedActionLabel && entry.actionPayload ? (
-								<div className="mt-3">
-									<button
-										type="button"
-										onClick={() => {
-											if (entry.actionPayload) {
-												onRunSuggestedAction?.(entry.actionPayload);
+											onProgress={() =>
+												bottomRef.current?.scrollIntoView({ behavior: "auto" })
 											}
-										}}
-										className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-									>
-										{entry.suggestedActionLabel}
-									</button>
-								</div>
-							) : null}
+											onComplete={() => {
+												if (animatingMessageId === entry.id) {
+													setAnimatingMessageId(null);
+												}
+											}}
+										/>
+									</div>
+								)}
+								{entry.mapCommandSummary ? (
+									<div className="mt-3 border-t border-border/70 pt-2 text-xs text-muted-foreground">
+										{entry.mapCommandSummary}
+									</div>
+								) : null}
+								{entry.suggestedActionLabel && entry.actionPayload ? (
+									<div className="mt-3">
+										<button
+											type="button"
+											onClick={() => {
+												if (entry.actionPayload) {
+													onRunSuggestedAction?.(entry.actionPayload);
+												}
+											}}
+											className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+										>
+											{entry.suggestedActionLabel}
+										</button>
+									</div>
+								) : null}
+							</div>
 						</div>
 					))}
 					<div ref={bottomRef} />
 				</div>
 
 				{/* Input */}
-				<div className="border-t border-border p-3 bg-card">
-					<div className="flex items-end gap-2">
+				<div className="border-t border-border bg-card p-3">
+					<div className="flex items-center gap-2">
 						<textarea
 							ref={inputRef}
 							value={currentQuery}
@@ -363,16 +392,17 @@ export default function DisasterResponseAssistant({
 							}}
 							disabled={isAwaitingResponse}
 							rows={1}
-							className="max-h-40 min-h-[42px] flex-1 resize-none overflow-y-auto bg-background text-foreground border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+							className="max-h-40 min-h-[44px] min-w-0 flex-1 resize-none overflow-y-hidden rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-70"
 							placeholder="Ask Disaster Response Assistant..."
 						/>
 						<button
 							type="button"
 							onClick={handleQuery}
 							disabled={isAwaitingResponse}
-							className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm hover:opacity-90"
+							className="inline-flex h-11 w-[112px] shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
 						>
-							{isAwaitingResponse ? "Waiting..." : "Send"}
+							<SendHorizontal className="h-4 w-4" />
+							{isAwaitingResponse ? "Waiting" : "Send"}
 						</button>
 					</div>
 				</div>

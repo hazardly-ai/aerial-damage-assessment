@@ -618,6 +618,33 @@ def format_city_ranking(rows, metric, limit):
     return "\n".join(lines)
 
 
+def synthesize_city_ranking_answer(rows, metric, limit):
+    fallback = format_city_ranking(rows, metric, limit)
+    metric_label = {
+        "total": "total buildings",
+        "no-damage": "no-damage buildings",
+        "minor-damage": "minor-damage buildings",
+        "major-damage": "major-damage buildings",
+        "destroyed": "destroyed buildings",
+    }[metric]
+    prompt = f"""
+You are Hazardly, a disaster damage assessment assistant.
+
+Use only these exact facts:
+Ranking metric: {metric_label}
+Top rows: {sort_city_rows(rows, metric)[:limit]}
+
+Write a concise answer for the user.
+
+Rules:
+- Use 3 to 5 short bullet points.
+- Keep the city names and numbers exact.
+- Mention which metric is being ranked.
+- Do not invent extra numbers or places.
+"""
+    return synthesize_structured_answer(prompt, fallback)
+
+
 def format_percentage_response(location_text, damage_type, total, matching_total):
     if total == 0:
         return f"I couldn't find damage assessment data for {location_text}."
@@ -632,6 +659,29 @@ def format_percentage_response(location_text, damage_type, total, matching_total
         f"- Share of total: {percentage}%",
     ]
     return "\n".join(lines)
+
+
+def synthesize_percentage_answer(location_text, damage_type, total, matching_total):
+    fallback = format_percentage_response(location_text, damage_type, total, matching_total)
+    percentage = 0 if total == 0 else round((matching_total / total) * 100, 1)
+    prompt = f"""
+You are Hazardly, a disaster damage assessment assistant.
+
+Use only these exact facts:
+Location: {location_text}
+Damage type: {damage_type}
+Total buildings: {total}
+Matching buildings: {matching_total}
+Percentage: {percentage}
+
+Write a concise answer for the user.
+
+Rules:
+- Use 2 to 4 short bullet points.
+- Keep the counts and percentage exact.
+- Do not invent extra numbers.
+"""
+    return synthesize_structured_answer(prompt, fallback)
 
 
 def format_location_comparison(first_label, first_buildings, second_label, second_buildings):
@@ -665,6 +715,30 @@ def format_location_comparison(first_label, first_buildings, second_label, secon
         worse_line,
     ]
     return "\n".join(lines)
+
+
+def synthesize_location_comparison_answer(first_label, first_buildings, second_label, second_buildings):
+    fallback = format_location_comparison(first_label, first_buildings, second_label, second_buildings)
+    first_counts = count_damage_levels(first_buildings)
+    second_counts = count_damage_levels(second_buildings)
+    prompt = f"""
+You are Hazardly, a disaster damage assessment assistant.
+
+Use only these exact facts:
+First location: {first_label}
+First counts: {first_counts}
+Second location: {second_label}
+Second counts: {second_counts}
+
+Write a concise answer for the user.
+
+Rules:
+- Use 3 to 5 short bullet points.
+- Compare the two locations directly.
+- Keep all counts exact.
+- Do not invent extra numbers or conclusions not supported by the counts.
+"""
+    return synthesize_structured_answer(prompt, fallback)
 
 
 def normalize_street_query_parts(address_text):
@@ -1028,6 +1102,26 @@ def format_damage_bullet_summary(counts, location_text):
     return "\n".join(lines)
 
 
+def synthesize_location_overview_answer(location_text, counts):
+    fallback = format_damage_bullet_summary(counts, location_text)
+    prompt = f"""
+You are Hazardly, a disaster damage assessment assistant.
+
+Use only these exact facts:
+Location: {location_text}
+Counts: {counts}
+
+Write a concise answer for the user.
+
+Rules:
+- Use 3 to 5 short bullet points.
+- Mention the total buildings and the key damage breakdown.
+- Do not invent extra numbers.
+- Do not mention databases, SQL, retrieval, tools, or models.
+"""
+    return synthesize_structured_answer(prompt, fallback)
+
+
 
 
 # function used when there is no frontend navigation action
@@ -1183,6 +1277,15 @@ def call_nemotron(prompt):
         return content if content else None
     except Exception:
         return None
+
+
+def synthesize_structured_answer(prompt, fallback_answer):
+    result = call_nemotron(prompt)
+    if not result:
+        return fallback_answer
+
+    cleaned = str(result).strip().strip('"')
+    return cleaned if cleaned else fallback_answer
 
 
 def fallback_damage_answer(total, address, damage_type):
@@ -1512,6 +1615,25 @@ def format_city_damage_stats(rows):
     return "\n".join(lines)
 
 
+def synthesize_city_damage_stats_answer(rows):
+    fallback = format_city_damage_stats(rows)
+    prompt = f"""
+You are Hazardly, a disaster damage assessment assistant.
+
+Use only these exact facts:
+City rows: {rows[:8]}
+
+Write a concise answer for the user.
+
+Rules:
+- Use 3 to 5 short bullet points.
+- Keep city names and counts exact.
+- Mention that this is a sample of cities in the active dataset.
+- Do not invent extra places or numbers.
+"""
+    return synthesize_structured_answer(prompt, fallback)
+
+
 def summarize_damage_data(buildings, address):
     counts = {}
 
@@ -1617,7 +1739,7 @@ def handle_chat_query(question):
 
     if is_city_list_query(question):
         rows = fetch_city_damage_stats()
-        answer = format_city_damage_stats(rows)
+        answer = synthesize_city_damage_stats_answer(rows)
         save_turn(question, answer)
         return {
             "answer": answer,
@@ -1629,7 +1751,7 @@ def handle_chat_query(question):
 
     if is_city_ranking_query(question):
         rows = fetch_city_damage_stats()
-        answer = format_city_ranking(
+        answer = synthesize_city_ranking_answer(
             rows,
             get_ranking_metric(question),
             extract_top_n(question),
@@ -1649,7 +1771,7 @@ def handle_chat_query(question):
         first_geo, first_label, first_buildings = resolve_location_buildings(first_location)
         second_geo, second_label, second_buildings = resolve_location_buildings(second_location)
 
-        answer = format_location_comparison(
+        answer = synthesize_location_comparison_answer(
             first_label,
             first_buildings,
             second_label,
@@ -1669,7 +1791,7 @@ def handle_chat_query(question):
         _, damage_type = parse_question(question)
         geo, label_text, all_buildings = resolve_location_buildings(percentage_location_text)
         matching_buildings = filter_buildings_by_damage(all_buildings, damage_type)
-        answer = format_percentage_response(
+        answer = synthesize_percentage_answer(
             label_text,
             damage_type,
             len(all_buildings),
@@ -1700,7 +1822,7 @@ def handle_chat_query(question):
             }
 
         counts = count_damage_levels(all_buildings)
-        answer = format_damage_bullet_summary(counts, label_text)
+        answer = synthesize_location_overview_answer(label_text, counts)
 
         save_turn(question, answer)
         return {
@@ -1727,7 +1849,7 @@ def handle_chat_query(question):
     # full dataset summary does not have a single map focus
     if is_full_dataset_query(question):
         counts = get_full_dataset_damage_counts()
-        answer = format_damage_bullet_summary(counts, "the full dataset")
+        answer = synthesize_location_overview_answer("the full dataset", counts)
         save_turn(question, answer)
         return {
             "answer": answer,
@@ -1766,7 +1888,7 @@ def handle_chat_query(question):
         label_text = geo["formatted_address"] if geo else on_location_text
         if wants_all_buildings:
             counts = count_damage_levels(buildings)
-            answer = format_damage_bullet_summary(counts, f"addresses on {label_text}")
+            answer = synthesize_location_overview_answer(f"addresses on {label_text}", counts)
         elif damage_type == "no-damage":
             answer = f"{len(buildings)} buildings on {label_text} appear to have no visible damage."
         else:

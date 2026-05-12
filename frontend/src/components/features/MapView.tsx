@@ -56,6 +56,7 @@ interface MapViewProps {
 
 const CHAT_FOCUS_FALLBACK_ZOOM = 18;
 const CHAT_FIT_PADDING = 72;
+const MAP_LOADING_WATCHDOG_MS = 45000;
 
 function extendBoundsWithGeometry(
 	bounds: mapboxgl.LngLatBounds,
@@ -358,6 +359,21 @@ export default function MapView({
 	const sceneRetryCountRef = useRef(sceneRetryCount);
 	bootstrapRetryCountRef.current = bootstrapRetryCount;
 	sceneRetryCountRef.current = sceneRetryCount;
+
+	useEffect(() => {
+		if (status !== "loading") return;
+
+		const timeoutId = window.setTimeout(() => {
+			setErrorMessage(
+				"Map loading took too long and was stopped. Please retry the map.",
+			);
+			setStatus("error");
+			setSceneLoading(false);
+			onMetricsChange?.(null);
+		}, MAP_LOADING_WATCHDOG_MS);
+
+		return () => window.clearTimeout(timeoutId);
+	}, [status, onMetricsChange]);
 
 	useEffect(() => {
 		setDisasterId(initialDisasterId);
