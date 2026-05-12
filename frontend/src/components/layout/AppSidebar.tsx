@@ -1,7 +1,8 @@
 type AppSidebarProps = {
-	activeSection: "overview" | "buildings";
+	activeSection: "overview" | "buildings" | "image-pairs";
 	onOverview: () => void;
 	onBuildings: () => void;
+	onImagePairs: () => void;
 	disabled?: boolean;
 };
 
@@ -9,6 +10,7 @@ export default function AppSidebar({
 	activeSection,
 	onOverview,
 	onBuildings,
+	onImagePairs,
 	disabled = false,
 }: AppSidebarProps) {
 	const buttonBase =
@@ -45,6 +47,19 @@ export default function AppSidebar({
 						}`}
 					>
 						Buildings
+					</button>
+
+					<button
+						type="button"
+						disabled={disabled}
+						onClick={onImagePairs}
+						className={`${buttonBase} ${
+							activeSection === "image-pairs"
+								? "bg-primary/10 border-b border-primary/30"
+								: "bg-background/50 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+						}`}
+					>
+						Image Pairs
 					</button>
 				</div>
 			</aside>

@@ -1,29 +1,33 @@
+import { lazy, Suspense, useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import Dashboard from "@/pages/Dashboard";
-import MapPage from "@/pages/MapPage.tsx";
-import VlmEvaluationPage from "@/pages/VlmEvaluationPage";
+
+const MapPage = lazy(() => import("@/pages/MapPage.tsx"));
+
+function NotFoundRedirect() {
+	useEffect(() => {
+		toast.warning("Page not found. Redirected to the dashboard.", {
+			id: "route-not-found",
+		});
+	}, []);
+
+	return <Navigate to="/" replace />;
+}
 
 export default function App() {
 	return (
 		<>
 			<Toaster position="bottom-center" richColors closeButton />
-
-			<Routes>
-				{/* Core pages */}
-				<Route path="/" element={<Dashboard />} />
-				<Route path="/dashboard" element={<Navigate to="/" replace />} />
-
-				{/* Map routes */}
-				<Route path="/map/:disaster_name?/:xbdid?" element={<MapPage />} />
-				<Route path="/map" element={<MapPage />} />
-
-				{/* VLM Route*/}
-				<Route path="/vlm" element={<VlmEvaluationPage />} />
-
-				{/* fallback */}
-				<Route path="*" element={<Navigate to="/" replace />} />
-			</Routes>
+			<Suspense fallback={null}>
+				<Routes>
+					<Route path="/" element={<Dashboard />} />
+					<Route path="/dashboard" element={<Navigate to="/" replace />} />
+					<Route path="/map/:disaster_name?/:xbdid?" element={<MapPage />} />
+					<Route path="/map" element={<MapPage />} />
+					<Route path="*" element={<NotFoundRedirect />} />
+				</Routes>
+			</Suspense>
 		</>
 	);
 }

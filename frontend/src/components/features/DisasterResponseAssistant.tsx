@@ -33,10 +33,13 @@ export default function DisasterResponseAssistant() {
 
 	const [currentQuery, setCurrentQuery] = useState("");
 	const bottomRef = useRef<HTMLDivElement | null>(null);
+	const messageCount = responseLog.length;
 
 	useEffect(() => {
-		bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-	}, []);
+		if (messageCount > 0) {
+			bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+		}
+	}, [messageCount]);
 
 	useEffect(() => {
 		sessionStorage.setItem("chatHistory", JSON.stringify(responseLog));
@@ -108,14 +111,14 @@ export default function DisasterResponseAssistant() {
 						<button
 							type="button"
 							onClick={clearChat}
-							className="p-1 rounded-md hover:bg-white/20 transition"
+							className="p-1 rounded-md transition-colors duration-200 hover:bg-white/20"
 						>
 							<Trash2 className="h-4 w-4" />
 						</button>
 						<button
 							type="button"
 							onClick={() => setIsOpen(false)}
-							className="hover:opacity-80 transition-opacity"
+							className="ui-fade-opacity hover:opacity-80"
 						>
 							<X className="h-4 w-4" />
 						</button>
@@ -127,7 +130,7 @@ export default function DisasterResponseAssistant() {
 					{responseLog.map((entry) => (
 						<div
 							key={entry.id}
-							className={`p-3 rounded-xl max-w-[85%] border transition-all duration-300 ${
+							className={`p-3 rounded-xl max-w-[85%] border transition-colors duration-theme ease-theme ${
 								entry.role === "fieldUser"
 									? "ml-auto bg-primary text-primary-foreground border-primary"
 									: "bg-card text-foreground border-border shadow-sm"
@@ -165,7 +168,7 @@ export default function DisasterResponseAssistant() {
 			<button
 				type="button"
 				onClick={() => setIsOpen((prev) => !prev)}
-				className="pointer-events-auto relative flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-br from-primary to-indigo-500 text-white shadow-xl hover:scale-105 active:scale-95 transition-all"
+				className="pointer-events-auto relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-indigo-500 text-white shadow-xl transition-transform duration-200 hover:scale-105 active:scale-95"
 			>
 				{isOpen ? (
 					<X className="h-5 w-5" />

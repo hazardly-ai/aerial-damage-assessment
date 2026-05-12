@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+	useLocation,
+	useNavigate,
+	useParams,
+	useSearchParams,
+} from "react-router-dom";
 import { toast } from "sonner";
 import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant.tsx";
 import MapMetricsPanel from "@/components/features/MapMetricsPanel.tsx";
 import MapView from "@/components/features/MapView.tsx";
+import { useXbdSelectorState } from "@/components/features/XbdSelector";
 import Footer from "@/components/layout/Footer.tsx";
 import Header from "@/components/layout/Header.tsx";
 import type { SceneMetrics } from "@/types/map";
@@ -14,11 +20,20 @@ export default function MapPage() {
 		disaster_name: string;
 		xbdid: string;
 	}>();
+	const location = useLocation();
 	const navigate = useNavigate();
 	const [searchParams] = useSearchParams();
+	const suppressMissingSceneToast =
+		location.state !== null &&
+		typeof location.state === "object" &&
+		"suppressMissingSceneToast" in location.state &&
+		location.state.suppressMissingSceneToast === true;
 	const buildingFromUrl = searchParams.get("building")?.trim() ?? undefined;
 	const normalizedDisasterParam = disaster_name?.trim();
 	const requiresDisasterResolution = Boolean(normalizedDisasterParam);
+	const disasterFallbackPath = normalizedDisasterParam
+		? `/map/${normalizedDisasterParam}`
+		: "/map";
 
 	const [resolvedDisasterId, setResolvedDisasterId] = useState<number | null>(
 		1,
@@ -27,19 +42,27 @@ export default function MapPage() {
 	const [sceneMetrics, setSceneMetrics] = useState<SceneMetrics | null>(null);
 
 	// 1. Validate XBD ID: If it's garbage text or missing, fallback to 18
-	const isXbdMissing = xbdid === undefined || xbdid.trim() === "";
-	const isXbdMalformed =
-		!isXbdMissing && Number.isNaN(Number.parseInt(xbdid, 10));
+	const normalizedXbdId = xbdid?.trim();
+	const isXbdMissing = normalizedXbdId === undefined || normalizedXbdId === "";
+	const isXbdMalformed = !isXbdMissing && !/^\d+$/.test(normalizedXbdId);
 	const parsedXbdId =
-		isXbdMissing || isXbdMalformed ? 18 : Number.parseInt(xbdid, 10);
+		isXbdMissing || isXbdMalformed ? 18 : Number(normalizedXbdId);
+	const [selectedXbdId, setSelectedXbdId] = useState(parsedXbdId);
+
+	useEffect(() => {
+		setSelectedXbdId(parsedXbdId);
+	}, [parsedXbdId]);
 
 	const hasRedirected = useRef(false);
+	const lastRouteKey = useRef<string | null>(null);
 
 	useEffect(() => {
-		hasRedirected.current = false;
-	}, []);
+		const routeKey = `${normalizedDisasterParam ?? ""}:${xbdid ?? ""}`;
+		if (lastRouteKey.current !== routeKey) {
+			hasRedirected.current = false;
+			lastRouteKey.current = routeKey;
+		}
 
-	useEffect(() => {
 		async function resolveDisaster() {
 			if (hasRedirected.current) return;
 			if (!requiresDisasterResolution) {
@@ -69,21 +92,20 @@ export default function MapPage() {
 
 				if (isXbdMissing || isXbdMalformed) {
 					if (normalizedDisasterParam || xbdid) {
-						hasRedirected.current = true;
-
 						if (isXbdMalformed) {
+							hasRedirected.current = true;
+							setResolvedDisasterId(disasterId);
 							toast.warning(`"${xbdid}" is not a valid scene ID.`, {
 								id: "malformed-xbd",
 							});
-						} else if (normalizedDisasterParam) {
+							navigate(disasterFallbackPath, { replace: true });
+							return;
+						} else if (normalizedDisasterParam && !suppressMissingSceneToast) {
 							toast.info(
 								`No scene specified for ${normalizedDisasterParam}. Loading default view.`,
 								{ id: "missing-xbd" },
 							);
 						}
-
-						navigate("/map", { replace: true });
-						return;
 					}
 				}
 
@@ -108,16 +130,29 @@ export default function MapPage() {
 		xbdid,
 		isXbdMissing,
 		isXbdMalformed,
+		disasterFallbackPath,
 		navigate,
+		suppressMissingSceneToast,
 	]);
 
 	const handleInvalidScene = useCallback(
 		(message: string) => {
 			toast.error(message);
-			navigate("/map", { replace: true });
+			navigate(disasterFallbackPath, {
+				replace: true,
+				state: { suppressMissingSceneToast: true },
+			});
 		},
-		[navigate],
+		[disasterFallbackPath, navigate],
 	);
+
+	const disasterId = resolvedDisasterId ?? 1;
+	const xbdSelector = useXbdSelectorState({
+		disasterId,
+		selectedXbdId,
+		onChange: setSelectedXbdId,
+		allowFallbackSelection: isXbdMissing,
+	});
 
 	if (
 		requiresDisasterResolution &&
@@ -126,27 +161,39 @@ export default function MapPage() {
 		return null;
 	}
 
-	const disasterId = resolvedDisasterId ?? 1;
-
 	return (
 		<div className="flex flex-col min-h-screen bg-background text-foreground">
 			<Header />
-			<div className="flex-1 relative w-full max-w-[1700px] mx-auto px-4 md:px-6 py-4 min-h-[75vh]">
-				<div className="grid h-full grid-cols-1 gap-4 xl:grid-cols-10">
+			<div className="relative w-full max-w-[1700px] mx-auto px-4 md:px-6 py-6 ">
+				<div className="grid grid-cols-1 gap-4 xl:grid-cols-10">
 					<div className="xl:col-span-7">
 						<MapView
 							key={`${disasterId}-${parsedXbdId}`}
 							initialDisasterId={disasterId}
-							initialXbdId={parsedXbdId}
+							selectedXbdId={selectedXbdId}
+							onXbdChange={setSelectedXbdId}
 							initialBuildingUid={buildingFromUrl}
 							onSceneError={handleInvalidScene}
 							onMetricsChange={setSceneMetrics}
+							xbdSelectorStatus={xbdSelector.status}
+							xbdIds={xbdSelector.xbdIds}
+							canGoPrev={xbdSelector.canGoPrev}
+							canGoNext={xbdSelector.canGoNext}
+							onPrev={xbdSelector.goPrev}
+							onNext={xbdSelector.goNext}
 						/>
 					</div>
-					<div className="xl:col-span-3 h-[70vh]">
+					<div className="xl:col-span-3 h-[80vh]">
 						<MapMetricsPanel
 							metrics={sceneMetrics}
 							isLoading={sceneMetrics === null}
+							canGoPrev={xbdSelector.canGoPrev}
+							canGoNext={xbdSelector.canGoNext}
+							onPrev={xbdSelector.goPrev}
+							onNext={xbdSelector.goNext}
+							navDisabled={
+								xbdSelector.status !== "ready" || sceneMetrics === null
+							}
 						/>
 					</div>
 				</div>

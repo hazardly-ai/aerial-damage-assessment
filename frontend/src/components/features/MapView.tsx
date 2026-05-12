@@ -1,6 +1,13 @@
 import mapboxgl from "mapbox-gl";
 import type Compare from "mapbox-gl-compare";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 
@@ -11,6 +18,7 @@ import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
 import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
 import type { MapStatus, SceneMetrics } from "@/types/map.ts";
 import { BUILDINGS_SOURCE_ID } from "@/utils/addBuildingLayer";
+import { rollupBuildingClassificationMetrics } from "@/utils/classificationMetrics";
 import type { BuildingFeature, BuildingsResponse } from "@/utils/hazardlyApi";
 import {
 	fetchMapData,
@@ -34,120 +42,44 @@ import {
 
 interface MapViewProps {
 	initialDisasterId: number;
-	initialXbdId: number;
+	selectedXbdId: number;
+	onXbdChange: (xbdId: number) => void;
 	/** When set (e.g. from `?building=` on first load), selects that footprint and opens the popup. */
 	initialBuildingUid?: string;
 	onInitialBuildingHandled?: () => void;
 	onSceneError?: (message: string) => void;
 	onMetricsChange?: (metrics: SceneMetrics | null) => void;
+	xbdSelectorStatus: "loading" | "ready" | "error";
+	xbdIds: number[];
+	canGoPrev: boolean;
+	canGoNext: boolean;
+	onPrev: () => void;
+	onNext: () => void;
 }
 
 function computeSceneMetrics(
 	xbdId: number,
 	buildings: BuildingsResponse,
 ): SceneMetrics {
-	const features = buildings.features;
-	type DamageLevel =
-		| "no-damage"
-		| "minor-damage"
-		| "major-damage"
-		| "destroyed";
-	type NormalizedDamage = DamageLevel | "un-classified";
-	const DAMAGE_CLASSES = [
-		"no-damage",
-		"minor-damage",
-		"major-damage",
-		"destroyed",
-	] as const;
-	const NORMALIZED_DAMAGE_LABELS: Record<string, NormalizedDamage> = {
-		"no-damage": "no-damage",
-		"no-damages": "no-damage",
-		"minor-damage": "minor-damage",
-		"minor-damages": "minor-damage",
-		"major-damage": "major-damage",
-		"major-damages": "major-damage",
-		destroyed: "destroyed",
-		destroy: "destroyed",
-		"un-classified": "un-classified",
-		unclassified: "un-classified",
-		unknown: "un-classified",
-		uncertain: "un-classified",
-	};
-
-	const predictedDistribution: Record<string, number> = {
-		"no-damage": 0,
-		"minor-damage": 0,
-		"major-damage": 0,
-		destroyed: 0,
-	};
-	const actualDistribution: Record<string, number> = {
-		"no-damage": 0,
-		"minor-damage": 0,
-		"major-damage": 0,
-		destroyed: 0,
-	};
-	let evaluatedPredictions = 0;
-	let correctPredictions = 0;
-
-	const normalizeDamageLabel = (value: unknown): NormalizedDamage => {
-		if (typeof value !== "string" || value.trim().length === 0) {
-			return "un-classified";
-		}
-		const normalized = value
-			.trim()
-			.toLowerCase()
-			.replace(/[_\s]+/g, "-")
-			.replace(/-+/g, "-");
-
-		return NORMALIZED_DAMAGE_LABELS[normalized] ?? "un-classified";
-	};
-
-	for (const feature of features) {
-		const building = feature as BuildingFeature;
-		const predictedDamageValue = normalizeDamageLabel(
-			building.properties.predicted_damage,
-		);
-		const actualDamageValue = normalizeDamageLabel(
-			building.properties.actual_damage,
-		);
-
-		if (
-			predictedDamageValue !== "un-classified" &&
-			DAMAGE_CLASSES.includes(predictedDamageValue)
-		) {
-			predictedDistribution[predictedDamageValue] += 1;
-		}
-		if (
-			actualDamageValue !== "un-classified" &&
-			DAMAGE_CLASSES.includes(actualDamageValue)
-		) {
-			actualDistribution[actualDamageValue] += 1;
-		}
-
-		if (
-			predictedDamageValue !== "un-classified" &&
-			actualDamageValue !== "un-classified"
-		) {
-			evaluatedPredictions += 1;
-			if (predictedDamageValue === actualDamageValue) {
-				correctPredictions += 1;
-			}
-		}
-	}
-
-	const accuracy =
-		evaluatedPredictions > 0
-			? (correctPredictions / evaluatedPredictions) * 100
-			: null;
+	const features = buildings.features as BuildingFeature[];
+	const r = rollupBuildingClassificationMetrics(features);
 
 	return {
 		xbdId,
 		totalBuildings: features.length,
-		damageDistribution: predictedDistribution,
-		actualDamageDistribution: actualDistribution,
-		evaluatedPredictions,
-		correctPredictions,
-		accuracy,
+		damageDistribution: { ...r.predictedDistribution },
+		actualDamageDistribution: { ...r.actualDistribution },
+		evaluatedPredictions: r.comparedCount,
+		correctPredictions: r.correctCount,
+		accuracy:
+			r.comparedCount > 0 ? (r.correctCount / r.comparedCount) * 100 : null,
+		precisionMacro: r.precisionMacro,
+		recallMacro: r.recallMacro,
+		f1Macro: r.f1Macro,
+		perClassMetrics: { ...r.perClassMetrics },
+		confusionMatrix: r.confusionMatrix,
+		matrixTotal: r.comparedCount,
+		matrixMax: r.matrixMax,
 	};
 }
 
@@ -155,11 +87,18 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
 export default function MapView({
 	initialDisasterId,
-	initialXbdId,
+	selectedXbdId,
+	onXbdChange,
 	initialBuildingUid,
 	onInitialBuildingHandled,
 	onSceneError,
 	onMetricsChange,
+	xbdSelectorStatus,
+	xbdIds,
+	canGoPrev,
+	canGoNext,
+	onPrev,
+	onNext,
 }: MapViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
@@ -169,9 +108,9 @@ export default function MapView({
 	const layersReadyRef = useRef(false);
 
 	const [disasterId, setDisasterId] = useState(initialDisasterId);
-	const [xbdId, setXbdId] = useState<number>(initialXbdId);
 	const [sceneLoading, setSceneLoading] = useState(false);
-	const [_retryCount, setRetryCount] = useState(0);
+	const [bootstrapRetryCount, setBootstrapRetryCount] = useState(0);
+	const [sceneRetryCount, setSceneRetryCount] = useState(0);
 	const [buildingsVisible, setBuildingsVisible] = useState(true);
 	const [imageryVisible, setImageryVisible] = useState(true);
 	const [compareIdle, setCompareIdle] = useState(false);
@@ -181,26 +120,87 @@ export default function MapView({
 	const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
 		null,
 	);
+	const [popupPlacement, setPopupPlacement] = useState<"above" | "below">(
+		"above",
+	);
 
 	const loadingOverlay = useLoadingOverlay(status);
 	const popupDataRef = useRef<PopupData | null>(null);
+	const popupPosRef = useRef<{ x: number; y: number } | null>(null);
+	const popupOverlayRef = useRef<HTMLDivElement>(null);
+	const popupPlacementObserverRef = useRef<ResizeObserver | null>(null);
+	const popupPlacementSessionRef = useRef<string | null>(null);
 	const selectedBuildingIdRef = useRef<string | number | null>(null);
 	const imageryVisibleRef = useRef(imageryVisible);
 	const boundsRef = useRef<ImageBounds | null>(null);
 	const scheduleCompareIdleRef = useRef<() => void>(() => {});
 	imageryVisibleRef.current = imageryVisible;
+	const bootstrapRetryCountRef = useRef(bootstrapRetryCount);
+	const sceneRetryCountRef = useRef(sceneRetryCount);
+	bootstrapRetryCountRef.current = bootstrapRetryCount;
+	sceneRetryCountRef.current = sceneRetryCount;
 
 	useEffect(() => {
 		setDisasterId(initialDisasterId);
-		setXbdId(initialXbdId);
-	}, [initialDisasterId, initialXbdId]);
+	}, [initialDisasterId]);
 
 	const updatePopupPos = useCallback(() => {
 		if (popupDataRef.current && afterMapRef.current) {
 			const { x, y } = afterMapRef.current.project(popupDataRef.current.lngLat);
-			setPopupPos({ x, y });
+			const next = { x, y };
+			popupPosRef.current = next;
+			setPopupPos(next);
 		}
 	}, []);
+
+	const applyPopupPlacement = useCallback(() => {
+		const pos = popupPosRef.current;
+		const node = popupOverlayRef.current;
+		const mapContainer = containerRef.current;
+		if (!pos || !node || !mapContainer || !popupDataRef.current) return;
+
+		const margin = 12;
+		const arrowSlack = 10;
+		const needed = node.offsetHeight + margin + arrowSlack;
+		const spaceAbove = pos.y;
+		const spaceBelow = mapContainer.clientHeight - pos.y;
+
+		let next: "above" | "below";
+		if (spaceAbove >= needed) {
+			next = "above";
+		} else if (spaceBelow >= needed) {
+			next = "below";
+		} else {
+			next = spaceAbove >= spaceBelow ? "above" : "below";
+		}
+
+		setPopupPlacement((prev) => (prev === next ? prev : next));
+	}, []);
+
+	/** Flip popup below the anchor when it would clip the top of the map; prefer the roomier side if both are tight. */
+	useLayoutEffect(() => {
+		if (!popupData || !popupPos) {
+			popupPlacementObserverRef.current?.disconnect();
+			popupPlacementObserverRef.current = null;
+			popupPlacementSessionRef.current = null;
+			return;
+		}
+
+		const el = popupOverlayRef.current;
+		if (!el) return;
+
+		applyPopupPlacement();
+
+		const sessionKey = popupData.uid;
+		if (popupPlacementSessionRef.current !== sessionKey) {
+			popupPlacementObserverRef.current?.disconnect();
+			popupPlacementObserverRef.current = new ResizeObserver(
+				applyPopupPlacement,
+			);
+			popupPlacementObserverRef.current.observe(el);
+			popupPlacementSessionRef.current = sessionKey;
+		}
+	}, [popupData, popupPos, applyPopupPlacement]);
 
 	const scheduleCompareIdle = useCallback(() => {
 		if (compareIdleTimerRef.current !== null) {
@@ -229,8 +229,10 @@ export default function MapView({
 		}
 		selectedBuildingIdRef.current = null;
 		popupDataRef.current = null;
+		popupPosRef.current = null;
 		setPopupData(null);
 		setPopupPos(null);
+		setPopupPlacement("above");
 	}, []);
 
 	const openPopup = useCallback(
@@ -285,8 +287,8 @@ export default function MapView({
 		after.fitBounds([bounds.sw, bounds.ne], { padding: 0, animate: true });
 	}, []);
 
-	const xbdIdRef = useRef(xbdId);
-	xbdIdRef.current = xbdId;
+	const xbdIdRef = useRef(selectedXbdId);
+	xbdIdRef.current = selectedXbdId;
 	const normalizedInitialBuildingUid = useMemo(
 		() => initialBuildingUid?.trim() || undefined,
 		[initialBuildingUid],
@@ -296,6 +298,7 @@ export default function MapView({
 		if (!containerRef.current) return;
 
 		const buildingUidForInitialSelect = normalizedInitialBuildingUid;
+		const retryCountAtStart = bootstrapRetryCount;
 
 		let cancelled = false;
 		const abortController = new AbortController();
@@ -315,7 +318,12 @@ export default function MapView({
 						"The requested scene coordinates or imagery could not be found.",
 					);
 				}
-				if (cancelled || !containerRef.current) return;
+				if (
+					cancelled ||
+					retryCountAtStart !== bootstrapRetryCountRef.current ||
+					!containerRef.current
+				)
+					return;
 				boundsRef.current = bounds;
 
 				containerRef.current.innerHTML = "";
@@ -349,7 +357,8 @@ export default function MapView({
 				const _after = afterMap;
 
 				const onMapsLoaded = () => {
-					if (cancelled) return;
+					if (cancelled || retryCountAtStart !== bootstrapRetryCountRef.current)
+						return;
 
 					addInitialSourcesAndLayers({
 						beforeMap: _before,
@@ -398,7 +407,11 @@ export default function MapView({
 					_before.fitBounds([sw, ne], { padding: 0, animate: false });
 
 					_after.once("idle", () => {
-						if (cancelled) return;
+						if (
+							cancelled ||
+							retryCountAtStart !== bootstrapRetryCountRef.current
+						)
+							return;
 						if (buildingUidForInitialSelect) {
 							const buildingSelected = selectBuildingByUid({
 								beforeMap: _before,
@@ -418,10 +431,11 @@ export default function MapView({
 					});
 				};
 
-				waitForMapsLoad(_before, _after).then(onMapsLoaded);
+				return waitForMapsLoad(_before, _after).then(onMapsLoaded);
 			})
 			.catch((err: unknown) => {
-				if (cancelled) return;
+				if (cancelled || retryCountAtStart !== bootstrapRetryCountRef.current)
+					return;
 				if (err instanceof DOMException && err.name === "AbortError") return;
 
 				const errorMsg =
@@ -458,7 +472,7 @@ export default function MapView({
 			beforeMapRef.current = null;
 			afterMapRef.current = null;
 		};
-		// xbdId is intentionally excluded; scene switches are handled by Effect 2.
+		// selectedXbdId is intentionally excluded; scene switches are handled by Effect 2.
 	}, [
 		openPopup,
 		updatePopupPos,
@@ -466,6 +480,7 @@ export default function MapView({
 		onSceneError,
 		onMetricsChange,
 		disasterId,
+		bootstrapRetryCount,
 		normalizedInitialBuildingUid,
 		onInitialBuildingHandled,
 	]);
@@ -474,6 +489,7 @@ export default function MapView({
 		const before = beforeMapRef.current;
 		const after = afterMapRef.current;
 		if (!before || !after || !layersReadyRef.current) return;
+		const retryCountAtStart = sceneRetryCount;
 
 		let cancelled = false;
 		const abortController = new AbortController();
@@ -481,9 +497,15 @@ export default function MapView({
 		closePopup();
 		onMetricsChange?.(null);
 
-		fetchMapData(disasterId, xbdId, { signal: abortController.signal })
+		fetchMapData(disasterId, selectedXbdId, { signal: abortController.signal })
 			.then(({ imagePair, buildings, bounds }) => {
-				if (cancelled || !beforeMapRef.current || !afterMapRef.current) return;
+				if (
+					cancelled ||
+					retryCountAtStart !== sceneRetryCountRef.current ||
+					!beforeMapRef.current ||
+					!afterMapRef.current
+				)
+					return;
 				boundsRef.current = bounds;
 
 				const _before = beforeMapRef.current;
@@ -507,8 +529,10 @@ export default function MapView({
 
 				selectedBuildingIdRef.current = null;
 				popupDataRef.current = null;
+				popupPosRef.current = null;
 				setPopupData(null);
 				setPopupPos(null);
+				setPopupPlacement("above");
 
 				const beforeSource = _before.getSource(
 					BUILDINGS_SOURCE_ID,
@@ -530,7 +554,8 @@ export default function MapView({
 				);
 			})
 			.catch((err: unknown) => {
-				if (cancelled) return;
+				if (cancelled || retryCountAtStart !== sceneRetryCountRef.current)
+					return;
 				if (err instanceof DOMException && err.name === "AbortError") return;
 
 				const errorMsg = err instanceof Error ? err.message : String(err);
@@ -555,7 +580,7 @@ export default function MapView({
 				onMetricsChange?.(null);
 			})
 			.finally(() => {
-				if (!cancelled) {
+				if (!cancelled && retryCountAtStart === sceneRetryCountRef.current) {
 					setSceneLoading(false);
 				}
 			});
@@ -564,7 +589,14 @@ export default function MapView({
 			cancelled = true;
 			abortController.abort();
 		};
-	}, [xbdId, disasterId, closePopup, onSceneError, onMetricsChange]);
+	}, [
+		selectedXbdId,
+		disasterId,
+		sceneRetryCount,
+		closePopup,
+		onSceneError,
+		onMetricsChange,
+	]);
 
 	useEffect(() => {
 		if (!imageryVisible) {
@@ -600,16 +632,21 @@ export default function MapView({
 			className={`map-wrapper w-full relative${
 				compareIdle ? " map-wrapper--compare-idle" : ""
 			}`}
-			style={{ height: "70vh" }}
+			style={{ height: "80vh" }}
 			data-imagery-visible={imageryVisible ? "true" : "false"}
 			data-compare-idle={compareIdle ? "true" : "false"}
 		>
 			<div ref={containerRef} className="map-container w-full h-full" />
 
 			<MapControls
-				disasterId={disasterId}
-				selectedXbdId={xbdId}
-				onXbdChange={setXbdId}
+				selectedXbdId={selectedXbdId}
+				onXbdChange={onXbdChange}
+				xbdSelectorStatus={xbdSelectorStatus}
+				xbdIds={xbdIds}
+				canGoPrev={canGoPrev}
+				canGoNext={canGoNext}
+				onPrev={onPrev}
+				onNext={onNext}
 				sceneDisabled={status !== "ready"}
 				sceneLoading={sceneLoading}
 				imageryVisible={imageryVisible}
@@ -635,7 +672,11 @@ export default function MapView({
 						onClick={() => {
 							setStatus("loading");
 							setErrorMessage(null);
-							setRetryCount((c) => c + 1);
+							if (layersReadyRef.current) {
+								setSceneRetryCount((c) => c + 1);
+								return;
+							}
+							setBootstrapRetryCount((c) => c + 1);
 						}}
 					>
 						Retry
@@ -645,7 +686,8 @@ export default function MapView({
 
 			{popupData && popupPos && (
 				<div
-					className="popup-overlay"
+					ref={popupOverlayRef}
+					className={`popup-overlay${popupPlacement === "below" ? " popup-overlay--below" : ""}`}
 					style={{ left: popupPos.x, top: popupPos.y }}
 				>
 					<BuildingPopup
@@ -656,6 +698,7 @@ export default function MapView({
 						actualDamage={popupData.actualDamage}
 						actualDamageColor={popupData.actualDamageColor}
 						onClose={closePopup}
+						placement={popupPlacement}
 					/>
 				</div>
 			)}
