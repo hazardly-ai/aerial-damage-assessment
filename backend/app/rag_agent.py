@@ -483,22 +483,33 @@ def fetch_city_damage_stats(limit=20):
     cur = conn.cursor()
 
     query = """
+    WITH building_cities AS (
+      SELECT
+        CASE
+          WHEN TRIM(SPLIT_PART(b.address, ',', 2)) ~* '[0-9]'
+            OR LOWER(TRIM(SPLIT_PART(b.address, ',', 2))) IN ('texas', 'tx')
+          THEN TRIM(SPLIT_PART(b.address, ',', 1))
+          ELSE TRIM(SPLIT_PART(b.address, ',', 2))
+        END AS city,
+        b.predicted_damage
+      FROM buildings b
+      JOIN image_pairs ip ON b.image_pair_id = ip.id
+      JOIN disasters d ON ip.disaster_id = d.id
+      WHERE b.address IS NOT NULL
+        AND d.name = %s
+        AND POSITION(',' IN b.address) > 0
+    )
     SELECT
-      TRIM(SPLIT_PART(b.address, ',', 2)) AS city,
+      city,
       COUNT(*) AS total,
-      SUM(CASE WHEN b.predicted_damage = 'no-damage' THEN 1 ELSE 0 END) AS no_damage,
-      SUM(CASE WHEN b.predicted_damage = 'minor-damage' THEN 1 ELSE 0 END) AS minor_damage,
-      SUM(CASE WHEN b.predicted_damage = 'major-damage' THEN 1 ELSE 0 END) AS major_damage,
-      SUM(CASE WHEN b.predicted_damage = 'destroyed' THEN 1 ELSE 0 END) AS destroyed
-    FROM buildings b
-    JOIN image_pairs ip ON b.image_pair_id = ip.id
-    JOIN disasters d ON ip.disaster_id = d.id
-    WHERE b.address IS NOT NULL
-      AND d.name = %s
-      AND POSITION(',' IN b.address) > 0
-      AND POSITION(',' IN SUBSTRING(b.address FROM POSITION(',' IN b.address) + 1)) > 0
-    GROUP BY TRIM(SPLIT_PART(b.address, ',', 2))
-    HAVING TRIM(SPLIT_PART(b.address, ',', 2)) <> ''
+      SUM(CASE WHEN predicted_damage = 'no-damage' THEN 1 ELSE 0 END) AS no_damage,
+      SUM(CASE WHEN predicted_damage = 'minor-damage' THEN 1 ELSE 0 END) AS minor_damage,
+      SUM(CASE WHEN predicted_damage = 'major-damage' THEN 1 ELSE 0 END) AS major_damage,
+      SUM(CASE WHEN predicted_damage = 'destroyed' THEN 1 ELSE 0 END) AS destroyed
+    FROM building_cities
+    WHERE city <> ''
+      AND city !~* '^[0-9]+$'
+    GROUP BY city
     ORDER BY total DESC, city ASC
     LIMIT %s
     """
@@ -510,6 +521,23 @@ def fetch_city_damage_stats(limit=20):
     conn.close()
 
     return rows
+
+
+def format_city_list_response(rows):
+    if len(rows) == 0:
+        return "I couldn't find any city-level data for the active disaster dataset."
+
+    city_names = []
+    seen = set()
+    for row in rows:
+        city = str(row[0]).strip()
+        if not city or city.lower() in seen:
+            continue
+        seen.add(city.lower())
+        city_names.append(city)
+
+    sample = city_names[:12]
+    return "Cities in the dataset are: " + ", ".join(sample) + "."
 
 
 def resolve_location_buildings(location_text):
@@ -1730,7 +1758,7 @@ def format_city_damage_stats(rows):
 
 
 def synthesize_city_damage_stats_answer(rows):
-    fallback = format_city_damage_stats(rows)
+    fallback = format_city_list_response(rows)
     prompt = f"""
 You are Hazardly, a disaster damage assessment assistant.
 
@@ -1740,9 +1768,9 @@ City rows: {rows[:8]}
 Write a concise answer for the user.
 
 Rules:
-- Use 3 to 5 short bullet points.
-- Keep city names and counts exact.
-- Mention that this is a sample of cities in the active dataset.
+- Return a plain list of city names only.
+- Do not include damage counts or rankings.
+- Use a natural city-list intro sentence.
 - Do not invent extra places or numbers.
 """
     return synthesize_structured_answer(prompt, fallback)
