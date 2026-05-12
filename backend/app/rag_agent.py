@@ -23,6 +23,29 @@ def save_turn(question, answer):
     chat_history.append({"role": "user", "content": question})
     chat_history.append({"role": "assistant", "content": answer})
 
+
+def get_last_user_message():
+    for message in reversed(chat_history):
+        if message.get("role") == "user":
+            return message.get("content", "")
+    return ""
+
+
+def get_last_assistant_message():
+    for message in reversed(chat_history):
+        if message.get("role") == "assistant":
+            return message.get("content", "")
+    return ""
+
+
+def is_dataset_scope_followup(question):
+    normalized_question = question.strip().lower()
+    if normalized_question not in {"full", "full dataset", "dataset", "all"}:
+        return False
+
+    last_assistant_message = get_last_assistant_message().lower()
+    return "full dataset, or for a specific city or area" in last_assistant_message
+
 # loading environment variables from backend/.env file so secrets are not hardcoded
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BACKEND_DIR / ".env", override=True)
@@ -727,7 +750,8 @@ def format_city_ranking(rows, metric, limit):
     if len(rows) == 0:
         return "I couldn't find any city-level data for the active disaster dataset."
 
-    sorted_rows = sort_city_rows(rows, metric)[:limit]
+    sorted_rows = sort_city_rows(rows, metric)
+    limited_rows = sorted_rows[:limit]
     metric_label = {
         "total": "total buildings",
         "no-damage": "undamaged buildings",
@@ -736,8 +760,14 @@ def format_city_ranking(rows, metric, limit):
         "destroyed": "destroyed buildings",
     }[metric]
 
-    lines = [f"Top cities by {metric_label}:"]
-    for row in sorted_rows:
+    header = (
+        f"Cities in the dataset by {metric_label}:"
+        if limit >= len(sorted_rows)
+        else f"Top cities by {metric_label}:"
+    )
+
+    lines = [header]
+    for row in limited_rows:
         city = row[0]
         value = row[{ "total": 1, "no-damage": 2, "minor-damage": 3, "major-damage": 4, "destroyed": 5 }[metric]]
         total = row[1]
@@ -1834,6 +1864,15 @@ Label:
 
 
 def classify_query_intent(question):
+    normalized_question = question.strip().lower()
+    if is_dataset_scope_followup(question):
+        last_user_message = get_last_user_message().lower()
+        if any(term in last_user_message for term in ["show", "open", "take me", "go to"]):
+            inherited_damage_filter = extract_damage_filter(last_user_message)
+            if inherited_damage_filter or "building" in last_user_message:
+                return "location_query"
+            return "full_dataset_summary"
+
     heuristic_intent = classify_query_intent_heuristic(question)
     if heuristic_intent:
         return heuristic_intent
@@ -1911,6 +1950,13 @@ def parse_structured_query(question):
     }.get(raw_intent, raw_intent)
 
     explicit_scene_id = extract_xbd_query_id(question)
+    dataset_scope_followup = is_dataset_scope_followup(question)
+    inherited_user_message = get_last_user_message() if dataset_scope_followup else ""
+    inherited_damage_filter = (
+        extract_damage_filter(inherited_user_message)
+        if dataset_scope_followup
+        else None
+    )
     comparison_locations = extract_comparison_locations(question)
     percentage_location_text = extract_percentage_location_text(question)
     general_location_text = extract_general_location_text(question)
@@ -1926,12 +1972,19 @@ def parse_structured_query(question):
         else None
     )
     parsed_address, parsed_default_damage = parse_question(question)
+    explicit_near_or_in_match = re.search(
+        r"\b(?:near|in)\s+(.+?)(?:\?|$)",
+        question,
+        flags=re.IGNORECASE,
+    )
 
     locations = []
     query_mode = "generic_location"
     primary_location = None
 
-    if mapped_intent == "location_comparison" and comparison_locations:
+    if dataset_scope_followup and mapped_intent == "location_query":
+        query_mode = "dataset_scope_followup"
+    elif mapped_intent == "location_comparison" and comparison_locations:
         first_location = normalize_location_candidate(comparison_locations[0])
         second_location = normalize_location_candidate(comparison_locations[1])
         locations = [location for location in [first_location, second_location] if location]
@@ -1962,10 +2015,16 @@ def parse_structured_query(question):
         locations = [primary_location]
         query_mode = "scene"
     else:
-        primary_location = normalize_location_candidate(parsed_address)
+        primary_location = (
+            normalize_location_candidate(parsed_address)
+            if explicit_near_or_in_match
+            else None
+        )
         locations = [primary_location] if primary_location else []
 
     damage_filter = extract_damage_filter(question)
+    if damage_filter is None and inherited_damage_filter is not None:
+        damage_filter = inherited_damage_filter
     if mapped_intent == "location_query" and damage_filter is None:
         damage_filter = parsed_default_damage
     if mapped_intent in {"location_overview", "dataset_overview", "city_list", "city_count"}:
@@ -1975,6 +2034,8 @@ def parse_structured_query(question):
         phrase in question.lower()
         for phrase in ["show ", "show me", "take me", "open ", "go to ", "navigate"]
     )
+    if dataset_scope_followup and query_mode == "dataset_scope_followup":
+        wants_navigation = False
     wants_summary = mapped_intent in {
         "dataset_overview",
         "location_overview",
@@ -2002,7 +2063,11 @@ def parse_structured_query(question):
         "entity_type": entity_type,
         "explicit_scene_id": explicit_scene_id,
         "wants_summary": wants_summary,
-        "wants_all_buildings": is_all_buildings_query(question),
+        "wants_all_buildings": (
+            inherited_damage_filter is None
+            if dataset_scope_followup and query_mode == "dataset_scope_followup"
+            else is_all_buildings_query(question)
+        ),
         "advisory": detect_advisory(question),
         "query_mode": query_mode,
         "primary_location": primary_location,
@@ -2354,6 +2419,19 @@ def handle_chat_query(question):
             "action": build_no_action()  # full dataset does not navigate to one route
         }
 
+    if intent == "location_query" and parsed_query["query_mode"] == "dataset_scope_followup":
+        rows = fetch_city_damage_stats(limit=500)
+        metric = damage_type if not wants_all_buildings else "total"
+        answer = format_city_ranking(rows, metric, len(rows))
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action(),
+        }
+
     if intent == "scene_query" and xbd_query_id is not None:
         requested_damage = None if wants_all_buildings else damage_type
         buildings = get_buildings_for_xbd(xbd_query_id, requested_damage)
@@ -2543,7 +2621,12 @@ def handle_chat_query(question):
     # generic location-based queries
     address = primary_location
     if not address:
-        answer = "I could not determine which location or scene you meant."
+        if intent == "location_query" and parsed_query["needs_map"]:
+            answer = (
+                "Do you want those results for the full dataset, or for a specific city or area?"
+            )
+        else:
+            answer = "I could not determine which location or scene you meant."
         save_turn(question, answer)
         return {
             "answer": answer,
