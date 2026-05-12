@@ -203,6 +203,12 @@ def extract_general_location_text(question):
             location_text,
             flags=re.IGNORECASE,
         ).strip(" ,")
+        location_text = re.sub(
+            r"^(?:the\s+)?city\s+of\s+",
+            "",
+            location_text,
+            flags=re.IGNORECASE,
+        ).strip(" ,")
         return location_text or None
 
     return None
@@ -546,26 +552,13 @@ def resolve_location_buildings(location_text):
     has_explicit_region = "," in normalized_location
     geocode_query = normalized_location
 
-    if not has_explicit_region:
-        buildings = get_all_buildings_by_address_text(normalized_location)
-        if len(buildings) > 0:
-            if looks_like_street_address(normalized_location):
-                return None, normalized_location, buildings
-
-            geo = geocode_address(
-                f"{normalized_location}, Texas"
-                if DEFAULT_DISASTER_NAME == "hurricane-harvey"
-                else normalized_location
-            )
-            label_text = geo["formatted_address"] if geo else normalized_location
-            return geo, label_text, buildings
-        if DEFAULT_DISASTER_NAME == "hurricane-harvey":
-            geocode_query = f"{normalized_location}, Texas"
-
     if looks_like_exact_address(normalized_location):
         buildings = get_buildings_on_address_text(normalized_location, None)
         if len(buildings) > 0:
             return None, normalized_location, buildings
+
+    if not has_explicit_region and DEFAULT_DISASTER_NAME == "hurricane-harvey":
+        geocode_query = f"{normalized_location}, Texas"
 
     geo = geocode_address(geocode_query)
     buildings = []
@@ -582,6 +575,13 @@ def resolve_location_buildings(location_text):
             geo["lat"],
             STREET_ADDRESS_OVERVIEW_RADIUS_M,
         )
+    elif not has_explicit_region and not looks_like_street_address(normalized_location):
+        city_label = (
+            geo["formatted_address"].split(",")[0].strip()
+            if geo and geo.get("formatted_address")
+            else normalized_location
+        )
+        buildings = get_all_buildings_for_city(city_label)
     elif geo and geo.get("bbox") and len(geo["bbox"]) == 4:
         min_lon, min_lat, max_lon, max_lat = geo["bbox"]
         buildings = get_all_buildings_in_bbox(min_lon, min_lat, max_lon, max_lat)
@@ -625,6 +625,9 @@ def extract_comparison_locations(question):
         r"compare\s+(.+?)\s+to\s+(.+?)(?:\?|$)",
         r"which is worse,\s+(.+?)\s+or\s+(.+?)(?:\?|$)",
         r"which is worse:\s+(.+?)\s+or\s+(.+?)(?:\?|$)",
+        r"tell me about\s+(.+?)\s+and\s+(.+?)(?:\?|$)",
+        r"what about\s+(.+?)\s+and\s+(.+?)(?:\?|$)",
+        r"overview of\s+(.+?)\s+and\s+(.+?)(?:\?|$)",
     ]
 
     for pattern in patterns:
@@ -633,6 +636,18 @@ def extract_comparison_locations(question):
             continue
         first = match.group(1).strip(" ?,.")
         second = match.group(2).strip(" ?,.")
+        first = re.sub(
+            r"^(?:the\s+)?cities?\s+of\s+",
+            "",
+            first,
+            flags=re.IGNORECASE,
+        ).strip(" ,")
+        second = re.sub(
+            r"^(?:the\s+)?cities?\s+of\s+",
+            "",
+            second,
+            flags=re.IGNORECASE,
+        ).strip(" ,")
         if first and second:
             return first, second
 
@@ -641,7 +656,13 @@ def extract_comparison_locations(question):
 
 def is_city_comparison_query(question):
     q = question.lower()
-    return "compare " in q or "which is worse" in q
+    return (
+        "compare " in q
+        or "which is worse" in q
+        or "tell me about" in q
+        or "what about" in q
+        or "overview of" in q
+    )
 
 
 def is_city_ranking_query(question):
@@ -1053,6 +1074,50 @@ def get_all_buildings_by_address_text(address_text):
     return rows_to_buildings(rows)
 
 
+def get_all_buildings_for_city(city_text):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    normalized_city = city_text.strip()
+    if not normalized_city:
+        cur.close()
+        conn.close()
+        return []
+
+    query = """
+    WITH building_cities AS (
+      SELECT
+        b.uid,
+        ip.xbd_id,
+        b.predicted_damage,
+        ST_AsGeoJSON(b.geom) AS geometry,
+        CASE
+          WHEN TRIM(SPLIT_PART(b.address, ',', 2)) ~* '[0-9]'
+            OR LOWER(TRIM(SPLIT_PART(b.address, ',', 2))) IN ('texas', 'tx')
+          THEN TRIM(SPLIT_PART(b.address, ',', 1))
+          ELSE TRIM(SPLIT_PART(b.address, ',', 2))
+        END AS city
+      FROM buildings b
+      JOIN image_pairs ip ON b.image_pair_id = ip.id
+      JOIN disasters d ON ip.disaster_id = d.id
+      WHERE b.address IS NOT NULL
+        AND d.name = %s
+        AND POSITION(',' IN b.address) > 0
+    )
+    SELECT uid, xbd_id, predicted_damage, geometry
+    FROM building_cities
+    WHERE LOWER(city) = LOWER(%s)
+    """
+
+    cur.execute(query, (DEFAULT_DISASTER_NAME, normalized_city))
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows_to_buildings(rows)
+
+
 def build_map_action_from_buildings(buildings, address_text=None, primary_xbd_id=None):
     primary_xbd_id = primary_xbd_id if primary_xbd_id is not None else get_primary_xbd_id(buildings)
 
@@ -1176,7 +1241,8 @@ def get_full_dataset_damage_counts():
     }
 
     for damage, count in rows:
-        counts[damage] = count
+        if damage in counts:
+            counts[damage] = count
 
     return counts
 
@@ -1255,23 +1321,7 @@ def format_damage_bullet_summary(counts, location_text):
 
 
 def synthesize_location_overview_answer(location_text, counts):
-    fallback = format_damage_bullet_summary(counts, location_text)
-    prompt = f"""
-You are Hazardly, a disaster damage assessment assistant.
-
-Use only these exact facts:
-Location: {location_text}
-Counts: {counts}
-
-Write a concise answer for the user.
-
-Rules:
-- Use 3 to 5 short bullet points.
-- Mention the total buildings and the key damage breakdown.
-- Do not invent extra numbers.
-- Do not mention databases, SQL, retrieval, tools, or models.
-"""
-    return synthesize_structured_answer(prompt, fallback)
+    return format_damage_bullet_summary(counts, location_text)
 
 
 
@@ -1673,6 +1723,146 @@ def is_damage_label_query(question):
     ])
 
 
+def classify_query_intent_heuristic(question):
+    if is_vlm_query(question):
+        return "vlm"
+
+    if is_conversation_summary_query(question):
+        return "conversation_summary"
+
+    if is_city_count_query(question):
+        return "city_count"
+
+    if is_damage_label_query(question):
+        return "damage_labels"
+
+    if is_city_list_query(question):
+        return "city_list"
+
+    if is_city_ranking_query(question):
+        return "city_ranking"
+
+    comparison_locations = extract_comparison_locations(question)
+    if comparison_locations and is_city_comparison_query(question):
+        return "location_comparison"
+
+    if extract_percentage_location_text(question):
+        return "location_percentage"
+
+    if is_full_dataset_query(question):
+        return "full_dataset_summary"
+
+    if extract_xbd_query_id(question) is not None:
+        return "xbd_query"
+
+    if extract_general_location_text(question):
+        return "general_location_overview"
+
+    return None
+
+
+def classify_query_intent_llm(question):
+    prompt = f"""
+You are routing user questions for a disaster damage assessment assistant.
+
+Choose exactly one label from this list:
+- full_dataset_summary
+- city_list
+- city_count
+- damage_labels
+- city_ranking
+- location_comparison
+- location_percentage
+- conversation_summary
+- vlm
+- xbd_query
+- general_location_overview
+- location_query
+- unsupported
+
+Definitions:
+- full_dataset_summary: asks about the dataset as a whole, what the data contains, or overall damage across the dataset, without focusing on one place
+- city_list: asks which cities or locations appear in the dataset
+- city_count: asks how many cities or locations are represented
+- damage_labels: asks which damage labels or levels exist
+- city_ranking: asks which cities have the most or least damage
+- location_comparison: compares two named locations
+- location_percentage: asks what percentage/share of buildings in a place fit a damage level
+- conversation_summary: asks for a recap of the conversation
+- vlm: asks about uploading, evaluating, or comparing images
+- xbd_query: directly references an xBD scene ID
+- general_location_overview: asks for an overview or summary of damage in one place
+- location_query: asks about buildings or damage for one place, address, area, or scene, including map-like requests
+- unsupported: not related to disaster damage assessment
+
+Examples:
+Question: Tell me about the data
+Label: full_dataset_summary
+
+Question: What does this dataset contain?
+Label: full_dataset_summary
+
+Question: What cities are in the dataset?
+Label: city_list
+
+Question: Compare Houston and Sugar Land
+Label: location_comparison
+
+Question: Show destroyed buildings near downtown Houston
+Label: location_query
+
+Question: Summarize damage in Sugar Land
+Label: general_location_overview
+
+Question: Show XBD 18
+Label: xbd_query
+
+Question: Upload a before and after image
+Label: vlm
+
+Question: {question}
+Label:
+"""
+
+    result = call_nemotron(prompt)
+    if not result:
+        return None
+
+    label = result.strip().strip('"').strip().splitlines()[0].strip().lower()
+    valid_labels = {
+        "full_dataset_summary",
+        "city_list",
+        "city_count",
+        "damage_labels",
+        "city_ranking",
+        "location_comparison",
+        "location_percentage",
+        "conversation_summary",
+        "vlm",
+        "xbd_query",
+        "general_location_overview",
+        "location_query",
+        "unsupported",
+    }
+
+    return label if label in valid_labels else None
+
+
+def classify_query_intent(question):
+    heuristic_intent = classify_query_intent_heuristic(question)
+    if heuristic_intent:
+        return heuristic_intent
+
+    llm_intent = classify_query_intent_llm(question)
+    if llm_intent:
+        return llm_intent
+
+    if is_disaster_related(question):
+        return "location_query"
+
+    return "unsupported"
+
+
 def format_city_damage_stats(rows):
     if len(rows) == 0:
         return "I couldn't find any city-level address data in the dataset."
@@ -1839,8 +2029,9 @@ def handle_chat_query(question):
             "action": build_no_action()  # no navigation action
         }
 
-    # detect VLM/image-related queries
-    if is_vlm_query(question):
+    intent = classify_query_intent(question)
+
+    if intent == "vlm":
         answer = vlm_guidance_response()
         save_turn(question, answer)
         return {
@@ -1851,8 +2042,7 @@ def handle_chat_query(question):
             "action": build_no_action()  # no navigation action
         }
 
-    # conversation summary
-    if is_conversation_summary_query(question):
+    if intent == "conversation_summary":
         answer = summarize_conversation()
         save_turn(question, answer)
         return {
@@ -1863,7 +2053,7 @@ def handle_chat_query(question):
             "action": build_no_action()  # no navigation action
         }
 
-    if is_city_count_query(question):
+    if intent == "city_count":
         rows = fetch_city_damage_stats(limit=500)
         city_total = len(rows)
         answer = (
@@ -1878,7 +2068,7 @@ def handle_chat_query(question):
             "action": build_no_action(),
         }
 
-    if is_damage_label_query(question):
+    if intent == "damage_labels":
         answer = "\n".join([
             "The dataset uses these damage labels:",
             "- No damage",
@@ -1895,7 +2085,7 @@ def handle_chat_query(question):
             "action": build_no_action(),
         }
 
-    if is_city_list_query(question):
+    if intent == "city_list":
         rows = fetch_city_damage_stats()
         answer = synthesize_city_damage_stats_answer(rows)
         save_turn(question, answer)
@@ -1907,7 +2097,7 @@ def handle_chat_query(question):
             "action": build_no_action(),
         }
 
-    if is_city_ranking_query(question):
+    if intent == "city_ranking":
         rows = fetch_city_damage_stats()
         answer = synthesize_city_ranking_answer(
             rows,
@@ -1924,7 +2114,7 @@ def handle_chat_query(question):
         }
 
     comparison_locations = extract_comparison_locations(question)
-    if comparison_locations and is_city_comparison_query(question):
+    if intent == "location_comparison" and comparison_locations:
         first_location, second_location = comparison_locations
         first_geo, first_label, first_buildings = resolve_location_buildings(first_location)
         second_geo, second_label, second_buildings = resolve_location_buildings(second_location)
@@ -1945,7 +2135,7 @@ def handle_chat_query(question):
         }
 
     percentage_location_text = extract_percentage_location_text(question)
-    if percentage_location_text:
+    if intent == "location_percentage" and percentage_location_text:
         _, damage_type = parse_question(question)
         geo, label_text, all_buildings = resolve_location_buildings(percentage_location_text)
         matching_buildings = filter_buildings_by_damage(all_buildings, damage_type)
@@ -1965,7 +2155,7 @@ def handle_chat_query(question):
         }
 
     general_location_text = extract_general_location_text(question)
-    if general_location_text:
+    if intent == "general_location_overview" and general_location_text:
         geo, label_text, all_buildings = resolve_location_buildings(general_location_text)
 
         if len(all_buildings) == 0:
@@ -1991,8 +2181,7 @@ def handle_chat_query(question):
             "action": build_no_action(),
         }
 
-    # block non-disaster queries
-    if not is_disaster_related(question):
+    if intent == "unsupported":
         answer = "I can only answer disaster-related queries about damage, safety, and assessments."
         save_turn(question, answer)
         return {
@@ -2003,9 +2192,8 @@ def handle_chat_query(question):
             "action": build_no_action()  # no navigation action
         }
             
-
     # full dataset summary does not have a single map focus
-    if is_full_dataset_query(question):
+    if intent == "full_dataset_summary":
         counts = get_full_dataset_damage_counts()
         answer = synthesize_location_overview_answer("the full dataset", counts)
         save_turn(question, answer)

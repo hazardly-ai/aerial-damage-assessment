@@ -432,7 +432,7 @@ export default function DisasterResponseAssistant({
 										: "text-muted-foreground"
 								}`}
 							>
-								{entry.role === "fieldUser" ? "You" : "Assistant"}
+								{entry.role === "fieldUser" ? "You" : "Hazardly"}
 							</div>
 							<div
 								className={`rounded-2xl border transition-colors duration-theme ease-theme ${
