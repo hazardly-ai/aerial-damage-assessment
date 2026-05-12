@@ -122,6 +122,14 @@ export default function DisasterResponseAssistant({
 		null,
 	);
 	const bottomRef = useRef<HTMLDivElement | null>(null);
+	const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+	useEffect(() => {
+		const textarea = inputRef.current;
+		if (!textarea) return;
+		textarea.style.height = "0px";
+		textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+	}, []);
 
 	useEffect(() => {
 		if (responseLog.length > 0) {
@@ -342,14 +350,20 @@ export default function DisasterResponseAssistant({
 
 				{/* Input */}
 				<div className="border-t border-border p-3 bg-card">
-					<div className="flex gap-2">
-						<input
-							type="text"
+					<div className="flex items-end gap-2">
+						<textarea
+							ref={inputRef}
 							value={currentQuery}
 							onChange={(e) => setCurrentQuery(e.target.value)}
-							onKeyDown={(e) => e.key === "Enter" && handleQuery()}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" && !e.shiftKey) {
+									e.preventDefault();
+									handleQuery();
+								}
+							}}
 							disabled={isAwaitingResponse}
-							className="flex-1 bg-background text-foreground border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+							rows={1}
+							className="max-h-40 min-h-[42px] flex-1 resize-none overflow-y-auto bg-background text-foreground border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
 							placeholder="Ask Disaster Response Assistant..."
 						/>
 						<button
