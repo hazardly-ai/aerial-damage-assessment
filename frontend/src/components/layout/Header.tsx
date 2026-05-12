@@ -1,39 +1,73 @@
-// Theme toggle button (light/dark mode switch)
+import { useLocation, useNavigate } from "react-router-dom";
+import Container from "@/components/layout/Container";
 import ThemeToggle from "@/components/ui/ThemeToggle";
-
-// Team name constant so we can easily change branding in one place
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TEAM_NAME } from "@/constants/app";
 
 export default function Header() {
+	const location = useLocation();
+	const navigate = useNavigate();
+
+	const activeNav = location.pathname.startsWith("/map")
+		? "map"
+		: location.pathname === "/"
+			? "dashboard"
+			: "";
+
 	return (
-		// Main header container
-		// Slight background blur + border to separate it from the page content
 		<div className="z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
-			<div className="mx-auto max-w-6xl px-6 py-8">
-				{/* Flex layout to keep title on the left and theme toggle on the right */}
-				<div className="flex justify-between items-start gap-6">
-					<header>
-						{/* Title + subtitle section */}
-						<div className="space-y-2">
-							{/* Main app title with subtle gradient text effect */}
-							<h1 className="pb-[0.1525em] text-4xl sm:text-5xl font-bold tracking-tight leading-[1.08] bg-gradient-to-r from-foreground to-foreground/50 bg-clip-text text-transparent font-sans">
-								{TEAM_NAME}
-							</h1>
+			<Container className="py-6">
+				<div className="grid grid-cols-[1fr_auto_1fr] items-center gap-6">
+					{/* LEFT SIDE */}
+					<div className="space-y-2">
+						<h1 className="pb-[0.1525em] text-3xl sm:text-4xl font-bold tracking-tight leading-[1.08] bg-gradient-to-r from-foreground to-foreground/50 bg-clip-text text-transparent font-sans">
+							{TEAM_NAME}
+						</h1>
 
-							{/* Small uppercase subtitle describing the app */}
-							<p className="text-sm uppercase tracking-[0.3em] text-muted-foreground font-semibold font-sans">
-								AI-Powered Disaster Assessment
-							</p>
+						<p className="text-xs uppercase tracking-[0.3em] text-muted-foreground font-semibold font-sans">
+							AI-Powered Disaster Assessment
+						</p>
 
-							{/* Decorative gradient divider line under the subtitle */}
-							<div className="header-divider" />
-						</div>
-					</header>
+						<div className="header-divider" />
+					</div>
 
-					{/* Light/Dark mode toggle */}
-					<ThemeToggle />
+					{/* CENTER NAV */}
+					<nav className="flex items-center justify-self-center">
+						<ToggleGroup
+							type="single"
+							value={activeNav}
+							variant="default"
+							size="sm"
+							className="relative gap-0 overflow-hidden rounded-full border border-input/70 bg-muted/30"
+							onValueChange={(value) => {
+								if (value === "dashboard") navigate("/");
+								if (value === "map") navigate("/map");
+							}}
+							aria-label="Primary navigation"
+						>
+							<ToggleGroupItem
+								value="dashboard"
+								className="relative min-w-[120px] rounded-l-full rounded-r-none font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+								aria-label="Go to dashboard"
+							>
+								Dashboard
+							</ToggleGroupItem>
+							<ToggleGroupItem
+								value="map"
+								className="relative min-w-[120px] rounded-r-full rounded-l-none font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+								aria-label="Go to map"
+							>
+								Map
+							</ToggleGroupItem>
+						</ToggleGroup>
+					</nav>
+
+					{/* RIGHT SIDE */}
+					<div className="justify-self-end">
+						<ThemeToggle />
+					</div>
 				</div>
-			</div>
+			</Container>
 		</div>
 	);
 }

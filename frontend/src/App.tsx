@@ -1,22 +1,33 @@
-import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant";
-import MapView from "@/components/features/MapView";
-import Footer from "@/components/layout/Footer";
-import Header from "@/components/layout/Header";
+import { lazy, Suspense, useEffect } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { Toaster, toast } from "sonner";
+import Dashboard from "@/pages/Dashboard";
+
+const MapPage = lazy(() => import("@/pages/MapPage.tsx"));
+
+function NotFoundRedirect() {
+	useEffect(() => {
+		toast.warning("Page not found. Redirected to the dashboard.", {
+			id: "route-not-found",
+		});
+	}, []);
+
+	return <Navigate to="/" replace />;
+}
 
 export default function App() {
 	return (
-		<div className="flex flex-col min-h-screen bg-background text-foreground">
-			<Header />
-			{/* Map Section */}
-			<div className="flex-1 relative w-full max-w-5xl mx-auto px-6 py-8">
-				<MapView />
-			</div>
-
-			{/* Chat Widget */}
-			{/*<ChatWidget />*/}
-			<DisasterResponseAssistant />
-			{/* Footer */}
-			<Footer />
-		</div>
+		<>
+			<Toaster position="bottom-center" richColors closeButton />
+			<Suspense fallback={null}>
+				<Routes>
+					<Route path="/" element={<Dashboard />} />
+					<Route path="/dashboard" element={<Navigate to="/" replace />} />
+					<Route path="/map/:disaster_name?/:xbdid?" element={<MapPage />} />
+					<Route path="/map" element={<MapPage />} />
+					<Route path="*" element={<NotFoundRedirect />} />
+				</Routes>
+			</Suspense>
+		</>
 	);
 }

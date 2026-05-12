@@ -8,6 +8,7 @@ interface UseXbdSelectorStateArgs {
 	disasterId: number;
 	selectedXbdId: number;
 	onChange: (xbdId: number) => void;
+	allowFallbackSelection?: boolean;
 }
 
 interface XbdSelectorProps {
@@ -27,6 +28,7 @@ export function useXbdSelectorState({
 	disasterId,
 	selectedXbdId,
 	onChange,
+	allowFallbackSelection = false,
 }: UseXbdSelectorStateArgs) {
 	const [xbdIds, setXbdIds] = useState<number[]>([]);
 	const [status, setStatus] = useState<XbdSelectorStatus>("loading");
@@ -43,12 +45,16 @@ export function useXbdSelectorState({
 				setXbdIds(ids);
 				setStatus("ready");
 
-				if (ids.length > 0 && !ids.includes(selectedXbdIdRef.current)) {
+				if (
+					allowFallbackSelection &&
+					ids.length > 0 &&
+					!ids.includes(selectedXbdIdRef.current)
+				) {
 					onChange(ids[0]);
 				}
 			})
 			.catch(() => setStatus("error"));
-	}, [disasterId, onChange]);
+	}, [allowFallbackSelection, disasterId, onChange]);
 
 	const currentIndex = xbdIds.indexOf(selectedXbdId);
 	const canGoPrev = currentIndex > 0;

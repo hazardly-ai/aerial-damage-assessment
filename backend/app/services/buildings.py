@@ -107,3 +107,97 @@ def fetch_building_bboxes_by_disaster(
     with conn.cursor() as cur:
         cur.execute(sql, (disaster_id,))
         return cur.fetchall()
+
+
+def fetch_paginated_buildings_by_disaster(
+    conn: psycopg.Connection,
+    disaster_id: int,
+    page: int,
+    page_size: int,
+    damage: str | None = None,
+) -> tuple[list[dict], int]:
+    offset = (page - 1) * page_size
+    params: list[object] = [disaster_id]
+    damage_sql = ""
+
+    if damage is not None:
+        damage_sql = " AND b.actual_damage::text = %s"
+        params.append(damage)
+
+    count_sql = f"""
+    SELECT COUNT(*) AS total_count
+    FROM buildings b
+    JOIN image_pairs ip ON ip.id = b.image_pair_id
+    WHERE ip.disaster_id = %s{damage_sql}
+    """
+
+    data_sql = f"""
+    SELECT
+      b.id,
+      b.uid::text,
+      b.address,
+      b.image_pair_id,
+      ip.xbd_id,
+      b.actual_damage::text,
+      b.predicted_damage::text,
+      b.is_correct,
+      b.created_at,
+      ip.pre_image_path,
+      ip.post_image_path
+    FROM buildings b
+    JOIN image_pairs ip ON ip.id = b.image_pair_id
+    WHERE ip.disaster_id = %s{damage_sql}
+    ORDER BY b.id
+    LIMIT %s OFFSET %s
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(count_sql, tuple(params))
+        count_row = cur.fetchone()
+        if isinstance(count_row, dict):
+            total_count = count_row["total_count"]
+        else:
+            total_count = count_row[0]
+
+        data_params = [*params, page_size, offset]
+        cur.execute(data_sql, tuple(data_params))
+        rows = cur.fetchall()
+
+    return rows, total_count
+
+
+def fetch_building_damage_stats_by_disaster(
+    conn: psycopg.Connection,
+    disaster_id: int,
+) -> dict:
+    sql = """
+    SELECT
+      b.actual_damage::text AS actual_damage,
+      COUNT(*) AS count
+    FROM buildings b
+    JOIN image_pairs ip ON ip.id = b.image_pair_id
+    WHERE ip.disaster_id = %s
+    GROUP BY b.actual_damage
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql, (disaster_id,))
+        rows = cur.fetchall()
+
+    by_damage = {
+        "no-damage": 0,
+        "minor-damage": 0,
+        "major-damage": 0,
+        "destroyed": 0,
+    }
+    for row in rows:
+        key = row["actual_damage"]
+        by_damage[key] = row["count"]
+
+    total = sum(by_damage.values())
+
+    return {
+        "total": total,
+        "no_damage": by_damage["no-damage"],
+        "by_damage": by_damage,
+    }
