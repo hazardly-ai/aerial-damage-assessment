@@ -1,10 +1,9 @@
-export type DamageLevel =
-	| "no-damage"
-	| "minor-damage"
-	| "major-damage"
-	| "destroyed";
+import type {
+	DamageLevel,
+	NormalizedDamage,
+} from "@/utils/classificationMetrics";
 
-export type NormalizedDamage = DamageLevel | "un-classified";
+export type { DamageLevel, NormalizedDamage };
 
 export type BuildingListItem = {
 	id: number;
@@ -57,7 +56,14 @@ export type OverviewDamageRow = {
 	color: string;
 };
 
-export type PredictionMetrics = {
+export type MacroDamageMetrics = {
+	available: boolean;
+	precisionMacroPct: string | null;
+	recallMacroPct: string | null;
+	f1MacroPct: string | null;
+};
+
+export interface PredictionMetrics {
 	correctCount: number;
 	comparedCount: number;
 	accuracyPct: string;
@@ -65,4 +71,5 @@ export type PredictionMetrics = {
 	available: boolean;
 	matrixTotal: number;
 	matrixMax: number;
-};
+	macroMetrics: MacroDamageMetrics;
+}

@@ -6,6 +6,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { rollupBuildingClassificationMetrics } from "@/utils/classificationMetrics";
 import {
 	ApiError,
 	type BuildingFeature,
@@ -29,8 +30,8 @@ import {
 	buildImagePairRows,
 	buildOverviewDamageRows,
 	buildStatsFromFeatures,
-	CONFUSION_LABELS,
 	createEmptyConfusionMatrix,
+	macroDamageMetricsFromConfusion,
 	normalizeDamage,
 	PAGE_SIZE,
 } from "./dashboardUtils";
@@ -369,55 +370,38 @@ export function useDashboardData() {
 	}, [ensureAllBuildings]);
 
 	const predictionMetrics = useMemo<PredictionMetrics>(() => {
-		const confusionMatrix = createEmptyConfusionMatrix();
+		const emptyMatrix = createEmptyConfusionMatrix();
 
 		if (!allBuildingsCache) {
 			return {
 				correctCount: 0,
 				comparedCount: 0,
 				accuracyPct: "0.0",
-				confusionMatrix,
+				confusionMatrix: emptyMatrix,
 				available: false,
 				matrixTotal: 0,
 				matrixMax: 0,
+				macroMetrics: macroDamageMetricsFromConfusion(emptyMatrix, 0),
 			};
 		}
 
-		let correctCount = 0;
-		let comparedCount = 0;
-
-		for (const feature of allBuildingsCache) {
-			const actual = normalizeDamage(feature.properties.actual_damage);
-			const rawPredicted = feature.properties.predicted_damage;
-			if (rawPredicted == null) continue;
-
-			const predicted = normalizeDamage(rawPredicted);
-			if (actual === "un-classified" || predicted === "un-classified") continue;
-			comparedCount += 1;
-			if (actual === predicted) correctCount += 1;
-
-			confusionMatrix[actual][predicted] += 1;
-		}
-
-		let matrixMax = 0;
-		for (const actualLabel of CONFUSION_LABELS) {
-			for (const predictedLabel of CONFUSION_LABELS) {
-				const value = confusionMatrix[actualLabel][predictedLabel];
-				if (value > matrixMax) matrixMax = value;
-			}
-		}
+		const r = rollupBuildingClassificationMetrics(allBuildingsCache);
 
 		return {
-			correctCount,
-			comparedCount,
+			correctCount: r.correctCount,
+			comparedCount: r.comparedCount,
 			accuracyPct:
-				comparedCount > 0
-					? ((correctCount / comparedCount) * 100).toFixed(1)
+				r.comparedCount > 0
+					? ((r.correctCount / r.comparedCount) * 100).toFixed(1)
 					: "0.0",
-			confusionMatrix,
-			available: comparedCount > 0,
-			matrixTotal: comparedCount,
-			matrixMax,
+			confusionMatrix: r.confusionMatrix,
+			available: r.comparedCount > 0,
+			matrixTotal: r.comparedCount,
+			matrixMax: r.matrixMax,
+			macroMetrics: macroDamageMetricsFromConfusion(
+				r.confusionMatrix,
+				r.comparedCount,
+			),
 		};
 	}, [allBuildingsCache]);
 

@@ -19,7 +19,7 @@ export default function Dashboard() {
 	return (
 		<div className="min-h-screen bg-background text-foreground">
 			<Header />
-			<Container className="w-full py-8">
+			<Container className="w-full py-6">
 				<div className="flex flex-row items-start gap-6">
 					<AppSidebar
 						activeSection={dashboard.activeSection}

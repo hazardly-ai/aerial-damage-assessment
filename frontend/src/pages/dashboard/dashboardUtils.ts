@@ -1,4 +1,9 @@
 import { DAMAGE_COLOR_HEX } from "@/constants/app";
+import {
+	CONFUSION_LABELS,
+	macroPrfPercentFromConfusion,
+	normalizeDamage,
+} from "@/utils/classificationMetrics";
 import type {
 	BuildingFeature,
 	BuildingStatsResponse,
@@ -6,16 +11,16 @@ import type {
 import type {
 	DamageLevel,
 	ImagePairRow,
-	NormalizedDamage,
+	MacroDamageMetrics,
 	OverviewDamageRow,
 } from "./dashboardTypes";
 
-export const CONFUSION_LABELS: DamageLevel[] = [
-	"no-damage",
-	"minor-damage",
-	"major-damage",
-	"destroyed",
-];
+export {
+	CONFUSION_LABELS,
+	createEmptyConfusionMatrix,
+	macroPrfPercentFromConfusion,
+	normalizeDamage,
+} from "@/utils/classificationMetrics";
 
 export const PAGE_SIZE = 25;
 
@@ -27,80 +32,41 @@ export const DAMAGE_FILTERS: Array<{ key: string; label: string }> = [
 	{ key: "destroyed", label: "Destroyed" },
 ];
 
-const DAMAGE_SYNONYMS: Record<string, NormalizedDamage> = {
-	"no-damage": "no-damage",
-	"no-damages": "no-damage",
-	"minor-damage": "minor-damage",
-	"minor-damages": "minor-damage",
-	"major-damage": "major-damage",
-	"major-damages": "major-damage",
-	destroyed: "destroyed",
-	destroy: "destroyed",
-	"un-classified": "un-classified",
-	unclassified: "un-classified",
-	unknown: "un-classified",
-	uncertain: "un-classified",
-};
-
 export const prettyLabel = (value: string): string =>
 	value
 		.split("-")
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join(" ");
 
-export const normalizeDamage = (raw?: string | null): NormalizedDamage => {
-	if (!raw) return "un-classified";
-
-	const normalized = raw
-		.toLowerCase()
-		.trim()
-		.replace(/[_\s]+/g, "-")
-		.replace(/-+/g, "-");
-
-	const mappedDamage = DAMAGE_SYNONYMS[normalized];
-	if (mappedDamage) return mappedDamage;
-
-	if (DAMAGE_FILTERS.some((item) => item.key === normalized)) {
-		return normalized as NormalizedDamage;
-	}
-
-	return "un-classified";
-};
-
 export const toPct = (value: number, total: number): string => {
 	if (total <= 0) return "0.0";
 	return ((value / total) * 100).toFixed(1);
 };
 
-export const createEmptyConfusionMatrix = (): Record<
-	DamageLevel,
-	Record<DamageLevel, number>
-> => ({
-	"no-damage": {
-		"no-damage": 0,
-		"minor-damage": 0,
-		"major-damage": 0,
-		destroyed: 0,
-	},
-	"minor-damage": {
-		"no-damage": 0,
-		"minor-damage": 0,
-		"major-damage": 0,
-		destroyed: 0,
-	},
-	"major-damage": {
-		"no-damage": 0,
-		"minor-damage": 0,
-		"major-damage": 0,
-		destroyed: 0,
-	},
-	destroyed: {
-		"no-damage": 0,
-		"minor-damage": 0,
-		"major-damage": 0,
-		destroyed: 0,
-	},
-});
+export const macroDamageMetricsFromConfusion = (
+	confusionMatrix: Record<DamageLevel, Record<DamageLevel, number>>,
+	comparedCount: number,
+): MacroDamageMetrics => {
+	if (comparedCount <= 0) {
+		return {
+			available: false,
+			precisionMacroPct: null,
+			recallMacroPct: null,
+			f1MacroPct: null,
+		};
+	}
+
+	const { precisionMacro, recallMacro, f1Macro } =
+		macroPrfPercentFromConfusion(confusionMatrix);
+
+	return {
+		available: true,
+		precisionMacroPct:
+			precisionMacro !== null ? precisionMacro.toFixed(1) : null,
+		recallMacroPct: recallMacro !== null ? recallMacro.toFixed(1) : null,
+		f1MacroPct: f1Macro !== null ? f1Macro.toFixed(1) : null,
+	};
+};
 
 export const buildStatsFromFeatures = (
 	features: BuildingFeature[],
