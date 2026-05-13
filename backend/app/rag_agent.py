@@ -245,6 +245,7 @@ def extract_general_location_text(question):
     patterns = [
         r"tell me about\s+(.+?)(?:\?|$)",
         r"what about\s+(.+?)(?:\?|$)",
+        r"what happened\s+(?:to|in|near|around)\s+(.+?)(?:\?|$)",
         r"give me stats for\s+(.+?)(?:\?|$)",
         r"give me information about\s+(.+?)(?:\?|$)",
         r"overview of\s+(.+?)(?:\?|$)",
@@ -2091,10 +2092,157 @@ def is_damage_label_query(question):
     ])
 
 
+def is_help_query(question):
+    normalized_question = re.sub(r"\s+", " ", question.strip().lower()).strip(" ?.")
+    return normalized_question in {
+        "help",
+        "what can you do",
+        "what can you help with",
+        "what do you do",
+        "how can you help",
+        "how can you help me",
+        "what should i ask",
+        "what questions can i ask",
+        "what can i ask",
+    }
+
+
+def is_greeting_query(question):
+    normalized_question = re.sub(r"\s+", " ", question.strip().lower()).strip(" !?.")
+    return normalized_question in {
+        "hi",
+        "hello",
+        "hey",
+        "good morning",
+        "good afternoon",
+        "good evening",
+    }
+
+
+def is_identity_query(question):
+    normalized_question = re.sub(r"\s+", " ", question.strip().lower()).strip(" !?.")
+    return normalized_question in {
+        "who are you",
+        "what are you",
+        "what is your name",
+        "what's your name",
+        "who am i talking to",
+        "are you hazardly",
+    }
+
+
+def is_acknowledgement_query(question):
+    normalized_question = re.sub(r"\s+", " ", question.strip().lower()).strip(" !?.")
+    acknowledgement_phrases = {
+        "thanks",
+        "thank you",
+        "thank u",
+        "thx",
+        "appreciate it",
+        "i appreciate it",
+        "got it",
+        "ok",
+        "okay",
+        "sounds good",
+    }
+    return normalized_question in acknowledgement_phrases and bool(get_last_assistant_message())
+
+
+def greeting_response():
+    return (
+        "Hi, I am Hazardly. Ask me about disaster damage counts, affected cities, damaged buildings near a "
+        "location, xBD scenes, or safety and repair guidance from the active dataset."
+    )
+
+
+def identity_response():
+    return (
+        "I am Hazardly, a disaster damage assessment assistant for the active dataset. I can help with damage "
+        "counts, affected cities, damaged buildings near a location, xBD scenes, and safety or repair guidance."
+    )
+
+
+def acknowledgement_response():
+    return "You're welcome. Ask me if you want to look at another location, scene, or damage level."
+
+
+def help_response():
+    return "\n".join([
+        "I can help with disaster damage assessment questions for the active dataset.",
+        "Try asking for a dataset summary, affected cities, damage counts, damaged buildings near a city or address, a specific xBD scene, misclassified buildings, or safety/repair guidance based on nearby damage levels.",
+        "Examples: \"Show destroyed buildings near Houston\", \"Summarize damage in Sugar Land\", or \"What cities have the most major damage?\"",
+    ])
+
+
+def ambiguous_query_response(parsed_query):
+    if parsed_query["intent"] in {"location_query", "location_overview"}:
+        return (
+            "I need a little more detail to answer that. Please include a city, area, address, xBD scene, "
+            "or say \"full dataset\" if you want overall results. For example: \"Show major damage near Houston\" "
+            "or \"Summarize the full dataset.\""
+        )
+
+    return (
+        "I am not sure which damage assessment question you want answered. You can ask about the full dataset, "
+        "affected cities, damage levels, a city or address, an xBD scene, or safety and repair guidance."
+    )
+
+
+def unsupported_query_response():
+    return (
+        "I understand this is related to disaster damage assessment, but I have not been taught how to answer that "
+        "kind of request yet. Try asking about damage counts, affected cities, damaged buildings near a location, "
+        "xBD scenes, or safety and repair guidance from the active dataset."
+    )
+
+
+def out_of_scope_query_response():
+    return (
+        "That is outside my disaster damage assessment scope. I can help with damage counts, affected cities, "
+        "damaged buildings near a location, xBD scenes, or safety and repair guidance from the active dataset."
+    )
+
+
+def is_untrained_disaster_request(question):
+    q = question.lower()
+    unsupported_terms = [
+        "forecast",
+        "predict",
+        "tomorrow",
+        "next week",
+        "future",
+        "live",
+        "real-time",
+        "realtime",
+        "insurance",
+        "claim",
+        "fema",
+        "permit",
+        "lawsuit",
+        "legal",
+    ]
+    return is_disaster_related(question) and any(term in q for term in unsupported_terms)
+
+
 def classify_query_intent_heuristic(question):
     lowered_question = question.lower()
 
     if is_scope_clarification_prompt(question):
+        return "unsupported"
+
+    if is_greeting_query(question):
+        return "greeting"
+
+    if is_identity_query(question):
+        return "identity"
+
+    if is_acknowledgement_query(question):
+        return "acknowledgement"
+
+    if is_help_query(question):
+        return "help"
+
+    if is_untrained_disaster_request(question):
         return "unsupported"
 
     if is_vlm_query(question):
@@ -2179,6 +2327,10 @@ Choose exactly one label from this list:
 - city_count
 - damage_labels
 - city_ranking
+- greeting
+- identity
+- acknowledgement
+- help
 - location_comparison
 - location_percentage
 - conversation_summary
@@ -2187,6 +2339,7 @@ Choose exactly one label from this list:
 - general_location_overview
 - location_query
 - unsupported
+- out_of_scope
 
 Definitions:
 - full_dataset_summary: asks about the dataset as a whole, what the data contains, or overall damage across the dataset, without focusing on one place
@@ -2197,6 +2350,10 @@ Definitions:
 - city_count: asks how many cities or locations are represented
 - damage_labels: asks which damage labels or levels exist
 - city_ranking: asks which cities have the most or least damage
+- greeting: brief conversational opener such as hello, hi, or hey
+- identity: asks who the assistant is or what it does
+- acknowledgement: brief thanks or acknowledgement after the assistant has answered
+- help: asks what the assistant can do or what questions are supported
 - location_comparison: compares two named locations
 - location_percentage: asks what percentage/share of buildings in a place fit a damage level
 - conversation_summary: asks for a recap of the conversation
@@ -2204,7 +2361,8 @@ Definitions:
 - xbd_query: directly references an xBD scene ID
 - general_location_overview: asks for an overview or summary of damage in one place
 - location_query: asks about buildings or damage for one place, address, area, or scene, including map-like requests
-- unsupported: not related to disaster damage assessment
+- unsupported: related to disaster damage assessment, but not a supported capability
+- out_of_scope: not related to disaster damage assessment
 
 Examples:
 Question: Tell me about the data
@@ -2215,6 +2373,9 @@ Label: full_dataset_summary
 
 Question: What cities are in the dataset?
 Label: city_list
+
+Question: What can you help with?
+Label: help
 
 Question: Compare Houston and Sugar Land
 Label: location_comparison
@@ -2258,6 +2419,10 @@ Label:
         "city_count",
         "damage_labels",
         "city_ranking",
+        "greeting",
+        "identity",
+        "acknowledgement",
+        "help",
         "location_comparison",
         "location_percentage",
         "conversation_summary",
@@ -2266,6 +2431,7 @@ Label:
         "general_location_overview",
         "location_query",
         "unsupported",
+        "out_of_scope",
     }
 
     return label if label in valid_labels else None
@@ -2297,7 +2463,7 @@ def classify_query_intent(question):
     if is_disaster_related(question):
         return "location_query"
 
-    return "unsupported"
+    return "out_of_scope"
 
 
 def extract_damage_filter(question):
@@ -2369,8 +2535,12 @@ def parse_structured_query(question):
         "misclassified_buildings": "misclassified_buildings",
         "city_list": "city_list",
         "city_count": "city_count",
-        "damage_labels": "damage_label_query",
+        "damage_labels": "damage_labels",
         "city_ranking": "city_ranking",
+        "greeting": "greeting",
+        "identity": "identity",
+        "acknowledgement": "acknowledgement",
+        "help": "help",
         "location_comparison": "location_comparison",
         "location_percentage": "location_percentage",
         "conversation_summary": "conversation_summary",
@@ -2379,6 +2549,7 @@ def parse_structured_query(question):
         "general_location_overview": "location_overview",
         "location_query": "location_query",
         "unsupported": "unsupported",
+        "out_of_scope": "out_of_scope",
     }.get(raw_intent, raw_intent)
 
     explicit_scene_id = extract_xbd_query_id(question)
@@ -2488,7 +2659,11 @@ def parse_structured_query(question):
         "location_percentage",
         "city_list",
         "city_count",
-        "damage_label_query",
+        "damage_labels",
+        "greeting",
+        "identity",
+        "acknowledgement",
+        "help",
         "conversation_summary",
         "scene_count",
         "scene_ranking",
@@ -2695,6 +2870,50 @@ def handle_chat_query(question):
     primary_location = parsed_query["primary_location"]
     advisory = parsed_query["advisory"]
     xbd_query_id = parsed_query["explicit_scene_id"]
+
+    if intent == "greeting":
+        answer = greeting_response()
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action()
+        }
+
+    if intent == "identity":
+        answer = identity_response()
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action()
+        }
+
+    if intent == "acknowledgement":
+        answer = acknowledgement_response()
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action()
+        }
+
+    if intent == "help":
+        answer = help_response()
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action()
+        }
 
     if intent == "vlm_query":
         answer = vlm_guidance_response()
@@ -2951,11 +3170,13 @@ def handle_chat_query(question):
             "action": build_no_action(),
         }
 
-    if intent == "unsupported":
+    if intent in {"unsupported", "out_of_scope"}:
         if is_scope_clarification_prompt(question):
             answer = "Please answer with either the full dataset or a specific city or area."
+        elif intent == "out_of_scope":
+            answer = out_of_scope_query_response()
         else:
-            answer = "I can only answer disaster-related queries about damage, safety, and assessments."
+            answer = unsupported_query_response()
         save_turn(question, answer)
         return {
             "answer": answer,
@@ -3192,15 +3413,7 @@ def handle_chat_query(question):
     # generic location-based queries
     address = primary_location
     if not address:
-        if (
-            (intent == "location_query" and (parsed_query["needs_map"] or parsed_query["damage_filter"]))
-            or (intent == "location_overview" and parsed_query["damage_filter"] and not primary_location)
-        ):
-            answer = (
-                "Do you want those results for the full dataset, or for a specific city or area?"
-            )
-        else:
-            answer = "I could not determine which location or scene you meant."
+        answer = ambiguous_query_response(parsed_query)
         save_turn(question, answer)
         return {
             "answer": answer,
