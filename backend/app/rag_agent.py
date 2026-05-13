@@ -40,11 +40,38 @@ def get_last_assistant_message():
 
 def is_dataset_scope_followup(question):
     normalized_question = question.strip().lower()
-    if normalized_question not in {"full", "full dataset", "dataset", "all"}:
+    if normalized_question not in {
+        "full",
+        "full dataset",
+        "dataset",
+        "all",
+        "entire dataset",
+        "the entire dataset",
+        "whole dataset",
+        "entire data",
+        "the entire data",
+        "whole data",
+    }:
         return False
 
     last_assistant_message = get_last_assistant_message().lower()
     return "full dataset, or for a specific city or area" in last_assistant_message
+
+
+def is_location_scope_followup(question):
+    normalized_question = question.strip().lower()
+    if not normalized_question:
+        return False
+    if normalized_question in {"full", "full dataset", "dataset", "all"}:
+        return False
+
+    last_assistant_message = get_last_assistant_message().lower()
+    return "full dataset, or for a specific city or area" in last_assistant_message
+
+
+def is_scope_clarification_prompt(question):
+    normalized_question = re.sub(r"\s+", " ", question.strip().lower()).strip(" ?.")
+    return normalized_question == "do you want those results for the full dataset, or for a specific city or area"
 
 # loading environment variables from backend/.env file so secrets are not hardcoded
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -183,6 +210,12 @@ def extract_in_location_text(question):
 
     address_text = match.group(1).strip(" ?,.")
     address_text = re.sub(
+        r"\s+(?:that\s+have|that\s+has|with|showing)\s+.+$",
+        "",
+        address_text,
+        flags=re.IGNORECASE,
+    ).strip(" ,")
+    address_text = re.sub(
         r"\b(damage|damaged|buildings?|properties|records|locations?)\b",
         "",
         address_text,
@@ -221,17 +254,50 @@ def extract_general_location_text(question):
             continue
         location_text = match.group(1).strip(" ?,.")
         location_text = re.sub(
+            r"^(?:buildings?|properties|records)\s+",
+            "",
+            location_text,
+            flags=re.IGNORECASE,
+        ).strip(" ,")
+        location_text = re.sub(
             r"\b(damage|damaged|buildings?|properties|records|stats|statistics|information)\b",
             "",
             location_text,
             flags=re.IGNORECASE,
         ).strip(" ,")
         location_text = re.sub(
+            r"^(?:that\s+have|that\s+has|with|showing)\s+",
+            "",
+            location_text,
+            flags=re.IGNORECASE,
+        ).strip(" ,")
+        location_text = re.sub(r"[-\s]+", " ", location_text).strip(" ,.-")
+        location_text = re.sub(
             r"^(?:the\s+)?city\s+of\s+",
             "",
             location_text,
             flags=re.IGNORECASE,
         ).strip(" ,")
+        if not location_text:
+            return None
+        if location_text.lower() in {
+            "no",
+            "non",
+            "undamaged",
+            "unaffected",
+            "destroyed",
+            "major",
+            "minor",
+            "that have minor",
+            "that have major",
+            "that have destroyed",
+            "that have no",
+            "have minor",
+            "have major",
+            "have destroyed",
+            "have no",
+        }:
+            return None
         return location_text or None
 
     return None
@@ -1611,6 +1677,7 @@ def is_disaster_related(question):
     keywords = [
         # damage + building
         "damage", "building", "structure", "collapse", "destruction", "minor", "major", "destroyed",
+        "undamaged", "non-damaged", "non damaged", "no damage", "no-damage",
 
         # disaster types
         "disaster", "hurricane", "flood", "earthquake", "storm", "harvey", "natural disaster",
@@ -1739,6 +1806,11 @@ def is_damage_label_query(question):
 
 
 def classify_query_intent_heuristic(question):
+    lowered_question = question.lower()
+
+    if is_scope_clarification_prompt(question):
+        return "unsupported"
+
     if is_vlm_query(question):
         return "vlm"
 
@@ -1769,6 +1841,24 @@ def classify_query_intent_heuristic(question):
 
     if extract_xbd_query_id(question) is not None:
         return "xbd_query"
+
+    if (
+        "tell me about" in lowered_question
+        and "building" in lowered_question
+        and extract_damage_filter(question) is not None
+        and (
+            extract_in_location_text(question)
+            or extract_on_location_text(question)
+            or "near " in lowered_question
+            or (
+                not extract_general_location_text(question)
+                and "near " not in lowered_question
+                and " in " not in lowered_question
+                and " on " not in lowered_question
+            )
+        )
+    ):
+        return "location_query"
 
     if extract_general_location_text(question):
         return "general_location_overview"
@@ -1867,11 +1957,16 @@ def classify_query_intent(question):
     normalized_question = question.strip().lower()
     if is_dataset_scope_followup(question):
         last_user_message = get_last_user_message().lower()
+        inherited_damage_filter = extract_damage_filter(last_user_message)
         if any(term in last_user_message for term in ["show", "open", "take me", "go to"]):
-            inherited_damage_filter = extract_damage_filter(last_user_message)
             if inherited_damage_filter or "building" in last_user_message:
                 return "location_query"
+        if inherited_damage_filter or "building" in last_user_message:
             return "full_dataset_summary"
+    if is_location_scope_followup(question):
+        last_user_message = get_last_user_message().lower()
+        if extract_damage_filter(last_user_message) or "building" in last_user_message:
+            return "location_query"
 
     heuristic_intent = classify_query_intent_heuristic(question)
     if heuristic_intent:
@@ -1890,7 +1985,8 @@ def classify_query_intent(question):
 def extract_damage_filter(question):
     q = question.lower()
     if any(word in q for word in [
-        "fine", "no damage", "no-damage", "no damaged", "undamaged", "unaffected"
+        "fine", "no damage", "no-damage", "no damaged", "undamaged", "unaffected",
+        "non-damaged", "non damaged", "not damaged"
     ]):
         return "no-damage"
     if "minor" in q:
@@ -1915,6 +2011,21 @@ def normalize_location_candidate(location_text):
     ).strip(" ,")
     normalized = re.sub(r"\s+", " ", normalized).strip(" ,")
     return normalized or None
+
+
+def format_location_label(location_text):
+    if not location_text:
+        return location_text
+
+    normalized = re.sub(r"\s+", " ", str(location_text)).strip(" ,")
+    if not normalized:
+        return normalized
+
+    if normalized == normalized.lower():
+        parts = [part.strip() for part in normalized.split(",")]
+        return ", ".join(part.title() for part in parts if part)
+
+    return normalized
 
 
 def infer_scope(location_text, explicit_scene_id=None):
@@ -1951,10 +2062,15 @@ def parse_structured_query(question):
 
     explicit_scene_id = extract_xbd_query_id(question)
     dataset_scope_followup = is_dataset_scope_followup(question)
-    inherited_user_message = get_last_user_message() if dataset_scope_followup else ""
+    location_scope_followup = is_location_scope_followup(question)
+    inherited_user_message = (
+        get_last_user_message()
+        if (dataset_scope_followup or location_scope_followup)
+        else ""
+    )
     inherited_damage_filter = (
         extract_damage_filter(inherited_user_message)
-        if dataset_scope_followup
+        if (dataset_scope_followup or location_scope_followup)
         else None
     )
     comparison_locations = extract_comparison_locations(question)
@@ -1984,6 +2100,10 @@ def parse_structured_query(question):
 
     if dataset_scope_followup and mapped_intent == "location_query":
         query_mode = "dataset_scope_followup"
+    elif location_scope_followup and mapped_intent == "location_query":
+        primary_location = normalize_location_candidate(question)
+        locations = [primary_location] if primary_location else []
+        query_mode = "clarified_location"
     elif mapped_intent == "location_comparison" and comparison_locations:
         first_location = normalize_location_candidate(comparison_locations[0])
         second_location = normalize_location_candidate(comparison_locations[1])
@@ -2027,8 +2147,10 @@ def parse_structured_query(question):
         damage_filter = inherited_damage_filter
     if mapped_intent == "location_query" and damage_filter is None:
         damage_filter = parsed_default_damage
-    if mapped_intent in {"location_overview", "dataset_overview", "city_list", "city_count"}:
+    if mapped_intent in {"location_overview", "city_list", "city_count"}:
         damage_filter = None
+    if mapped_intent == "location_overview" and primary_location is None and damage_filter is not None:
+        mapped_intent = "dataset_overview"
 
     wants_navigation = any(
         phrase in question.lower()
@@ -2396,7 +2518,10 @@ def handle_chat_query(question):
         }
 
     if intent == "unsupported":
-        answer = "I can only answer disaster-related queries about damage, safety, and assessments."
+        if is_scope_clarification_prompt(question):
+            answer = "Please answer with either the full dataset or a specific city or area."
+        else:
+            answer = "I can only answer disaster-related queries about damage, safety, and assessments."
         save_turn(question, answer)
         return {
             "answer": answer,
@@ -2409,7 +2534,19 @@ def handle_chat_query(question):
     # full dataset summary does not have a single map focus
     if intent == "dataset_overview":
         counts = get_full_dataset_damage_counts()
-        answer = synthesize_location_overview_answer("the full dataset", counts)
+        if damage_type and damage_type in counts:
+            damage_label = {
+                "no-damage": "undamaged",
+                "minor-damage": "minor-damage",
+                "major-damage": "major-damage",
+                "destroyed": "destroyed",
+            }[damage_type]
+            answer = "\n".join([
+                f"Here's the dataset summary for {damage_label} buildings:",
+                f"- Total {damage_label} buildings: {counts.get(damage_type, 0)}",
+            ])
+        else:
+            answer = synthesize_location_overview_answer("the full dataset", counts)
         save_turn(question, answer)
         return {
             "answer": answer,
@@ -2621,7 +2758,10 @@ def handle_chat_query(question):
     # generic location-based queries
     address = primary_location
     if not address:
-        if intent == "location_query" and parsed_query["needs_map"]:
+        if (
+            (intent == "location_query" and (parsed_query["needs_map"] or parsed_query["damage_filter"]))
+            or (intent == "location_overview" and parsed_query["damage_filter"] and not primary_location)
+        ):
             answer = (
                 "Do you want those results for the full dataset, or for a specific city or area?"
             )
@@ -2639,6 +2779,7 @@ def handle_chat_query(question):
     geo = geocode_address(address)
 
     if not geo:
+        display_address = format_location_label(address)
         all_buildings = get_all_buildings_by_address_text(address)
         filtered_buildings = [
             b for b in all_buildings
@@ -2651,9 +2792,9 @@ def handle_chat_query(question):
 
         if parsed_query["wants_summary"]:
             counts = count_damage_levels(all_buildings)
-            answer = format_damage_count_response(counts, address)
+            answer = format_damage_count_response(counts, display_address)
             action = (
-                build_map_action_from_buildings(all_buildings, address, primary_all_xbd_id)
+                build_map_action_from_buildings(all_buildings, display_address, primary_all_xbd_id)
                 if len(all_buildings) > 0
                 else build_no_action()
             )
@@ -2669,11 +2810,11 @@ def handle_chat_query(question):
 
         if advisory:
             if len(all_buildings) == 0:
-                answer = f"I couldn't find enough nearby damage data to give a reliable advisory for {address}."
+                answer = f"I couldn't find enough nearby damage data to give a reliable advisory for {display_address}."
                 action = build_no_action()
             else:
-                answer = advisory_response(question, all_buildings, address)
-                action = build_map_action_from_buildings(all_buildings, address, primary_all_xbd_id)
+                answer = advisory_response(question, all_buildings, display_address)
+                action = build_map_action_from_buildings(all_buildings, display_address, primary_all_xbd_id)
 
             payload = {
                 "answer": answer,
@@ -2697,14 +2838,14 @@ def handle_chat_query(question):
             }
 
         if damage_type == "no-damage":
-            answer = f"{len(filtered_buildings)} buildings in {address} appear to have no visible damage."
+            answer = f"{len(filtered_buildings)} buildings in {display_address} appear to have no visible damage."
         else:
-            answer = generate_llm_answer(filtered_buildings, address, damage_type)
+            answer = generate_llm_answer(filtered_buildings, display_address, damage_type)
 
         action = (
             build_building_action(filtered_buildings[0])
             if len(filtered_buildings) == 1
-            else build_map_action_from_buildings(filtered_buildings, address, primary_filtered_xbd_id)
+            else build_map_action_from_buildings(filtered_buildings, display_address, primary_filtered_xbd_id)
         )
 
         payload = {
