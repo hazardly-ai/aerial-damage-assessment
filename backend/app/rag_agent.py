@@ -121,7 +121,9 @@ def rows_to_buildings(rows):
             "uid": building_uid,  # exact field frontend uses for building route
             "xbd_id": xbd_id,  # image pair id used in /map/:disasterName/:xbd_id
             "damage": damage,  # damage level used for filtering/color-coding
-            "geometry": geometry  # GeoJSON polygon object for Mapbox
+            "geometry": geometry,  # GeoJSON polygon object for Mapbox
+            "actual_damage": r[4] if len(r) > 4 else None,
+            "is_correct": r[5] if len(r) > 5 else None,
         })
 
     return buildings
@@ -149,7 +151,7 @@ def parse_question(question):
     # extract location from common location phrases
     location_match = re.search(
         r"\b(?:near|in)\s+(.+?)(?:\?|$)",
-        q,
+        question,
         flags=re.IGNORECASE,
     )
 
@@ -246,6 +248,9 @@ def extract_general_location_text(question):
         r"give me stats for\s+(.+?)(?:\?|$)",
         r"give me information about\s+(.+?)(?:\?|$)",
         r"overview of\s+(.+?)(?:\?|$)",
+        r"(?:damage summary|summary of damage|overall damage|damage breakdown|damage levels)\s+for\s+(.+?)(?:\?|$)",
+        r"(?:damage summary|summary of damage|overall damage|damage breakdown|damage levels)\s+near\s+(.+?)(?:\?|$)",
+        r"(?:damage summary|summary of damage|overall damage|damage breakdown|damage levels)\s+in\s+(.+?)(?:\?|$)",
     ]
 
     for pattern in patterns:
@@ -619,6 +624,70 @@ def fetch_city_damage_stats(limit=20):
     return rows
 
 
+def fetch_scene_stats(limit=None):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+      ip.xbd_id,
+      COUNT(*) AS total_buildings,
+      COALESCE(SUM(CASE WHEN b.predicted_damage = 'no-damage' THEN 1 ELSE 0 END), 0) AS no_damage,
+      COALESCE(SUM(CASE WHEN b.predicted_damage = 'minor-damage' THEN 1 ELSE 0 END), 0) AS minor_damage,
+      COALESCE(SUM(CASE WHEN b.predicted_damage = 'major-damage' THEN 1 ELSE 0 END), 0) AS major_damage,
+      COALESCE(SUM(CASE WHEN b.predicted_damage = 'destroyed' THEN 1 ELSE 0 END), 0) AS destroyed,
+      COALESCE(SUM(CASE
+        WHEN b.predicted_damage IS NOT NULL
+         AND b.actual_damage::text = b.predicted_damage::text
+        THEN 1 ELSE 0 END), 0) AS correct_count,
+      COALESCE(SUM(CASE
+        WHEN b.predicted_damage IS NOT NULL
+        THEN 1 ELSE 0 END), 0) AS compared_count,
+      COALESCE(SUM(CASE
+        WHEN b.predicted_damage IS NOT NULL
+         AND b.actual_damage::text <> b.predicted_damage::text
+        THEN 1 ELSE 0 END), 0) AS incorrect_count
+    FROM image_pairs ip
+    JOIN disasters d ON ip.disaster_id = d.id
+    LEFT JOIN buildings b ON b.image_pair_id = ip.id
+    WHERE d.name = %s
+    GROUP BY ip.xbd_id
+    """
+
+    params = [DEFAULT_DISASTER_NAME]
+    if limit is not None:
+        query += " ORDER BY ip.xbd_id ASC LIMIT %s"
+        params.append(limit)
+
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows
+
+
+def fetch_scene_count():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT COUNT(*)
+    FROM image_pairs ip
+    JOIN disasters d ON ip.disaster_id = d.id
+    WHERE d.name = %s
+    """
+
+    cur.execute(query, (DEFAULT_DISASTER_NAME,))
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    return row[0] if row else 0
+
+
 def format_city_list_response(rows):
     if len(rows) == 0:
         return "I couldn't find any city-level data for the active disaster dataset."
@@ -679,9 +748,13 @@ def resolve_location_buildings(location_text):
         buildings = get_all_buildings_by_address_text(normalized_location)
 
     if len(buildings) > 0 and not has_explicit_region:
-        label_text = normalized_location
+        label_text = format_location_label(normalized_location)
     else:
-        label_text = geo["formatted_address"] if geo else normalized_location
+        label_text = (
+            format_location_label(geo["formatted_address"])
+            if geo and geo.get("formatted_address")
+            else format_location_label(normalized_location)
+        )
 
     return geo, label_text, buildings
 
@@ -770,6 +843,63 @@ def is_city_ranking_query(question):
     return any(signal in q for signal in ranking_signals)
 
 
+def is_scene_count_query(question):
+    q = question.lower()
+    return (
+        "how many scenes" in q
+        or "number of scenes" in q
+        or "how many xbd scenes" in q
+        or "how many image pairs" in q
+        or "how many xbd ids" in q
+    )
+
+
+def is_scene_ranking_query(question):
+    q = question.lower()
+    scene_terms = ["scene", "scenes", "xbd", "image pair", "image pairs"]
+    ranking_terms = [
+        "worst",
+        "best",
+        "most",
+        "highest",
+        "lowest",
+        "top",
+        "rank",
+    ]
+    metric_terms = [
+        "accuracy",
+        "destroyed",
+        "major damage",
+        "minor damage",
+        "incorrect",
+        "wrong predictions",
+        "misclassified",
+    ]
+    return (
+        any(term in q for term in scene_terms)
+        and any(term in q for term in ranking_terms)
+        and any(term in q for term in metric_terms)
+    )
+
+
+def is_misclassified_query(question):
+    q = question.lower()
+    return any(
+        term in q
+        for term in [
+            "misclassified",
+            "wrong prediction",
+            "wrong predictions",
+            "incorrect prediction",
+            "incorrect predictions",
+            "false positives",
+            "false positive",
+            "false negatives",
+            "false negative",
+        ]
+    )
+
+
 def extract_top_n(question, default=5):
     match = re.search(r"\btop\s+(\d+)\b", question, flags=re.IGNORECASE)
     if not match:
@@ -799,6 +929,90 @@ def get_ranking_metric(question):
     ]):
         return "no-damage"
     return "total"
+
+
+def get_scene_ranking_metric(question):
+    q = question.lower()
+    if "accuracy" in q:
+        return "accuracy"
+    if any(term in q for term in ["incorrect", "wrong prediction", "wrong predictions", "misclassified"]):
+        return "incorrect_count"
+    if "destroyed" in q:
+        return "destroyed"
+    if "major" in q:
+        return "major_damage"
+    if "minor" in q:
+        return "minor_damage"
+    return "destroyed"
+
+
+def sort_scene_rows(rows, metric):
+    def sort_key(row):
+        xbd_id, total, _no_damage, minor, major, destroyed, correct, compared, incorrect = row
+        accuracy = (correct / compared) if compared else None
+
+        values = {
+            "destroyed": destroyed,
+            "major_damage": major,
+            "minor_damage": minor,
+            "incorrect_count": incorrect,
+            "accuracy": accuracy if accuracy is not None else 2,
+        }
+        primary = values[metric]
+        if metric == "accuracy":
+            return (primary, -compared, xbd_id)
+        return (-primary, -total, xbd_id)
+
+    return sorted(rows, key=sort_key)
+
+
+def format_scene_count_response(total_scenes):
+    return f"The active disaster dataset includes {total_scenes} xBD scenes/image pairs."
+
+
+def format_scene_label(scene_id):
+    return f"scene {scene_id}"
+
+
+def format_scene_ranking(rows, metric, limit):
+    if len(rows) == 0:
+        return "I couldn't find any scene-level data for the active disaster dataset."
+
+    sorted_rows = sort_scene_rows(rows, metric)
+    limited_rows = sorted_rows[:limit]
+    metric_label = {
+        "destroyed": "destroyed buildings",
+        "major_damage": "major-damage buildings",
+        "minor_damage": "minor-damage buildings",
+        "incorrect_count": "incorrect predictions",
+        "accuracy": "lowest accuracy",
+    }[metric]
+
+    lines = [f"Top scenes by {metric_label}:"]
+    for row in limited_rows:
+        xbd_id, total, _no_damage, minor, major, destroyed, correct, compared, incorrect = row
+        if metric == "accuracy":
+            accuracy_text = "n/a" if compared == 0 else f"{round((correct / compared) * 100, 1)}%"
+            lines.append(
+                f"- {format_scene_label(xbd_id)}: accuracy {accuracy_text}, {incorrect} incorrect, {total} total"
+            )
+        else:
+            metric_value = {
+                "destroyed": destroyed,
+                "major_damage": major,
+                "minor_damage": minor,
+                "incorrect_count": incorrect,
+            }[metric]
+            lines.append(
+                f"- {format_scene_label(xbd_id)}: {metric_value} {metric_label}, {total} total"
+            )
+
+    return "\n".join(lines)
+
+
+def get_top_scene_for_metric(rows, metric):
+    sorted_rows = sort_scene_rows(rows, metric)
+    return sorted_rows[0] if sorted_rows else None
 
 
 def sort_city_rows(rows, metric):
@@ -1066,6 +1280,74 @@ def get_buildings_for_xbd(xbd_id, damage_filter=None):
     return rows_to_buildings(rows)
 
 
+def get_misclassified_buildings_for_xbd(xbd_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+      b.uid,
+      ip.xbd_id,
+      b.predicted_damage,
+      ST_AsGeoJSON(b.geom),
+      b.actual_damage::text,
+      CASE
+        WHEN b.predicted_damage IS NULL THEN NULL
+        WHEN b.actual_damage::text = b.predicted_damage::text THEN TRUE
+        ELSE FALSE
+      END AS is_correct
+    FROM buildings b
+    JOIN image_pairs ip ON b.image_pair_id = ip.id
+    JOIN disasters d ON ip.disaster_id = d.id
+    WHERE d.name = %s
+      AND ip.xbd_id = %s
+      AND b.predicted_damage IS NOT NULL
+      AND b.actual_damage::text <> b.predicted_damage::text
+    """
+
+    cur.execute(query, (DEFAULT_DISASTER_NAME, xbd_id))
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows_to_buildings(rows)
+
+
+def get_all_misclassified_buildings():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT
+      b.uid,
+      ip.xbd_id,
+      b.predicted_damage,
+      ST_AsGeoJSON(b.geom),
+      b.actual_damage::text,
+      CASE
+        WHEN b.predicted_damage IS NULL THEN NULL
+        WHEN b.actual_damage::text = b.predicted_damage::text THEN TRUE
+        ELSE FALSE
+      END AS is_correct
+    FROM buildings b
+    JOIN image_pairs ip ON b.image_pair_id = ip.id
+    JOIN disasters d ON ip.disaster_id = d.id
+    WHERE d.name = %s
+      AND b.predicted_damage IS NOT NULL
+      AND b.actual_damage::text <> b.predicted_damage::text
+    ORDER BY ip.xbd_id ASC
+    """
+
+    cur.execute(query, (DEFAULT_DISASTER_NAME,))
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows_to_buildings(rows)
+
+
 def get_buildings_by_address_text(address_text, damage_filter):
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1268,7 +1550,11 @@ def get_nearest_xbd_id(buildings):
 
 
 def extract_xbd_query_id(question):
-    match = re.search(r"\bxbd\s*#?\s*(\d+)\b", question, flags=re.IGNORECASE)
+    match = re.search(
+        r"\b(?:xbd|scene)\s*#?\s*(\d+)\b",
+        question,
+        flags=re.IGNORECASE,
+    )
     if not match:
         return None
 
@@ -1748,7 +2034,7 @@ def is_full_dataset_query(question):
     if not has_dataset_phrase:
         return False
 
-    scoped_location_phrases = [" near ", " in ", " on ", " around ", " at "]
+    scoped_location_phrases = [" near ", " in ", " on ", " around ", " at ", " for "]
     return not any(phrase in q for phrase in scoped_location_phrases)
 
 
@@ -1814,6 +2100,15 @@ def classify_query_intent_heuristic(question):
     if is_vlm_query(question):
         return "vlm"
 
+    if is_scene_count_query(question):
+        return "scene_count"
+
+    if is_scene_ranking_query(question):
+        return "scene_ranking"
+
+    if is_misclassified_query(question):
+        return "misclassified_buildings"
+
     if is_conversation_summary_query(question):
         return "conversation_summary"
 
@@ -1832,6 +2127,11 @@ def classify_query_intent_heuristic(question):
     comparison_locations = extract_comparison_locations(question)
     if comparison_locations and is_city_comparison_query(question):
         return "location_comparison"
+
+    if is_data_summary_query(question):
+        if any(phrase in lowered_question for phrase in [" near ", " in ", " on ", " around ", " at ", " for "]):
+            return "general_location_overview"
+        return "full_dataset_summary"
 
     if extract_percentage_location_text(question):
         return "location_percentage"
@@ -1871,6 +2171,9 @@ def classify_query_intent_llm(question):
 You are routing user questions for a disaster damage assessment assistant.
 
 Choose exactly one label from this list:
+- scene_count
+- scene_ranking
+- misclassified_buildings
 - full_dataset_summary
 - city_list
 - city_count
@@ -1887,6 +2190,9 @@ Choose exactly one label from this list:
 
 Definitions:
 - full_dataset_summary: asks about the dataset as a whole, what the data contains, or overall damage across the dataset, without focusing on one place
+- scene_count: asks how many xBD scenes or image pairs are in the dataset
+- scene_ranking: asks for the best/worst/top scenes by accuracy, incorrect predictions, or damage counts
+- misclassified_buildings: asks to show buildings with incorrect predictions or other classification errors
 - city_list: asks which cities or locations appear in the dataset
 - city_count: asks how many cities or locations are represented
 - damage_labels: asks which damage labels or levels exist
@@ -1922,6 +2228,15 @@ Label: general_location_overview
 Question: Show XBD 18
 Label: xbd_query
 
+Question: How many scenes are available?
+Label: scene_count
+
+Question: Show the worst scene by accuracy
+Label: scene_ranking
+
+Question: Show misclassified buildings
+Label: misclassified_buildings
+
 Question: Upload a before and after image
 Label: vlm
 
@@ -1935,6 +2250,9 @@ Label:
 
     label = result.strip().strip('"').strip().splitlines()[0].strip().lower()
     valid_labels = {
+        "scene_count",
+        "scene_ranking",
+        "misclassified_buildings",
         "full_dataset_summary",
         "city_list",
         "city_count",
@@ -2046,6 +2364,9 @@ def parse_structured_query(question):
     raw_intent = classify_query_intent(question)
     mapped_intent = {
         "full_dataset_summary": "dataset_overview",
+        "scene_count": "scene_count",
+        "scene_ranking": "scene_ranking",
+        "misclassified_buildings": "misclassified_buildings",
         "city_list": "city_list",
         "city_count": "city_count",
         "damage_labels": "damage_label_query",
@@ -2114,8 +2435,10 @@ def parse_structured_query(question):
         primary_location = normalize_location_candidate(percentage_location_text)
         locations = [primary_location] if primary_location else []
         query_mode = "percentage"
-    elif mapped_intent == "location_overview" and general_location_text:
-        primary_location = normalize_location_candidate(general_location_text)
+    elif mapped_intent == "location_overview" and (general_location_text or explicit_near_or_in_match):
+        primary_location = normalize_location_candidate(
+            general_location_text if general_location_text else parsed_address
+        )
         locations = [primary_location] if primary_location else []
         query_mode = "overview"
     elif on_location_text:
@@ -2131,7 +2454,7 @@ def parse_structured_query(question):
         locations = [primary_location] if primary_location else []
         query_mode = "in_location"
     elif explicit_scene_id is not None:
-        primary_location = f"XBD {explicit_scene_id}"
+        primary_location = format_scene_label(explicit_scene_id)
         locations = [primary_location]
         query_mode = "scene"
     else:
@@ -2167,6 +2490,8 @@ def parse_structured_query(question):
         "city_count",
         "damage_label_query",
         "conversation_summary",
+        "scene_count",
+        "scene_ranking",
     }
 
     entity_type = "place"
@@ -2393,6 +2718,115 @@ def handle_chat_query(question):
             "action": build_no_action()  # no navigation action
         }
 
+    if intent == "scene_count":
+        total_scenes = fetch_scene_count()
+        answer = format_scene_count_response(total_scenes)
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action(),
+        }
+
+    if intent == "scene_ranking":
+        metric = get_scene_ranking_metric(question)
+        limit = extract_top_n(question)
+        scene_rows = fetch_scene_stats()
+        answer = format_scene_ranking(scene_rows, metric, limit)
+        top_scene = get_top_scene_for_metric(scene_rows, metric)
+
+        if not top_scene:
+            save_turn(question, answer)
+            return {
+                "answer": answer,
+                "response": answer,
+                "focus": None,
+                "highlighted_buildings": [],
+                "action": build_no_action(),
+            }
+
+        top_xbd_id = top_scene[0]
+        if metric in {"accuracy", "incorrect_count"}:
+            highlighted_buildings = get_misclassified_buildings_for_xbd(top_xbd_id)
+        elif metric == "destroyed":
+            highlighted_buildings = get_buildings_for_xbd(top_xbd_id, "destroyed")
+        elif metric == "major_damage":
+            highlighted_buildings = get_buildings_for_xbd(top_xbd_id, "major-damage")
+        elif metric == "minor_damage":
+            highlighted_buildings = get_buildings_for_xbd(top_xbd_id, "minor-damage")
+        else:
+            highlighted_buildings = get_buildings_for_xbd(top_xbd_id)
+        action = build_scene_action(
+            top_xbd_id,
+            [building["uid"] for building in highlighted_buildings],
+            format_scene_label(top_xbd_id),
+        )
+
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": highlighted_buildings,
+            "action": action,
+        }
+
+    if intent == "misclassified_buildings":
+        if xbd_query_id is not None:
+            misclassified_buildings = get_misclassified_buildings_for_xbd(xbd_query_id)
+            label_text = format_scene_label(xbd_query_id)
+            total_misclassified = len(misclassified_buildings)
+        else:
+            all_misclassified_buildings = get_all_misclassified_buildings()
+            total_misclassified = len(all_misclassified_buildings)
+            representative_xbd_id = get_dominant_xbd_id(all_misclassified_buildings)
+            misclassified_buildings = get_buildings_for_primary_scene(
+                all_misclassified_buildings,
+                representative_xbd_id,
+            )
+            label_text = (
+                f"representative {format_scene_label(representative_xbd_id)}"
+                if representative_xbd_id is not None
+                else "the active dataset"
+            )
+
+        if len(misclassified_buildings) == 0:
+            if xbd_query_id is not None:
+                answer = f"I couldn't find any misclassified buildings on {format_scene_label(xbd_query_id)}."
+            else:
+                answer = "I couldn't find any misclassified buildings in the active disaster dataset."
+            save_turn(question, answer)
+            return {
+                "answer": answer,
+                "response": answer,
+                "focus": None,
+                "highlighted_buildings": [],
+                "action": build_no_action(),
+            }
+
+        answer = f"I found {total_misclassified} misclassified buildings in the active disaster dataset."
+        if xbd_query_id is not None:
+            answer = f"I found {total_misclassified} misclassified buildings on {label_text}."
+        else:
+            answer += f" I'm highlighting {label_text} on the map."
+        primary_xbd_id = get_dominant_xbd_id(misclassified_buildings)
+        action = build_scene_action(
+            primary_xbd_id,
+            [building["uid"] for building in misclassified_buildings],
+            label_text,
+        )
+
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": misclassified_buildings,
+            "action": action,
+        }
+
     if intent == "city_count":
         rows = fetch_city_damage_stats(limit=500)
         city_total = len(rows)
@@ -2575,7 +3009,7 @@ def handle_chat_query(question):
 
         if len(buildings) == 0:
             answer = (
-                f"I could not find relevant damage data for XBD {xbd_query_id}."
+                f"I could not find relevant damage data for {format_scene_label(xbd_query_id)}."
             )
             save_turn(question, answer)
             return {
@@ -2586,7 +3020,7 @@ def handle_chat_query(question):
                 "action": build_no_action(),
             }
 
-        label_text = f"XBD {xbd_query_id}"
+        label_text = format_scene_label(xbd_query_id)
         if wants_all_buildings:
             counts = count_damage_levels(buildings)
             answer = synthesize_location_overview_answer(label_text, counts)
