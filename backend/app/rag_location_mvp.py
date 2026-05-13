@@ -5,6 +5,7 @@ Minimal RAG plus tool-calling demo for spatial damage queries.
 
 Setup:
 - backend/.env must define:
+  - SUPABASE_URL, SUPABASE_SERVICE_KEY
   - DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
   - MAPBOX_API_KEY
   - NEMOTRON_URL
@@ -18,6 +19,11 @@ Example output shape:
     Question: Show predicted major damage near 123 Main St
     Parsed address: 123 Main St
     Parsed damage filter: major-damage
+
+    Dataset Snapshot:
+      - disasters: ...
+      - image_pairs: ...
+      - buildings: ...
 
     Tool Trace:
     1. geocode_address(address='123 Main St')
@@ -56,7 +62,17 @@ from llama_index.core.llms import CompletionResponse, CustomLLM
 from llama_index.core.tools import FunctionTool
 from psycopg.rows import dict_row
 
-from app.config import DB_HOST, DB_NAME, DB_PASSWORD, DB_PORT, DB_USER, db_settings_configured, missing_db_settings
+from app.config import (
+    DB_HOST,
+    DB_NAME,
+    DB_PASSWORD,
+    DB_PORT,
+    DB_USER,
+    SUPABASE_SERVICE_KEY,
+    SUPABASE_URL,
+    db_settings_configured,
+    missing_db_settings,
+)
 
 
 DEFAULT_MODEL = "mistralai/mistral-nemotron"
@@ -69,6 +85,13 @@ class ToolTraceEntry:
     name: str
     arguments: dict[str, Any]
     preview: str
+
+
+@dataclass
+class DatasetSnapshot:
+    disasters: int
+    image_pairs: int
+    buildings: int
 
 
 TRACE_LOG: list[ToolTraceEntry] = []
@@ -94,6 +117,27 @@ def ensure_db_configured() -> None:
     raise RuntimeError(f"Database configuration is incomplete. Missing: {missing}")
 
 
+def ensure_runtime_configured() -> None:
+    ensure_db_configured()
+
+    missing: list[str] = []
+    if not SUPABASE_URL:
+        missing.append("SUPABASE_URL")
+    if not SUPABASE_SERVICE_KEY:
+        missing.append("SUPABASE_SERVICE_KEY")
+    if not os.getenv("MAPBOX_API_KEY"):
+        missing.append("MAPBOX_API_KEY")
+    if not os.getenv("NEMOTRON_URL"):
+        missing.append("NEMOTRON_URL")
+    if not os.getenv("NEMOTRON_API_KEY"):
+        missing.append("NEMOTRON_API_KEY")
+
+    if missing:
+        raise RuntimeError(
+            "Runtime configuration is incomplete. Missing: " + ", ".join(missing)
+        )
+
+
 def get_db_connection() -> psycopg.Connection:
     ensure_db_configured()
     return psycopg.connect(
@@ -103,6 +147,32 @@ def get_db_connection() -> psycopg.Connection:
         password=DB_PASSWORD,
         dbname=DB_NAME,
         row_factory=dict_row,
+    )
+
+
+def fetch_dataset_snapshot() -> DatasetSnapshot:
+    sql = """
+    SELECT
+      COUNT(DISTINCT d.id) AS disasters,
+      COUNT(DISTINCT ip.id) AS image_pairs,
+      COUNT(DISTINCT b.uid) AS buildings
+    FROM disasters d
+    JOIN image_pairs ip ON ip.disaster_id = d.id
+    JOIN buildings b ON b.image_pair_id = ip.id
+    """
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            row = cur.fetchone()
+
+    if not row:
+        return DatasetSnapshot(disasters=0, image_pairs=0, buildings=0)
+
+    return DatasetSnapshot(
+        disasters=int(row["disasters"] or 0),
+        image_pairs=int(row["image_pairs"] or 0),
+        buildings=int(row["buildings"] or 0),
     )
 
 
@@ -292,6 +362,7 @@ def build_retrieval_documents(
     buildings: list[dict[str, Any]],
     damage_filter: str | None,
     radius_m: int,
+    dataset_snapshot: DatasetSnapshot,
 ) -> list[Document]:
     unique_disasters = sorted({str(row["disaster_name"]) for row in buildings})
     intro_lines = [
@@ -299,6 +370,9 @@ def build_retrieval_documents(
         f"Resolved address: {resolved_address}",
         f"Spatial radius meters: {radius_m}",
         f"Requested predicted damage filter: {damage_filter or 'none'}",
+        f"Dataset disaster count: {dataset_snapshot.disasters}",
+        f"Dataset image pair count: {dataset_snapshot.image_pairs}",
+        f"Dataset building count: {dataset_snapshot.buildings}",
         f"Matching buildings returned: {len(buildings)}",
         f"Disasters represented in evidence: {', '.join(unique_disasters) if unique_disasters else 'none'}",
     ]
@@ -339,6 +413,7 @@ def build_rag_answer(
     buildings: list[dict[str, Any]],
     damage_filter: str | None,
     radius_m: int,
+    dataset_snapshot: DatasetSnapshot,
 ) -> str:
     documents = build_retrieval_documents(
         question=question,
@@ -346,6 +421,7 @@ def build_rag_answer(
         buildings=buildings,
         damage_filter=damage_filter,
         radius_m=radius_m,
+        dataset_snapshot=dataset_snapshot,
     )
     index = SummaryIndex.from_documents(documents)
     query_engine = index.as_query_engine(llm=llm, response_mode="compact")
@@ -447,11 +523,20 @@ def print_evidence(buildings: list[dict[str, Any]]) -> None:
         )
 
 
+def print_dataset_snapshot(snapshot: DatasetSnapshot) -> None:
+    print("\nDataset Snapshot:")
+    print(f"  - disasters: {snapshot.disasters}")
+    print(f"  - image_pairs: {snapshot.image_pairs}")
+    print(f"  - buildings: {snapshot.buildings}")
+
+
 def run_demo(question: str, radius_m: int, limit: int) -> None:
     reset_trace()
+    ensure_runtime_configured()
     address, damage_filter = parse_location_query(question)
     llm = NemotronLLM()
     agent = create_agent(llm=llm, radius_m=radius_m, limit=limit)
+    dataset_snapshot = fetch_dataset_snapshot()
 
     print(f"Question: {question}")
     print(f"Parsed address: {address}")
@@ -472,8 +557,10 @@ def run_demo(question: str, radius_m: int, limit: int) -> None:
         buildings=buildings,
         damage_filter=damage_filter,
         radius_m=radius_m,
+        dataset_snapshot=dataset_snapshot,
     )
 
+    print_dataset_snapshot(dataset_snapshot)
     print_tool_trace()
     print_evidence(buildings)
     print("\nAgent Answer:")
