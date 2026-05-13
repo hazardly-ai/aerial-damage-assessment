@@ -49,8 +49,8 @@ function ProbabilityBar({ label, value }: { label: string; value: number }) {
 }
 
 function ResultsPanel({ result }: { result: VlmEvaluationResult }) {
-	const { prediction, model_version, is_mock } = result;
-
+	const { prediction, model_version, is_mock, raw_response } = result;
+	const [showRaw, setShowRaw] = useState(false);
 	return (
 		<div className="space-y-5 rounded-xl border border-border/40 bg-card p-6 shadow-sm">
 			<div className="flex items-center justify-between gap-3">
@@ -100,6 +100,23 @@ function ResultsPanel({ result }: { result: VlmEvaluationResult }) {
 					value={prediction.probabilities.destroyed}
 				/>
 			</div>
+
+			{raw_response && (
+				<div className="space-y-2">
+					<button
+						type="button"
+						onClick={() => setShowRaw(!showRaw)}
+						className="text-sm text-primary hover:underline font-medium"
+					>
+						{showRaw ? "Hide Raw Data" : "View Raw Data"}
+					</button>
+					{showRaw && (
+						<pre className="text-xs bg-muted p-4 rounded-lg overflow-x-auto">
+							{JSON.stringify(raw_response, null, 2)}
+						</pre>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }

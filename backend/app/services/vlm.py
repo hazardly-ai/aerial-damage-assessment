@@ -58,20 +58,24 @@ async def _modal_evaluate(pre_image_bytes: bytes, post_image_bytes: bytes) -> Vl
         resp.raise_for_status()
         data = resp.json()
 
+    predicted_label = data["predicted_label"]
+    probs = data["probabilities"]
+
     return VlmEvaluationResponse(
         prediction=VlmPrediction(
-            damage_class=data["prediction"]["damage_class"],
-            confidence=data["prediction"]["confidence"],
+            damage_class=predicted_label,
+            confidence=data["confidence"],
             probabilities=DamageProbabilities(
-                no_damage=data["prediction"]["probabilities"]["no_damage"],
-                minor_damage=data["prediction"]["probabilities"]["minor_damage"],
-                major_damage=data["prediction"]["probabilities"]["major_damage"],
-                destroyed=data["prediction"]["probabilities"]["destroyed"],
+                no_damage=probs["no-damage"],
+                minor_damage=probs["minor-damage"],
+                major_damage=probs["major-damage"],
+                destroyed=probs["destroyed"],
             ),
-            description=data["prediction"]["description"],
+            description=MOCK_DESCRIPTIONS.get(predicted_label, f"Damage classified as {predicted_label}."),
         ),
-        model_version=data.get("model_version", "modal-v1"),
+        model_version="remoteclip-v1",
         is_mock=False,
+        raw_response=data,
     )
 
 

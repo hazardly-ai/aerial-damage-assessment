@@ -192,6 +192,8 @@ def fetch_building_damage_stats_by_disaster(
     }
     for row in rows:
         key = row["actual_damage"]
+        if key not in by_damage:
+            continue
         by_damage[key] = row["count"]
 
     total = sum(by_damage.values())

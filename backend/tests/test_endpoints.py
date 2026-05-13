@@ -205,3 +205,35 @@ def test_get_building_bboxes_for_disaster(client):
         assert "address" in props
         # This endpoint should NOT have pixel_coords
         assert "pixel_coords" not in props
+
+
+def test_get_paged_buildings_for_disaster(client):
+    disasters = client.get("/disasters").json()
+    if not disasters:
+        pytest.skip("No disasters in DB")
+
+    did = disasters[0]["id"]
+    r = client.get(f"/disasters/{did}/buildings/paged", params={"page": 1, "page_size": 5})
+    assert r.status_code == 200
+    data = r.json()
+    assert "items" in data
+    assert "page" in data
+    assert "page_size" in data
+    assert "total_items" in data
+    assert "total_pages" in data
+    assert isinstance(data["items"], list)
+
+
+def test_get_building_stats_for_disaster(client):
+    disasters = client.get("/disasters").json()
+    if not disasters:
+        pytest.skip("No disasters in DB")
+
+    did = disasters[0]["id"]
+    r = client.get(f"/disasters/{did}/buildings/stats")
+    assert r.status_code == 200
+    data = r.json()
+    assert "total" in data
+    assert "no_damage" in data
+    assert "by_damage" in data
+    assert isinstance(data["by_damage"], dict)

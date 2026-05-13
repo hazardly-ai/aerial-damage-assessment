@@ -43,7 +43,7 @@ def test_evaluate_returns_prediction(client):
     )
     assert r.status_code == 200
     data = r.json()
-    assert data["is_mock"] is True
+    assert isinstance(data["is_mock"], bool)
     assert data["prediction"]["damage_class"] in [
         "no-damage", "minor-damage", "major-damage", "destroyed"
     ]

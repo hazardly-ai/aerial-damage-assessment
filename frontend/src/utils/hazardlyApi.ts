@@ -553,6 +553,7 @@ export interface VlmEvaluationResult {
 	prediction: VlmPrediction;
 	model_version: string;
 	is_mock: boolean;
+	raw_response?: Record<string, unknown> | null;
 }
 
 export async function evaluateVlm(

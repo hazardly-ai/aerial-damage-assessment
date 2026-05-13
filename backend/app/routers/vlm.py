@@ -17,15 +17,23 @@ def _validate_image(file: UploadFile, label: str) -> None:
         )
 
 
+async def _read_with_limit(file: UploadFile, label: str) -> bytes:
+    chunks = []
+    size = 0
+    while chunk := await file.read(1024 * 64):
+        size += len(chunk)
+        if size > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail=f"{label} exceeds 10 MB limit")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @router.post("/evaluate", response_model=VlmEvaluationResponse)
 async def evaluate(pre_image: UploadFile, post_image: UploadFile):
     _validate_image(pre_image, "pre_image")
     _validate_image(post_image, "post_image")
 
-    pre_bytes = await pre_image.read()
-    post_bytes = await post_image.read()
-
-    if len(pre_bytes) > MAX_FILE_SIZE or len(post_bytes) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="Image file exceeds 10 MB limit")
+    pre_bytes = await _read_with_limit(pre_image, "pre_image")
+    post_bytes = await _read_with_limit(post_image, "post_image")
 
     return await evaluate_damage(pre_bytes, post_bytes)

@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -19,3 +21,4 @@ class VlmEvaluationResponse(BaseModel):
     prediction: VlmPrediction
     model_version: str
     is_mock: bool
+    raw_response: dict[str, Any] | None = None
