@@ -855,6 +855,8 @@ def resolve_location_buildings(location_text):
 
 
 def filter_buildings_by_damage(buildings, damage_type):
+    if damage_type == "damaged":
+        return [b for b in buildings if b.get("damage") != "no-damage"]
     return [b for b in buildings if b.get("damage") == damage_type]
 
 
@@ -931,11 +933,40 @@ def is_city_ranking_query(question):
         "hardest-hit",
         "hardest hit",
         "hit hardest",
+        "impacted the most",
+        "most impacted",
+        "affected the most",
+        "most affected",
         "where is major damage concentrated",
         "which cities have",
         "what areas have",
     ]
     return any(signal in q for signal in ranking_signals)
+
+
+def is_repair_count_query(question):
+    q = question.lower()
+    return (
+        any(term in q for term in ["how many", "count", "number of"])
+        and any(term in q for term in ["need repair", "need to be repaired", "repaired", "repair"])
+    )
+
+
+def is_location_damage_display_query(question):
+    q = question.lower()
+    if extract_xbd_query_id(question) is not None:
+        return False
+    action_terms = ["show", "show me", "display", "list", "find"]
+    if not any(term in q for term in action_terms):
+        return False
+    if "damage" not in q:
+        return False
+
+    return bool(
+        extract_on_location_text(question)
+        or extract_in_location_text(question)
+        or re.search(r"\bnear\s+.+", question, flags=re.IGNORECASE)
+    )
 
 
 def is_scene_count_query(question):
@@ -1011,7 +1042,16 @@ def get_ranking_metric(question):
         return "least-severe-damage"
     if any(term in q for term in ["destroyed", "hardest-hit", "hardest hit", "hit hardest"]):
         return "destroyed"
-    if any(term in q for term in ["most damaged", "most damage", "worst damage", "worst damaged"]):
+    if any(term in q for term in [
+        "most damaged",
+        "most damage",
+        "worst damage",
+        "worst damaged",
+        "impacted the most",
+        "most impacted",
+        "affected the most",
+        "most affected",
+    ]):
         return "severe-damage"
     if "major" in q:
         return "major-damage"
@@ -1727,6 +1767,79 @@ def get_full_dataset_damage_counts():
     return counts
 
 
+def get_full_dataset_metadata():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    query = """
+    WITH building_cities AS (
+      SELECT DISTINCT
+        CASE
+          WHEN TRIM(SPLIT_PART(address, ',', 2)) ~* '[0-9]'
+            OR LOWER(TRIM(SPLIT_PART(address, ',', 2))) IN ('texas', 'tx')
+          THEN TRIM(SPLIT_PART(address, ',', 1))
+          ELSE TRIM(SPLIT_PART(address, ',', 2))
+        END AS city
+      FROM buildings
+      WHERE address IS NOT NULL
+        AND POSITION(',' IN address) > 0
+    )
+    SELECT
+      (SELECT COUNT(*) FROM disasters) AS disaster_count,
+      (SELECT COUNT(*) FROM image_pairs) AS image_pair_count,
+      (SELECT COUNT(*) FROM buildings) AS building_count,
+      (
+        SELECT COUNT(*)
+        FROM building_cities
+        WHERE city <> ''
+          AND city !~* '^[0-9]+$'
+      ) AS city_count,
+      (
+        SELECT COUNT(*)
+        FROM buildings
+        WHERE predicted_damage IS NOT NULL
+      ) AS predicted_count,
+      (
+        SELECT COUNT(*)
+        FROM buildings
+        WHERE actual_damage IS NOT NULL
+      ) AS labeled_count,
+      (
+        SELECT COUNT(*)
+        FROM buildings
+        WHERE predicted_damage IS NOT NULL
+          AND actual_damage IS NOT NULL
+      ) AS compared_count,
+      (
+        SELECT COUNT(*)
+        FROM buildings
+        WHERE predicted_damage IS NOT NULL
+          AND actual_damage IS NOT NULL
+          AND actual_damage::text = predicted_damage::text
+      ) AS correct_count
+    """
+
+    cur.execute(query)
+    row = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not row:
+        return {}
+
+    return {
+        "disaster_count": int(row[0] or 0),
+        "image_pair_count": int(row[1] or 0),
+        "building_count": int(row[2] or 0),
+        "city_count": int(row[3] or 0),
+        "predicted_count": int(row[4] or 0),
+        "labeled_count": int(row[5] or 0),
+        "compared_count": int(row[6] or 0),
+        "correct_count": int(row[7] or 0),
+    }
+
+
 def count_damage_levels(buildings):
     counts = {level: 0 for level in DAMAGE_LEVELS}
 
@@ -1756,7 +1869,70 @@ def format_damage_count_response(counts, location_text):
     return response + "."
 
 
-def format_damage_bullet_summary(counts, location_text):
+def format_number(value):
+    return f"{value:,}"
+
+
+def format_percentage(count, total):
+    if total <= 0:
+        return "0%"
+
+    return f"{round((count / total) * 100, 1)}%"
+
+
+def format_damage_summary_line(label, count, total):
+    return f"- {label}: {format_number(count)} ({format_percentage(count, total)})"
+
+
+def format_full_dataset_context_lines(metadata, counts):
+    if not metadata:
+        return []
+
+    total = sum(counts.values())
+    lines = []
+    disaster_count = metadata.get("disaster_count", 0)
+    image_pair_count = metadata.get("image_pair_count", 0)
+    city_count = metadata.get("city_count", 0)
+    compared_count = metadata.get("compared_count", 0)
+    correct_count = metadata.get("correct_count", 0)
+
+    if disaster_count or image_pair_count or city_count:
+        scope_parts = []
+        if disaster_count:
+            scope_parts.append(f"{format_number(disaster_count)} disaster dataset")
+        if image_pair_count:
+            scope_parts.append(f"{format_number(image_pair_count)} xBD scenes/image pairs")
+        if city_count:
+            scope_parts.append(f"{format_number(city_count)} cities or named locations with address data")
+        lines.append(f"- Scope: {', '.join(scope_parts)}")
+
+    severe_total = counts.get("major-damage", 0) + counts.get("destroyed", 0)
+    if total > 0:
+        lines.append(
+            f"- Severe damage: {format_number(severe_total)} buildings ({format_percentage(severe_total, total)}) are major-damage or destroyed"
+        )
+
+        dominant_key, dominant_count = max(counts.items(), key=lambda item: item[1])
+        dominant_label = {
+            "no-damage": "No damage",
+            "minor-damage": "Minor damage",
+            "major-damage": "Major damage",
+            "destroyed": "Destroyed",
+        }.get(dominant_key, dominant_key.replace("-", " "))
+        lines.append(
+            f"- Largest class: {dominant_label} ({format_number(dominant_count)}, {format_percentage(dominant_count, total)})"
+        )
+
+    if compared_count > 0:
+        accuracy = format_percentage(correct_count, compared_count)
+        lines.append(
+            f"- Prediction evaluation: {format_number(correct_count)} of {format_number(compared_count)} comparable predictions are correct ({accuracy})"
+        )
+
+    return lines
+
+
+def format_damage_bullet_summary(counts, location_text, metadata=None):
     total = sum(counts.values())
 
     if total == 0:
@@ -1772,21 +1948,23 @@ def format_damage_bullet_summary(counts, location_text):
 
     lines = [
         f"Here's the dataset summary for {location_text}:",
-        f"- Total buildings: {total}",
-        f"- No damage: {counts.get('no-damage', 0)}",
-        f"- Minor damage: {counts.get('minor-damage', 0)}",
-        f"- Major damage: {counts.get('major-damage', 0)}",
-        f"- Destroyed: {counts.get('destroyed', 0)}",
+        f"- Total buildings: {format_number(total)}",
+        format_damage_summary_line("No damage", counts.get("no-damage", 0), total),
+        format_damage_summary_line("Minor damage", counts.get("minor-damage", 0), total),
+        format_damage_summary_line("Major damage", counts.get("major-damage", 0), total),
+        format_damage_summary_line("Destroyed", counts.get("destroyed", 0), total),
     ]
 
     if other_total > 0:
-        lines.append(f"- Other or unlabeled: {other_total}")
+        lines.append(format_damage_summary_line("Other or unlabeled", other_total, total))
+
+    lines.extend(format_full_dataset_context_lines(metadata, counts))
 
     return "\n".join(lines)
 
 
-def synthesize_location_overview_answer(location_text, counts):
-    return format_damage_bullet_summary(counts, location_text)
+def synthesize_location_overview_answer(location_text, counts, metadata=None):
+    return format_damage_bullet_summary(counts, location_text, metadata)
 
 
 
@@ -2200,6 +2378,14 @@ def is_city_list_query(question):
         "which cities were affected",
         "what cities were affected",
         "which cities are affected",
+        "what cities were evaluated",
+        "which cities were evaluated",
+        "what cities have been evaluated",
+        "which cities have been evaluated",
+        "what cities do you know about",
+        "which cities do you know about",
+        "what cities can you tell me about",
+        "which cities can you tell me about",
         "list the affected cities",
         "list cities in the dataset",
         "list cities in the data",
@@ -2388,6 +2574,8 @@ def out_of_scope_query_response():
 
 def is_untrained_disaster_request(question):
     q = question.lower()
+    if "predicted damage" in q:
+        return False
     unsupported_terms = [
         "forecast",
         "predict",
@@ -2433,6 +2621,9 @@ def classify_query_intent_heuristic(question):
 
     if is_vlm_query(question):
         return "vlm"
+
+    if is_location_damage_display_query(question):
+        return "location_query"
 
     if is_scene_count_query(question):
         return "scene_count"
@@ -2660,6 +2851,25 @@ def classify_query_intent(question):
 
 def extract_damage_filter(question):
     q = question.lower()
+    if is_repair_count_query(question):
+        return "damaged"
+    has_specific_damage_label = any(term in q for term in [
+        "fine",
+        "no damage",
+        "no-damage",
+        "no damaged",
+        "undamaged",
+        "unaffected",
+        "non-damaged",
+        "non damaged",
+        "not damaged",
+        "minor",
+        "destroyed",
+        "major",
+        "damaged",
+    ])
+    if "predicted damage" in q and not has_specific_damage_label:
+        return None
     if any(word in q for word in [
         "fine", "no damage", "no-damage", "no damaged", "undamaged", "unaffected",
         "non-damaged", "non damaged", "not damaged"
@@ -2669,7 +2879,11 @@ def extract_damage_filter(question):
         return "minor-damage"
     if "destroyed" in q:
         return "destroyed"
-    if "major" in q or "damaged" in q or "damage" in q:
+    if "major" in q:
+        return "major-damage"
+    if "damaged" in q:
+        return "damaged"
+    if "damage" in q:
         return "major-damage"
     return None
 
@@ -3386,16 +3600,20 @@ def handle_chat_query(question, session_id=None):
     # full dataset summary does not have a single map focus
     if intent == "dataset_overview":
         counts = get_full_dataset_damage_counts()
+        try:
+            metadata = get_full_dataset_metadata()
+        except Exception:
+            metadata = None
         parsed_damage_filter = parsed_query["damage_filter"]
         damage_key = parsed_damage_filter if isinstance(parsed_damage_filter, str) else None
         damage_label = get_damage_label_text(damage_key)
         if damage_key and damage_label and damage_key in counts:
             answer = "\n".join([
                 f"Here's the dataset summary for {damage_label} buildings:",
-                f"- Total {damage_label} buildings: {counts.get(damage_key, 0)}",
+                f"- Total {damage_label} buildings: {format_number(counts.get(damage_key, 0))}",
             ])
         else:
-            answer = synthesize_location_overview_answer("the full dataset", counts)
+            answer = synthesize_location_overview_answer("the full dataset", counts, metadata)
         save_turn(question, answer)
         return {
             "answer": answer,
@@ -3472,8 +3690,10 @@ def handle_chat_query(question, session_id=None):
     if intent == "location_query" and parsed_query["query_mode"] == "on_address" and primary_location:
         on_location_text = primary_location
         has_explicit_region = "," in on_location_text
-        requested_damage = None if wants_all_buildings else damage_type
+        requested_damage = None if wants_all_buildings or damage_type == "damaged" else damage_type
         buildings = get_buildings_on_address_text(on_location_text, requested_damage)
+        if damage_type == "damaged" and not wants_all_buildings:
+            buildings = filter_buildings_by_damage(buildings, damage_type)
         primary_xbd_id = get_dominant_xbd_id(buildings)
         scene_buildings = get_buildings_for_primary_scene(buildings, primary_xbd_id)
         geo = geocode_address(on_location_text) if has_explicit_region else None
@@ -3497,6 +3717,8 @@ def handle_chat_query(question, session_id=None):
         if wants_all_buildings:
             counts = count_damage_levels(buildings)
             answer = synthesize_location_overview_answer(f"addresses on {label_text}", counts)
+        elif damage_type == "damaged":
+            answer = f"{len(buildings)} buildings on {label_text} are classified as damaged."
         elif damage_type == "no-damage":
             answer = f"{len(buildings)} buildings on {label_text} appear to have no visible damage."
         else:
@@ -3562,19 +3784,33 @@ def handle_chat_query(question, session_id=None):
 
     if intent == "location_query" and parsed_query["query_mode"] == "in_location" and primary_location:
         in_location_text = primary_location
-        geo = geocode_address(in_location_text)
+        city_lookup_buildings = []
+        if "," not in in_location_text and not looks_like_street_address(in_location_text):
+            city_lookup_buildings = get_all_buildings_for_city(in_location_text)
+
+        geo = None if city_lookup_buildings else geocode_address(in_location_text)
         buildings = []
-        if geo and geo.get("bbox") and len(geo["bbox"]) == 4:
+        if city_lookup_buildings:
+            buildings = city_lookup_buildings
+        elif geo and geo.get("bbox") and len(geo["bbox"]) == 4:
             min_lon, min_lat, max_lon, max_lat = geo["bbox"]
-            buildings = get_buildings_in_bbox(
-                min_lon,
-                min_lat,
-                max_lon,
-                max_lat,
-                damage_type,
-            )
+            if damage_type == "damaged":
+                buildings = get_all_buildings_in_bbox(min_lon, min_lat, max_lon, max_lat)
+            else:
+                buildings = get_buildings_in_bbox(
+                    min_lon,
+                    min_lat,
+                    max_lon,
+                    max_lat,
+                    damage_type,
+                )
         if len(buildings) == 0:
-            buildings = get_buildings_by_address_text(in_location_text, damage_type)
+            address_damage_filter = None if damage_type == "damaged" else damage_type
+            buildings = get_buildings_by_address_text(in_location_text, address_damage_filter)
+        if len(buildings) == 0 and "," not in in_location_text:
+            buildings = get_all_buildings_for_city(in_location_text)
+        if damage_type == "damaged":
+            buildings = filter_buildings_by_damage(buildings, damage_type)
         primary_xbd_id = get_dominant_xbd_id(buildings)
         scene_buildings = get_buildings_for_primary_scene(buildings, primary_xbd_id)
 
@@ -3590,7 +3826,9 @@ def handle_chat_query(question, session_id=None):
             }
 
         label_text = geo["formatted_address"] if geo else in_location_text
-        if damage_type == "no-damage":
+        if damage_type == "damaged":
+            answer = f"{len(buildings)} buildings in {label_text} are classified as damaged and may need repair."
+        elif damage_type == "no-damage":
             answer = f"{len(buildings)} buildings in {label_text} appear to have no visible damage."
         else:
             answer = generate_llm_answer(buildings, label_text, damage_type)
