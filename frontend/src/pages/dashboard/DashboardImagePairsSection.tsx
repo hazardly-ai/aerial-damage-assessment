@@ -90,14 +90,12 @@ export default function DashboardImagePairsSection({
 				</div>
 
 				{loadingImagePairs ? (
-					<div className="rounded-md border border-border bg-background p-4">
-						<div className="absolute inset-0 z-10 flex items-center justify-center bg-card/40 backdrop-blur-[2px]">
-							<SpinnerEmpty
-								title="Loading image pairs"
-								description="Calculating image-level metrics..."
-								className="min-h-[280px] border-0 p-0"
-							/>
-						</div>
+					<div className="relative z-0 flex min-h-[320px] items-center justify-center rounded-md border border-border bg-background p-4">
+						<SpinnerEmpty
+							title="Loading image pairs"
+							description="Calculating image-level metrics..."
+							className="w-full border-0 p-0"
+						/>
 					</div>
 				) : (
 					<div className="relative z-0 overflow-x-auto">

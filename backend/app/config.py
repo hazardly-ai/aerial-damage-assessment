@@ -21,6 +21,9 @@ SUPABASE_URL = _setting("SUPABASE_URL")
 SUPABASE_ANON_KEY = _setting("SUPABASE_ANON_KEY")
 SUPABASE_SERVICE_KEY = _setting("SUPABASE_SERVICE_KEY")
 
+MODAL_VLM_URL = _setting("MODAL_VLM_URL")
+MODAL_VLM_TOKEN = _setting("MODAL_VLM_TOKEN")
+
 LABELS_DIR = BACKEND_DIR.parent / "data" / "test" / "labels"
 
 

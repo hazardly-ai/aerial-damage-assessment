@@ -10,9 +10,11 @@ export default function Header() {
 
 	const activeNav = location.pathname.startsWith("/map")
 		? "map"
-		: location.pathname === "/"
-			? "dashboard"
-			: "";
+		: location.pathname.startsWith("/vlm")
+			? "vlm"
+			: location.pathname === "/"
+				? "dashboard"
+				: "";
 
 	return (
 		<div className="z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
@@ -42,6 +44,7 @@ export default function Header() {
 							onValueChange={(value) => {
 								if (value === "dashboard") navigate("/");
 								if (value === "map") navigate("/map");
+								if (value === "vlm") navigate("/vlm");
 							}}
 							aria-label="Primary navigation"
 						>
@@ -52,12 +55,21 @@ export default function Header() {
 							>
 								Dashboard
 							</ToggleGroupItem>
+
 							<ToggleGroupItem
 								value="map"
-								className="relative min-w-[120px] rounded-r-full rounded-l-none font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+								className="relative min-w-[120px] rounded-none font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
 								aria-label="Go to map"
 							>
 								Map
+							</ToggleGroupItem>
+
+							<ToggleGroupItem
+								value="vlm"
+								className="relative min-w-[120px] rounded-r-full rounded-l-none font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+								aria-label="Go to VLM evaluation"
+							>
+								VLM Eval
 							</ToggleGroupItem>
 						</ToggleGroup>
 					</nav>

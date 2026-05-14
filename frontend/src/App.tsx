@@ -17,6 +17,7 @@ import {
 } from "@/utils/chatNavigation";
 
 const MapPage = lazy(() => import("@/pages/MapPage.tsx"));
+const VlmEvaluationPage = lazy(() => import("@/pages/VlmEvaluationPage.tsx"));
 
 function NotFoundRedirect() {
 	useEffect(() => {
@@ -132,6 +133,7 @@ export default function App() {
 							/>
 						}
 					/>
+					<Route path="/vlm" element={<VlmEvaluationPage />} />
 					<Route path="*" element={<NotFoundRedirect />} />
 				</Routes>
 			</Suspense>

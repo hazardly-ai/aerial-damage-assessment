@@ -4,6 +4,7 @@ import Container from "@/components/layout/Container";
 import Footer from "@/components/layout/Footer.tsx";
 import Header from "@/components/layout/Header";
 import { SpinnerEmpty } from "@/components/ui/SpinnerEmpty";
+import { PAGE_TITLE_SUFFIX } from "@/constants/app";
 import DashboardBuildingsSection from "./dashboard/DashboardBuildingsSection";
 import DashboardImagePairsSection from "./dashboard/DashboardImagePairsSection";
 import DashboardOverviewSection from "./dashboard/DashboardOverviewSection";
@@ -13,7 +14,7 @@ export default function Dashboard() {
 	const dashboard = useDashboardData();
 
 	useEffect(() => {
-		document.title = "Dashboard";
+		document.title = `Dashboard - ${PAGE_TITLE_SUFFIX}`;
 	}, []);
 
 	return (
