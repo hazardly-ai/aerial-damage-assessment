@@ -129,6 +129,14 @@ const requiresExplicitExampleAction = (response: ChatResponse): boolean =>
 	response.action?.target === "map" &&
 	!response.focus;
 
+const isStreetLevelAddress = (address: string | undefined): boolean => {
+	if (!address) return false;
+
+	return /\b(street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|lane|ln|way|court|ct|place|pl|circle|cir|parkway|pkwy|highway|hwy)\b/i.test(
+		address,
+	);
+};
+
 const shouldAutoRunExplicitExample = (
 	query: string,
 	response: ChatResponse,
@@ -138,7 +146,21 @@ const shouldAutoRunExplicitExample = (
 	}
 
 	const normalizedQuery = query.trim().toLowerCase();
+	const isRepairCountQuery =
+		(normalizedQuery.startsWith("how many ") ||
+			normalizedQuery.startsWith("count ") ||
+			normalizedQuery.startsWith("number of ")) &&
+		(normalizedQuery.includes("need repair") ||
+			normalizedQuery.includes("need to be repaired") ||
+			normalizedQuery.includes("repaired") ||
+			normalizedQuery.includes("repair"));
+	const actionAddress =
+		typeof response.action?.params?.address === "string"
+			? response.action.params.address
+			: undefined;
+
 	return (
+		(isRepairCountQuery && isStreetLevelAddress(actionAddress)) ||
 		normalizedQuery.startsWith("show ") ||
 		normalizedQuery.startsWith("show me ") ||
 		normalizedQuery.startsWith("take me ") ||
