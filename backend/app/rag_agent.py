@@ -119,6 +119,8 @@ CITY_METRIC_LABEL = {
     "minor-damage": "minorly damaged buildings",
     "major-damage": "majorly damaged buildings",
     "destroyed": "destroyed buildings",
+    "severe-damage": "severely damaged buildings",
+    "least-severe-damage": "severely damaged buildings",
 }
 DAMAGE_LABEL_TEXT = {
     "no-damage": "undamaged",
@@ -974,8 +976,12 @@ def extract_top_n(question, default=5):
 
 def get_ranking_metric(question):
     q = question.lower()
+    if any(term in q for term in ["least damaged", "least damage"]):
+        return "least-severe-damage"
     if any(term in q for term in ["destroyed", "hardest-hit", "hardest hit", "hit hardest"]):
         return "destroyed"
+    if any(term in q for term in ["most damaged", "most damage", "worst damage", "worst damaged"]):
+        return "severe-damage"
     if "major" in q:
         return "major-damage"
     if "minor" in q:
@@ -987,7 +993,6 @@ def get_ranking_metric(question):
         "non-damaged",
         "non damaged",
         "not damaged",
-        "least damage",
     ]):
         return "no-damage"
     return "total"
@@ -1033,7 +1038,33 @@ def format_scene_count_response(total_scenes):
 
 
 def format_scene_label(scene_id):
-    return f"scene {scene_id}"
+    return f"Scene {scene_id}"
+
+
+def format_damage_class_label(damage_type):
+    labels = {
+        "no-damage": "no visible damage",
+        "minor-damage": "minor-damage",
+        "major-damage": "major-damage",
+        "destroyed": "destroyed",
+    }
+    return labels.get(damage_type, str(damage_type).replace("-", " "))
+
+
+def format_scene_damage_answer(scene_label, building_count, damage_type):
+    building_label = "building" if building_count == 1 else "buildings"
+    damage_label = format_damage_class_label(damage_type)
+
+    if damage_type == "no-damage":
+        return (
+            f"{scene_label} contains {building_count} {building_label} classified as "
+            "no visible damage in the active dataset."
+        )
+
+    return (
+        f"{scene_label} contains {building_count} {building_label} classified as "
+        f"{damage_label} in the active dataset."
+    )
 
 
 def format_scene_ranking(rows, metric, limit):
@@ -1078,6 +1109,11 @@ def get_top_scene_for_metric(rows, metric):
 
 
 def sort_city_rows(rows, metric):
+    if metric == "severe-damage":
+        return sorted(rows, key=lambda row: (-(row[4] + row[5]), -row[1], row[0]))
+    if metric == "least-severe-damage":
+        return sorted(rows, key=lambda row: (row[4] + row[5], -row[1], row[0]))
+
     metric_index = CITY_METRIC_INDEX[metric]
     return sorted(rows, key=lambda row: (-row[metric_index], row[0]))
 
@@ -1088,19 +1124,34 @@ def format_city_ranking(rows, metric, limit):
 
     sorted_rows = sort_city_rows(rows, metric)
     limited_rows = sorted_rows[:limit]
-    metric_index = CITY_METRIC_INDEX[metric]
+    metric_index = (
+        None
+        if metric in {"severe-damage", "least-severe-damage"}
+        else CITY_METRIC_INDEX[metric]
+    )
     metric_label = CITY_METRIC_LABEL[metric]
 
-    header = (
-        f"Cities in the dataset by {metric_label}:"
-        if limit >= len(sorted_rows)
-        else f"Top cities by {metric_label}:"
-    )
+    if metric == "least-severe-damage":
+        header = (
+            "Cities in the dataset with the fewest severely damaged buildings:"
+            if limit >= len(sorted_rows)
+            else "Cities with the fewest severely damaged buildings:"
+        )
+    else:
+        header = (
+            f"Cities in the dataset by {metric_label}:"
+            if limit >= len(sorted_rows)
+            else f"Top cities by {metric_label}:"
+        )
 
     lines = [header]
     for row in limited_rows:
         city = row[0]
-        value = row[metric_index]
+        value = (
+            row[4] + row[5]
+            if metric in {"severe-damage", "least-severe-damage"}
+            else row[metric_index]
+        )
         total = row[1]
         lines.append(f"- {city}: {value} {metric_label}, {total} total")
 
@@ -1330,6 +1381,28 @@ def get_buildings_for_xbd(xbd_id, damage_filter=None):
     conn.close()
 
     return rows_to_buildings(rows)
+
+
+def scene_exists(xbd_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    query = """
+    SELECT 1
+    FROM image_pairs ip
+    JOIN disasters d ON ip.disaster_id = d.id
+    WHERE d.name = %s
+      AND ip.xbd_id = %s
+    LIMIT 1
+    """
+
+    cur.execute(query, (DEFAULT_DISASTER_NAME, xbd_id))
+    exists = cur.fetchone() is not None
+
+    cur.close()
+    conn.close()
+
+    return exists
 
 
 def get_misclassified_buildings_for_xbd(xbd_id):
@@ -2036,6 +2109,13 @@ def is_full_dataset_query(question):
         "overall dataset",
         "dataset summary",
         "overall damage in the dataset",
+        "what is the data",
+        "what is this data",
+        "what is the dataset",
+        "what is this dataset",
+        "what data is this",
+        "what dataset is this",
+        "what does the data show",
         "tell me about the data",
         "tell me about the dataset",
         "about the data",
@@ -2101,6 +2181,32 @@ def is_damage_label_query(question):
         "what damage levels exist",
         "what labels are in the dataset",
     ])
+
+
+def is_active_disaster_query(question):
+    normalized_question = re.sub(r"\s+", " ", question.strip().lower()).strip(" ?.")
+    return normalized_question in {
+        "what disaster is this",
+        "what disaster is this dataset",
+        "what disaster is this data",
+        "what disaster are we looking at",
+        "what disaster am i looking at",
+        "which disaster is this",
+        "which disaster are we looking at",
+        "what is the active disaster",
+        "what disaster is active",
+    }
+
+
+def format_disaster_name(disaster_name):
+    return str(disaster_name).replace("-", " ").title()
+
+
+def active_disaster_response():
+    return (
+        f"The active disaster dataset is {format_disaster_name(DEFAULT_DISASTER_NAME)}. "
+        "You can ask for a dataset summary, affected cities, xBD scenes, or building damage near a location."
+    )
 
 
 def is_help_query(question):
@@ -2178,11 +2284,31 @@ def acknowledgement_response():
 
 
 def help_response():
-    return "\n".join([
-        "I can help with disaster damage assessment questions for the active dataset.",
-        "Try asking for a dataset summary, affected cities, damage counts, damaged buildings near a city or address, a specific xBD scene, misclassified buildings, or safety/repair guidance based on nearby damage levels.",
-        "Examples: \"Show destroyed buildings near Houston\", \"Summarize damage in Sugar Land\", or \"What cities have the most major damage?\"",
-    ])
+    options = [
+        "\n".join([
+            "I can help with disaster damage assessment questions for the active dataset.",
+            "Try asking for a dataset summary, affected cities, damage counts, damaged buildings near a city or address, a specific xBD scene, misclassified buildings, or safety/repair guidance based on nearby damage levels.",
+            "Examples: \"Show major damage near Houston\", \"Summarize damage in Sugar Land\", or \"What cities have the most major damage?\"",
+        ]),
+        "\n".join([
+            "I can help you explore damage patterns in the active disaster dataset.",
+            "You can ask about affected cities, scene-level damage, building counts by severity, misclassified buildings, or conditions near a city, area, address, or xBD scene.",
+            "Examples: \"What happened to Richmond?\", \"Show scene 18\", or \"Which cities have the most destroyed buildings?\"",
+        ]),
+        "\n".join([
+            "I am best at answering questions about disaster damage assessment data.",
+            "Ask me to summarize the dataset, compare locations, list affected cities, find damaged buildings, explain damage labels, or give safety and repair guidance based on nearby damage.",
+            "Examples: \"Summarize the full dataset\", \"Compare Missouri City and Cypress\", or \"What damage labels exist?\"",
+        ]),
+    ]
+
+    previous_help_response_count = sum(
+        1
+        for message in get_chat_history()
+        if message.get("role") == "assistant"
+        and message.get("content") in options
+    )
+    return options[previous_help_response_count % len(options)]
 
 
 def ambiguous_query_response(parsed_query):
@@ -2249,6 +2375,9 @@ def classify_query_intent_heuristic(question):
 
     if is_acknowledgement_query(question):
         return "acknowledgement"
+
+    if is_active_disaster_query(question):
+        return "active_disaster"
 
     if is_help_query(question):
         return "help"
@@ -2341,6 +2470,7 @@ Choose exactly one label from this list:
 - greeting
 - identity
 - acknowledgement
+- active_disaster
 - help
 - location_comparison
 - location_percentage
@@ -2364,6 +2494,7 @@ Definitions:
 - greeting: brief conversational opener such as hello, hi, or hey
 - identity: asks who the assistant is or what it does
 - acknowledgement: brief thanks or acknowledgement after the assistant has answered
+- active_disaster: asks which active disaster or disaster dataset is being viewed
 - help: asks what the assistant can do or what questions are supported
 - location_comparison: compares two named locations
 - location_percentage: asks what percentage/share of buildings in a place fit a damage level
@@ -2387,6 +2518,9 @@ Label: city_list
 
 Question: What can you help with?
 Label: help
+
+Question: What disaster is this?
+Label: active_disaster
 
 Question: Compare Houston and Sugar Land
 Label: location_comparison
@@ -2433,6 +2567,7 @@ Label:
         "greeting",
         "identity",
         "acknowledgement",
+        "active_disaster",
         "help",
         "location_comparison",
         "location_percentage",
@@ -2557,6 +2692,7 @@ def parse_structured_query(question):
         "greeting": "greeting",
         "identity": "identity",
         "acknowledgement": "acknowledgement",
+        "active_disaster": "active_disaster",
         "help": "help",
         "location_comparison": "location_comparison",
         "location_percentage": "location_percentage",
@@ -2689,6 +2825,7 @@ def parse_structured_query(question):
         "greeting",
         "identity",
         "acknowledgement",
+        "active_disaster",
         "help",
         "conversation_summary",
         "scene_count",
@@ -2706,6 +2843,7 @@ def parse_structured_query(question):
         "locations": locations,
         "comparison": mapped_intent == "location_comparison",
         "damage_filter": damage_filter,
+        "has_explicit_damage_filter": has_explicit_damage_filter,
         "needs_map": wants_navigation or mapped_intent == "location_query",
         "scope": infer_scope(primary_location, explicit_scene_id),
         "entity_type": entity_type,
@@ -2886,6 +3024,17 @@ def handle_chat_query(question, session_id=None):
 
     if intent == "acknowledgement":
         answer = acknowledgement_response()
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action()
+        }
+
+    if intent == "active_disaster":
+        answer = active_disaster_response()
         save_turn(question, answer)
         return {
             "answer": answer,
@@ -3180,7 +3329,8 @@ def handle_chat_query(question, session_id=None):
     # full dataset summary does not have a single map focus
     if intent == "dataset_overview":
         counts = get_full_dataset_damage_counts()
-        damage_key = damage_type if isinstance(damage_type, str) else None
+        parsed_damage_filter = parsed_query["damage_filter"]
+        damage_key = parsed_damage_filter if isinstance(parsed_damage_filter, str) else None
         damage_label = get_damage_label_text(damage_key)
         if damage_key and damage_label and damage_key in counts:
             answer = "\n".join([
@@ -3212,13 +3362,21 @@ def handle_chat_query(question, session_id=None):
         }
 
     if intent == "scene_query" and xbd_query_id is not None:
-        requested_damage = None if wants_all_buildings else damage_type
+        requested_damage = (
+            damage_type
+            if parsed_query["has_explicit_damage_filter"] and not wants_all_buildings
+            else None
+        )
         buildings = get_buildings_for_xbd(xbd_query_id, requested_damage)
 
         if len(buildings) == 0:
-            answer = (
-                f"I could not find relevant damage data for {format_scene_label(xbd_query_id)}."
-            )
+            if not scene_exists(xbd_query_id):
+                answer = f"{format_scene_label(xbd_query_id)} does not exist in the active dataset."
+            else:
+                answer = (
+                    f"{format_scene_label(xbd_query_id)} exists, but I could not find matching "
+                    "building damage data for that request."
+                )
             save_turn(question, answer)
             return {
                 "answer": answer,
@@ -3229,13 +3387,11 @@ def handle_chat_query(question, session_id=None):
             }
 
         label_text = format_scene_label(xbd_query_id)
-        if wants_all_buildings:
+        if requested_damage is None:
             counts = count_damage_levels(buildings)
             answer = synthesize_location_overview_answer(label_text, counts)
-        elif damage_type == "no-damage":
-            answer = f"{len(buildings)} buildings on {label_text} appear to have no visible damage."
         else:
-            answer = generate_llm_answer(buildings, label_text, damage_type)
+            answer = format_scene_damage_answer(label_text, len(buildings), damage_type)
 
         action = (
             build_building_action(buildings[0])
