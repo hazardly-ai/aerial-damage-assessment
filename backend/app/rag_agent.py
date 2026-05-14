@@ -85,6 +85,26 @@ DEFAULT_DISASTER_NAME = os.getenv("DEFAULT_DISASTER_NAME", "hurricane-harvey")
 STREET_ADDRESS_OVERVIEW_RADIUS_M = 300
 EXACT_ADDRESS_OVERVIEW_RADIUS_M = 75
 NAMED_LOCATION_OVERVIEW_RADIUS_M = 5000
+CITY_METRIC_INDEX = {
+    "total": 1,
+    "no-damage": 2,
+    "minor-damage": 3,
+    "major-damage": 4,
+    "destroyed": 5,
+}
+CITY_METRIC_LABEL = {
+    "total": "total buildings",
+    "no-damage": "undamaged buildings",
+    "minor-damage": "minorly damaged buildings",
+    "major-damage": "majorly damaged buildings",
+    "destroyed": "destroyed buildings",
+}
+DAMAGE_LABEL_TEXT = {
+    "no-damage": "undamaged",
+    "minor-damage": "minor-damage",
+    "major-damage": "major-damage",
+    "destroyed": "destroyed",
+}
 
 
 # function to connect to database using environment variables
@@ -1017,13 +1037,7 @@ def get_top_scene_for_metric(rows, metric):
 
 
 def sort_city_rows(rows, metric):
-    metric_index = {
-        "total": 1,
-        "no-damage": 2,
-        "minor-damage": 3,
-        "major-damage": 4,
-        "destroyed": 5,
-    }[metric]
+    metric_index = CITY_METRIC_INDEX[metric]
     return sorted(rows, key=lambda row: (-row[metric_index], row[0]))
 
 
@@ -1033,13 +1047,8 @@ def format_city_ranking(rows, metric, limit):
 
     sorted_rows = sort_city_rows(rows, metric)
     limited_rows = sorted_rows[:limit]
-    metric_label = {
-        "total": "total buildings",
-        "no-damage": "undamaged buildings",
-        "minor-damage": "minorly damaged buildings",
-        "major-damage": "majorly damaged buildings",
-        "destroyed": "destroyed buildings",
-    }[metric]
+    metric_index = CITY_METRIC_INDEX[metric]
+    metric_label = CITY_METRIC_LABEL[metric]
 
     header = (
         f"Cities in the dataset by {metric_label}:"
@@ -1050,7 +1059,7 @@ def format_city_ranking(rows, metric, limit):
     lines = [header]
     for row in limited_rows:
         city = row[0]
-        value = row[{ "total": 1, "no-damage": 2, "minor-damage": 3, "major-damage": 4, "destroyed": 5 }[metric]]
+        value = row[metric_index]
         total = row[1]
         lines.append(f"- {city}: {value} {metric_label}, {total} total")
 
@@ -2512,6 +2521,12 @@ def format_location_label(location_text):
     return normalized
 
 
+def get_damage_label_text(damage_type):
+    if not isinstance(damage_type, str):
+        return None
+    return DAMAGE_LABEL_TEXT.get(damage_type)
+
+
 def infer_scope(location_text, explicit_scene_id=None):
     if explicit_scene_id is not None:
         return "scene"
@@ -3189,16 +3204,12 @@ def handle_chat_query(question):
     # full dataset summary does not have a single map focus
     if intent == "dataset_overview":
         counts = get_full_dataset_damage_counts()
-        if damage_type and damage_type in counts:
-            damage_label = {
-                "no-damage": "undamaged",
-                "minor-damage": "minor-damage",
-                "major-damage": "major-damage",
-                "destroyed": "destroyed",
-            }[damage_type]
+        damage_key = damage_type if isinstance(damage_type, str) else None
+        damage_label = get_damage_label_text(damage_key)
+        if damage_key and damage_label and damage_key in counts:
             answer = "\n".join([
                 f"Here's the dataset summary for {damage_label} buildings:",
-                f"- Total {damage_label} buildings: {counts.get(damage_type, 0)}",
+                f"- Total {damage_label} buildings: {counts.get(damage_key, 0)}",
             ])
         else:
             answer = synthesize_location_overview_answer("the full dataset", counts)
