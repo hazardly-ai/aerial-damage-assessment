@@ -1,5 +1,12 @@
 /* DisasterResponsesAssistant.tsx */
-import { Eraser, MessageCircle, SendHorizontal, Trash2, X } from "lucide-react";
+import {
+	ArrowDown,
+	Eraser,
+	MessageCircle,
+	SendHorizontal,
+	Trash2,
+	X,
+} from "lucide-react";
 import {
 	type ReactNode,
 	useCallback,
@@ -277,8 +284,52 @@ export default function DisasterResponseAssistant({
 	const [animatingMessageId, setAnimatingMessageId] = useState<string | null>(
 		null,
 	);
+	const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+	const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 	const bottomRef = useRef<HTMLDivElement | null>(null);
 	const inputRef = useRef<HTMLTextAreaElement | null>(null);
+	const shouldAutoScrollRef = useRef(true);
+	const isProgrammaticScrollRef = useRef(false);
+	const programmaticScrollTimerRef = useRef<number | null>(null);
+
+	const isMessagesContainerAtBottom = useCallback(() => {
+		const container = messagesContainerRef.current;
+		if (!container) return true;
+
+		const distanceFromBottom =
+			container.scrollHeight - container.scrollTop - container.clientHeight;
+		return distanceFromBottom < 64;
+	}, []);
+
+	const scrollToBottom = useCallback(
+		(behavior: ScrollBehavior = "smooth") => {
+			isProgrammaticScrollRef.current = true;
+			if (programmaticScrollTimerRef.current !== null) {
+				window.clearTimeout(programmaticScrollTimerRef.current);
+			}
+			bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+			shouldAutoScrollRef.current = true;
+			setShowScrollToBottom(false);
+			programmaticScrollTimerRef.current = window.setTimeout(
+				() => {
+					isProgrammaticScrollRef.current = false;
+					programmaticScrollTimerRef.current = null;
+					setShowScrollToBottom(!isMessagesContainerAtBottom());
+				},
+				behavior === "smooth" ? 350 : 80,
+			);
+		},
+		[isMessagesContainerAtBottom],
+	);
+
+	const handleMessagesScroll = useCallback(() => {
+		if (isProgrammaticScrollRef.current) {
+			return;
+		}
+		const isAtBottom = isMessagesContainerAtBottom();
+		shouldAutoScrollRef.current = isAtBottom;
+		setShowScrollToBottom(!isAtBottom);
+	}, [isMessagesContainerAtBottom]);
 
 	const resizeComposer = useCallback(() => {
 		const textarea = inputRef.current;
@@ -302,10 +353,22 @@ export default function DisasterResponseAssistant({
 	}, [resizeComposer]);
 
 	useEffect(() => {
+		return () => {
+			if (programmaticScrollTimerRef.current !== null) {
+				window.clearTimeout(programmaticScrollTimerRef.current);
+			}
+		};
+	}, []);
+
+	useEffect(() => {
 		if (responseLog.length > 0) {
-			bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+			if (shouldAutoScrollRef.current) {
+				scrollToBottom("smooth");
+			} else {
+				setShowScrollToBottom(true);
+			}
 		}
-	}, [responseLog]);
+	}, [responseLog, scrollToBottom]);
 
 	useEffect(() => {
 		const persistedMessages = responseLog.filter((entry) => !entry.isPending);
@@ -326,6 +389,8 @@ export default function DisasterResponseAssistant({
 
 	const handleQuery = async () => {
 		if (!currentQuery.trim() || isAwaitingResponse) return;
+		shouldAutoScrollRef.current = true;
+		setShowScrollToBottom(false);
 		const userEntry: ChatMessage = {
 			id: crypto.randomUUID(),
 			role: "fieldUser",
@@ -484,89 +549,107 @@ export default function DisasterResponseAssistant({
 				</div>
 
 				{/* Messages */}
-				<div className="flex-1 space-y-4 overflow-y-auto bg-muted/20 p-4 text-sm">
-					{responseLog.map((entry) => (
-						<div
-							key={entry.id}
-							className={
-								entry.role === "fieldUser"
-									? "ml-auto max-w-[88%]"
-									: "max-w-[88%]"
-							}
-						>
+				<div className="relative min-h-0 flex-1">
+					<div
+						ref={messagesContainerRef}
+						onScroll={handleMessagesScroll}
+						className="h-full space-y-4 overflow-y-auto bg-muted/20 p-4 text-sm"
+					>
+						{responseLog.map((entry) => (
 							<div
-								className={`mb-1 px-1 text-[11px] font-medium uppercase tracking-[0.08em] ${
+								key={entry.id}
+								className={
 									entry.role === "fieldUser"
-										? "text-right text-primary/80"
-										: "text-muted-foreground"
-								}`}
+										? "ml-auto max-w-[88%]"
+										: "max-w-[88%]"
+								}
 							>
-								{entry.role === "fieldUser" ? "You" : "Hazardly"}
-							</div>
-							<div
-								className={`rounded-2xl border transition-colors duration-theme ease-theme ${
-									entry.role === "fieldUser"
-										? "bg-primary px-3.5 py-3 text-primary-foreground border-primary shadow-sm"
-										: entry.isPending
-											? "w-fit max-w-[72px] border-border bg-card px-3 py-2 text-foreground shadow-sm"
-											: "border-border bg-card px-3.5 py-3 text-foreground shadow-sm"
-								}`}
-							>
-								{entry.isPending ? (
-									<div className="flex items-center gap-1.5 py-1">
-										<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
-										<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
-										<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" />
-									</div>
-								) : (
-									<div className="whitespace-pre-wrap break-words leading-6">
-										<SelectableMessageText
-											enableTripleClickSelectAll={entry.role === "fieldUser"}
-										>
-											<AnimatedAssistantText
-												content={stripInlineMarkdown(entry.content)}
-												animate={
-													entry.role === "responseAssistant" &&
-													animatingMessageId === entry.id
-												}
-												onProgress={() =>
-													bottomRef.current?.scrollIntoView({
-														behavior: "auto",
-													})
-												}
-												onComplete={() => {
-													if (animatingMessageId === entry.id) {
-														setAnimatingMessageId(null);
+								<div
+									className={`mb-1 px-1 text-[11px] font-medium uppercase tracking-[0.08em] ${
+										entry.role === "fieldUser"
+											? "text-right text-primary/80"
+											: "text-muted-foreground"
+									}`}
+								>
+									{entry.role === "fieldUser" ? "You" : "Hazardly"}
+								</div>
+								<div
+									className={`rounded-2xl border transition-colors duration-theme ease-theme ${
+										entry.role === "fieldUser"
+											? "bg-primary px-3.5 py-3 text-primary-foreground border-primary shadow-sm"
+											: entry.isPending
+												? "w-fit max-w-[72px] border-border bg-card px-3 py-2 text-foreground shadow-sm"
+												: "border-border bg-card px-3.5 py-3 text-foreground shadow-sm"
+									}`}
+								>
+									{entry.isPending ? (
+										<div className="flex items-center gap-1.5 py-1">
+											<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
+											<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
+											<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" />
+										</div>
+									) : (
+										<div className="whitespace-pre-wrap break-words leading-6">
+											<SelectableMessageText
+												enableTripleClickSelectAll={entry.role === "fieldUser"}
+											>
+												<AnimatedAssistantText
+													content={stripInlineMarkdown(entry.content)}
+													animate={
+														entry.role === "responseAssistant" &&
+														animatingMessageId === entry.id
+													}
+													onProgress={() => {
+														if (shouldAutoScrollRef.current) {
+															scrollToBottom("auto");
+														}
+													}}
+													onComplete={() => {
+														if (animatingMessageId === entry.id) {
+															setAnimatingMessageId(null);
+														}
+													}}
+												/>
+											</SelectableMessageText>
+										</div>
+									)}
+									{entry.mapCommandSummary ? (
+										<div className="mt-3 border-t border-border/70 pt-2 text-xs text-muted-foreground">
+											{entry.mapCommandSummary}
+										</div>
+									) : null}
+									{entry.suggestedActionLabel && entry.actionPayload ? (
+										<div className="mt-3">
+											<button
+												type="button"
+												onClick={() => {
+													if (entry.actionPayload) {
+														onRunSuggestedAction?.(entry.actionPayload);
 													}
 												}}
-											/>
-										</SelectableMessageText>
-									</div>
-								)}
-								{entry.mapCommandSummary ? (
-									<div className="mt-3 border-t border-border/70 pt-2 text-xs text-muted-foreground">
-										{entry.mapCommandSummary}
-									</div>
-								) : null}
-								{entry.suggestedActionLabel && entry.actionPayload ? (
-									<div className="mt-3">
-										<button
-											type="button"
-											onClick={() => {
-												if (entry.actionPayload) {
-													onRunSuggestedAction?.(entry.actionPayload);
-												}
-											}}
-											className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-										>
-											{entry.suggestedActionLabel}
-										</button>
-									</div>
-								) : null}
+												className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+											>
+												{entry.suggestedActionLabel}
+											</button>
+										</div>
+									) : null}
+								</div>
 							</div>
-						</div>
-					))}
-					<div ref={bottomRef} />
+						))}
+						<div ref={bottomRef} />
+					</div>
+					{showScrollToBottom ? (
+						<button
+							type="button"
+							onClick={() => scrollToBottom()}
+							className="absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-lg transition-colors hover:bg-accent"
+							aria-label="Scroll to latest chatbot message"
+							title="Scroll to bottom"
+						>
+							<ArrowDown className="h-3.5 w-3.5" />
+							Latest
+						</button>
+					) : null}
 				</div>
 
 				{/* Input */}
