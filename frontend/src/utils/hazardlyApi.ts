@@ -565,15 +565,29 @@ export async function evaluateVlm(
 	formData.append("pre_image", preImage);
 	formData.append("post_image", postImage);
 
-	const res = await fetch(`${base}/vlm/evaluate`, {
-		method: "POST",
-		body: formData,
-	});
+	const url = `${base}/vlm/evaluate`;
+	let res: Response;
+
+	try {
+		res = await fetch(url, {
+			method: "POST",
+			body: formData,
+		});
+	} catch (e) {
+		const orig = e instanceof Error ? e.message : String(e);
+		throw new Error(
+			`${orig} (${url}). Check that the API is reachable, VITE_HAZARDLY_API_BASE_URL is correct, the backend is running, and you are not loading an HTTPS page against http://localhost (mixed content is blocked).`,
+		);
+	}
 
 	if (!res.ok) {
 		const text = await res.text().catch(() => res.statusText);
+		const suffix =
+			res.status === 404
+				? ` POST /vlm/evaluate is missing on ${base} (deploy the backend that includes the VLM router, or set VITE_HAZARDLY_API_BASE_URL to a server that has it, e.g. local http://127.0.0.1:8000).`
+				: "";
 		throw new ApiError(
-			`VLM evaluation failed: ${text}`,
+			`VLM evaluation failed: ${text}${suffix}`,
 			res.status,
 			"/vlm/evaluate",
 		);

@@ -6,6 +6,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.app import app
+from app.services import vlm as vlm_service
+
+
+@pytest.fixture(autouse=True)
+def vlm_force_mock(monkeypatch):
+    """Endpoint tests must not call real Modal (depends on developer .env)."""
+    monkeypatch.setattr(vlm_service, "MODAL_VLM_URL", "")
 
 
 @pytest.fixture
@@ -93,3 +100,66 @@ def test_evaluate_response_shape(client):
     assert "description" in pred
     probs = pred["probabilities"]
     assert set(probs.keys()) == {"no_damage", "minor_damage", "major_damage", "destroyed"}
+
+
+def test_modal_json_flat_predicted_label():
+    from app.services.vlm import MOCK_DESCRIPTIONS, _modal_json_to_response
+
+    data = _modal_json_to_response(
+        {
+            "predicted_label": "minor-damage",
+            "confidence": 0.82,
+            "probabilities": {
+                "no-damage": 0.1,
+                "minor-damage": 0.7,
+                "major-damage": 0.1,
+                "destroyed": 0.1,
+            },
+        }
+    )
+    assert data.is_mock is False
+    assert data.prediction.damage_class == "minor-damage"
+    assert data.prediction.description == MOCK_DESCRIPTIONS["minor-damage"]
+
+
+def test_modal_json_nested_damage_class():
+    from app.services.vlm import _modal_json_to_response
+
+    data = _modal_json_to_response(
+        {
+            "prediction": {
+                "damage_class": "destroyed",
+                "confidence": 0.91,
+                "probabilities": {
+                    "no_damage": 0.02,
+                    "minor_damage": 0.03,
+                    "major_damage": 0.04,
+                    "destroyed": 0.91,
+                },
+                "description": "Total loss.",
+            },
+            "model_version": "custom-v3",
+        }
+    )
+    assert data.model_version == "custom-v3"
+    assert data.prediction.description == "Total loss."
+
+
+def test_modal_json_wrapped_result():
+    from app.services.vlm import _modal_json_to_response
+
+    data = _modal_json_to_response(
+        {
+            "result": {
+                "predicted_label": "no-damage",
+                "confidence": 0.5,
+                "probabilities": {
+                    "no_damage": 0.5,
+                    "minor_damage": 0.2,
+                    "major_damage": 0.2,
+                    "destroyed": 0.1,
+                },
+            }
+        }
+    )
+    assert data.prediction.damage_class == "no-damage"
