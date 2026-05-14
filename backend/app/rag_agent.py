@@ -117,6 +117,7 @@ load_dotenv(BACKEND_DIR / ".env", override=True)
 # frontend route example: /map/hurricane-harvey/3?building=<building_uid>
 # this can be changed later through backend/.env if needed
 DEFAULT_DISASTER_NAME = os.getenv("DEFAULT_DISASTER_NAME", "hurricane-harvey")
+DEFAULT_QUERY_LOCATION = "Houston, Texas"
 STREET_ADDRESS_OVERVIEW_RADIUS_M = 300
 EXACT_ADDRESS_OVERVIEW_RADIUS_M = 75
 NAMED_LOCATION_OVERVIEW_RADIUS_M = 5000
@@ -236,10 +237,10 @@ def parse_question(question):
 
         # fix vague location like "me"
         if address in ["me", "here", "my", "", "?"]:
-            address = "Houston Texas"
+            address = DEFAULT_QUERY_LOCATION
 
     else:
-        address = None
+        address = DEFAULT_QUERY_LOCATION
 
     if address is not None and not str(address).strip():
         address = None
@@ -2351,6 +2352,10 @@ def is_full_dataset_query(question):
         "what is this dataset",
         "what data is this",
         "what dataset is this",
+        "what does the dataset contain",
+        "what does this dataset contain",
+        "what does the data contain",
+        "what does this data contain",
         "what does the data show",
         "tell me about the data",
         "tell me about the dataset",
@@ -3070,7 +3075,7 @@ def parse_structured_query(question):
     else:
         primary_location = (
             normalize_location_candidate(parsed_address)
-            if explicit_near_or_in_match
+            if explicit_near_or_in_match or mapped_intent == "location_query"
             else None
         )
         locations = [primary_location] if primary_location else []
