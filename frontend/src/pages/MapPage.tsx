@@ -12,6 +12,7 @@ import MapView from "@/components/features/MapView.tsx";
 import { useXbdSelectorState } from "@/components/features/XbdSelector";
 import Footer from "@/components/layout/Footer.tsx";
 import Header from "@/components/layout/Header.tsx";
+import { PAGE_TITLE_SUFFIX } from "@/constants/app";
 import type { SceneMetrics } from "@/types/map";
 import { getDisasterIdByName } from "@/utils/hazardlyApi.ts";
 
@@ -40,6 +41,10 @@ export default function MapPage() {
 	);
 	const [isLoading, setIsLoading] = useState(requiresDisasterResolution);
 	const [sceneMetrics, setSceneMetrics] = useState<SceneMetrics | null>(null);
+
+	useEffect(() => {
+		document.title = `Map - ${PAGE_TITLE_SUFFIX}`;
+	}, []);
 
 	// 1. Validate XBD ID: If it's garbage text or missing, fallback to 18
 	const normalizedXbdId = xbdid?.trim();

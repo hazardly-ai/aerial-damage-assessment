@@ -5,6 +5,7 @@ import DisasterResponseAssistant from "@/components/features/DisasterResponseAss
 import Container from "@/components/layout/Container";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import { PAGE_TITLE_SUFFIX } from "@/constants/app";
 import { evaluateVlm, type VlmEvaluationResult } from "@/utils/hazardlyApi";
 
 const DAMAGE_COLORS: Record<string, string> = {
@@ -134,6 +135,10 @@ export default function VlmEvaluationPage() {
 	const [result, setResult] = useState<VlmEvaluationResult | null>(null);
 
 	const [dragging, setDragging] = useState<"pre" | "post" | null>(null);
+
+	useEffect(() => {
+		document.title = `VLM Evaluation - ${PAGE_TITLE_SUFFIX}`;
+	}, []);
 
 	useEffect(() => {
 		return () => {

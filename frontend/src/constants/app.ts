@@ -4,6 +4,9 @@ export const APP_NAME = "Aerial Damage Assessment";
 // Team / organization branding
 export const TEAM_NAME = "Hazardly AI";
 
+// Shared browser tab title suffix.
+export const PAGE_TITLE_SUFFIX = TEAM_NAME;
+
 // Short description of the application’s purpose
 // Used for landing pages, metadata, or documentation
 export const APP_DESCRIPTION =
