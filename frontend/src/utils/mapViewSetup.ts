@@ -21,7 +21,7 @@ type ImageCoordinates = [
 export const PRE_IMAGE_LAYER_ID = "pre-layer";
 export const POST_IMAGE_LAYER_ID = "post-layer";
 const SATELLITE_BASE_LAYER_ID = "satellite";
-const SATELLITE_DIMMED_OPACITY = 0.4;
+const SATELLITE_DIMMED_OPACITY = 0.25;
 const SATELLITE_FULL_OPACITY = 1;
 const MAP_LOAD_TIMEOUT_MS = 15000;
 
@@ -243,7 +243,7 @@ export function createMapInstance(
 ) {
 	const map = new mapboxgl.Map({
 		container,
-		style: "mapbox://styles/mapbox/satellite-v9",
+		style: "mapbox://styles/mapbox/satellite-streets-v12",
 		renderWorldCopies: false,
 	});
 
