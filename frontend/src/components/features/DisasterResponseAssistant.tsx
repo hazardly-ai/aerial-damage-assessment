@@ -217,6 +217,12 @@ export default function DisasterResponseAssistant({
 		/\/*$/,
 		"",
 	);
+	const [chatSessionId, setChatSessionId] = useState(() => {
+		const storedSessionId = sessionStorage.getItem("chatSessionId");
+		const sessionId = storedSessionId || crypto.randomUUID();
+		sessionStorage.setItem("chatSessionId", sessionId);
+		return sessionId;
+	});
 
 	const initialMessage: ChatMessage = {
 		id: crypto.randomUUID(),
@@ -308,6 +314,9 @@ export default function DisasterResponseAssistant({
 	}, [responseLog, isOpen]);
 
 	const clearChat = () => {
+		const sessionId = crypto.randomUUID();
+		sessionStorage.setItem("chatSessionId", sessionId);
+		setChatSessionId(sessionId);
 		setResponseLog([initialMessage]);
 		setIsAwaitingResponse(false);
 		setAnimatingMessageId(null);
@@ -341,7 +350,10 @@ export default function DisasterResponseAssistant({
 			const backendResponse = await fetch(`${API_BASE_URL}/chat`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ question: queryToSend }),
+				body: JSON.stringify({
+					question: queryToSend,
+					session_id: chatSessionId,
+				}),
 			});
 			if (!backendResponse.ok) {
 				setResponseLog((prev) =>
