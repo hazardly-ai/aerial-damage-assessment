@@ -80,3 +80,33 @@ Updates `predicted_damage` on existing `buildings` rows matched by uid (no inser
 ## Modal inference
 
 `vlm/modal_inference.py` defines a Modal app with `predict_buildings(folder, batch_size=100, checkpoint_path=...)`. Pass a `checkpoint_path` that exists on the GPU worker (e.g. on the mounted `/images` volume). Set `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` as Modal secrets for the function environment.
+
+## Modal single-pair web inference
+
+`vlm/modal_single_inference.py` defines a hosted Modal web endpoint for user uploads:
+
+- app name: `damage-single-inference`
+- endpoint: `DamageClassifier.classify`
+- method: `POST`
+- payload: `multipart/form-data` with `pre_image` and `post_image` file fields
+- response: `predicted_label`, `confidence`, and per-class `probabilities`
+
+Model loading:
+
+- checkpoint path comes from env var `CHECKPOINT_PATH`
+- default path: `/models/best_damage_classifier.pt`
+- model checkpoint is expected on Modal volume `damage-models` mounted at `/models`
+
+Deploy:
+
+```bash
+modal deploy vlm/modal_single_inference.py
+```
+
+Local test (after `modal serve` or against deployed URL):
+
+```bash
+curl -X POST "https://<your-modal-endpoint-url>/classify" \
+  -F "pre_image=@/path/to/pre.png" \
+  -F "post_image=@/path/to/post.png"
+```
