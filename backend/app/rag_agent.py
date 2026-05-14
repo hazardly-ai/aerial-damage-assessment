@@ -151,6 +151,39 @@ NEARBY_SEARCH_RADIUS_METERS = 5000
 # Canonical damage labels matching the database `damage_level` enum.
 DAMAGE_LEVELS = ("no-damage", "minor-damage", "major-damage", "destroyed")
 
+DISASTER_GUIDANCE_TOPICS = {
+    "flood": {
+        "title": "flood",
+        "source": "Ready.gov Floods",
+        "url": "https://www.ready.gov/floods",
+        "path": BACKEND_DIR / "resources" / "disaster_guidance" / "ready_gov_floods.md",
+        "aliases": (
+            "flood",
+            "flooding",
+            "flash flood",
+            "floodwater",
+            "floodwaters",
+        ),
+    },
+    "hurricane": {
+        "title": "hurricane",
+        "source": "Ready.gov Hurricanes",
+        "url": "https://www.ready.gov/hurricanes",
+        "path": BACKEND_DIR / "resources" / "disaster_guidance" / "ready_gov_hurricanes.md",
+        "aliases": (
+            "hurricane",
+            "hurricanes",
+            "typhoon",
+            "typhoons",
+            "tropical storm",
+            "storm surge",
+        ),
+    },
+}
+DISASTER_GUIDANCE_SAFETY_MESSAGE = (
+    "Follow local emergency officials for current instructions, and call 911 for immediate emergencies."
+)
+
 
 def format_radius_label(radius_m):
     if radius_m >= 1000:
@@ -492,6 +525,310 @@ def detect_advisory(question):
 
     #if none then it is not an advisory 
     return None
+
+
+def detect_disaster_guidance_topics(question):
+    q = question.lower()
+    topics = []
+    for topic, metadata in DISASTER_GUIDANCE_TOPICS.items():
+        if any(alias in q for alias in metadata["aliases"]):
+            topics.append(topic)
+    return topics
+
+
+def detect_disaster_guidance_topic(question):
+    topics = detect_disaster_guidance_topics(question)
+    return topics[0] if topics else None
+
+
+def detect_disaster_guidance_section(question):
+    q = question.lower()
+
+    if any(term in q for term in ["insurance", "claim", "coverage", "nfip"]):
+        return "insurance"
+    if any(term in q for term in ["resource", "resources", "link", "learn more", "where can i"]):
+        return "resources"
+    if any(term in q for term in ["alert", "alerts", "warning system", "fema app", "weather radio"]):
+        return "alerts"
+    if any(term in q for term in ["before", "prepare", "prepared", "preparation", "plan", "supplies", "kit"]):
+        return "before"
+    if any(term in q for term in ["warning", "during", "evacuate", "evacuation", "shelter", "trapped"]):
+        return "during"
+    if any(term in q for term in ["after", "cleanup", "clean up", "return home", "recovery", "recover"]):
+        return "after"
+    return "overview"
+
+
+def is_general_disaster_guidance_request(question):
+    q = question.lower()
+    guidance_phrases = [
+        "disaster guidance",
+        "disaster safety",
+        "general disaster",
+        "emergency preparedness",
+        "emergency plan",
+        "ready.gov",
+        "ready gov",
+        "fema guidance",
+        "fema safety",
+        "what should i do in a disaster",
+        "what do i do in a disaster",
+    ]
+    return any(phrase in q for phrase in guidance_phrases)
+
+
+def is_disaster_guidance_query(question):
+    q = question.lower()
+    topic = detect_disaster_guidance_topic(question)
+
+    if is_general_disaster_guidance_request(question):
+        return True
+
+    if not topic:
+        return False
+
+    guidance_terms = [
+        "what is",
+        "what are",
+        "tell me about",
+        "explain",
+        "guidance",
+        "fact",
+        "facts",
+        "info",
+        "information",
+        "safety",
+        "safe",
+        "prepare",
+        "prepared",
+        "preparedness",
+        "before",
+        "during",
+        "after",
+        "warning",
+        "evacuate",
+        "evacuation",
+        "shelter",
+        "cleanup",
+        "clean up",
+        "insurance",
+        "claim",
+        "coverage",
+        "resource",
+        "resources",
+        "link",
+        "learn more",
+        "where can i",
+        "ready.gov",
+        "ready gov",
+        "fema",
+    ]
+    data_query_terms = [
+        "dataset",
+        "scene",
+        "xbd",
+        "building",
+        "buildings",
+        "damage count",
+        "how many",
+        "show",
+        "map",
+        "classified",
+        "predicted",
+    ]
+
+    has_guidance_language = any(term in q for term in guidance_terms)
+    has_location_data_language = (
+        any(term in q for term in ["near ", " in ", " on ", " around ", " at "])
+        and any(term in q for term in ["damage", "building", "buildings", "dataset", "scene", "xbd", "classified", "predicted"])
+    )
+    has_data_language = any(term in q for term in data_query_terms) or has_location_data_language
+    if has_data_language and "fema" not in q and "ready" not in q:
+        return False
+    return has_guidance_language or not has_data_language
+
+
+def load_disaster_guidance_markdown(topic):
+    metadata = DISASTER_GUIDANCE_TOPICS.get(topic)
+    if not metadata:
+        return ""
+
+    try:
+        return metadata["path"].read_text(encoding="utf-8")
+    except OSError:
+        logger.warning("Could not read disaster guidance markdown for topic %s", topic)
+        return ""
+
+
+def clean_markdown_heading(line):
+    return re.sub(r"[*_`#]+", "", line).strip(" :-")
+
+
+def split_markdown_sections(markdown_text):
+    lines = markdown_text.splitlines()
+    sections = []
+    current_title = "Overview"
+    current_lines = []
+    index = 0
+
+    while index < len(lines):
+        line = lines[index]
+        stripped = line.strip()
+        next_line = lines[index + 1].strip() if index + 1 < len(lines) else ""
+        is_setext_heading = bool(stripped and re.fullmatch(r"[=-]{3,}", next_line))
+        is_atx_heading = stripped.startswith("#")
+
+        if is_atx_heading or is_setext_heading:
+            if current_lines:
+                sections.append((current_title, "\n".join(current_lines).strip()))
+                current_lines = []
+            current_title = clean_markdown_heading(stripped)
+            index += 2 if is_setext_heading else 1
+            continue
+
+        current_lines.append(line)
+        index += 1
+
+    if current_lines:
+        sections.append((current_title, "\n".join(current_lines).strip()))
+
+    return [
+        (title, content)
+        for title, content in sections
+        if content
+    ]
+
+
+def guidance_section_keywords(section):
+    return {
+        "overview": ["overview", "floods", "hurricanes"],
+        "before": ["before", "prepare", "plan", "supplies", "documents"],
+        "during": ["during", "warning", "evacuate", "shelter", "trapped"],
+        "after": ["after", "cleanup", "return", "recover"],
+        "alerts": ["alert", "alerts", "warning", "weather radio", "fema app"],
+        "insurance": ["insurance", "claim", "coverage", "nfip"],
+        "resources": ["resources", "partner resources", "additional resources"],
+    }.get(section, ["overview"])
+
+
+def select_guidance_sections(markdown_text, section):
+    sections = split_markdown_sections(markdown_text)
+    keywords = guidance_section_keywords(section)
+    selected = []
+
+    for title, content in sections:
+        searchable = f"{title}\n{content}".lower()
+        if any(keyword in searchable for keyword in keywords):
+            selected.append((title, content))
+
+    if not selected:
+        selected = sections[:2]
+
+    return selected[:3]
+
+
+def truncate_context(text, max_chars=6500):
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rsplit("\n", 1)[0].strip()
+
+
+def build_disaster_guidance_context(question):
+    detected_topics = detect_disaster_guidance_topics(question)
+    section = detect_disaster_guidance_section(question)
+    topics = detected_topics if detected_topics else list(DISASTER_GUIDANCE_TOPICS.keys())
+    blocks = []
+
+    for topic_name in topics:
+        metadata = DISASTER_GUIDANCE_TOPICS[topic_name]
+        markdown_text = load_disaster_guidance_markdown(topic_name)
+        if not markdown_text:
+            continue
+
+        selected_sections = select_guidance_sections(markdown_text, section)
+        section_blocks = [
+            f"## {title}\n{content}"
+            for title, content in selected_sections
+        ]
+        blocks.append("\n".join([
+            f"Source: {metadata['source']}",
+            f"URL: {metadata['url']}",
+            *section_blocks,
+        ]))
+
+    return truncate_context("\n\n---\n\n".join(blocks))
+
+
+def disaster_guidance_sources(question):
+    detected_topics = detect_disaster_guidance_topics(question)
+    topics = detected_topics if detected_topics else list(DISASTER_GUIDANCE_TOPICS.keys())
+    return [
+        f"{DISASTER_GUIDANCE_TOPICS[topic_name]['source']} ({DISASTER_GUIDANCE_TOPICS[topic_name]['url']})"
+        for topic_name in topics
+    ]
+
+
+def fallback_disaster_guidance_response(question, context):
+    if not context:
+        return (
+            "I can answer general disaster guidance questions when the Ready.gov guidance files are available. "
+            + DISASTER_GUIDANCE_SAFETY_MESSAGE
+        )
+
+    lines = [
+        re.sub(r"\s+", " ", line.strip(" *"))
+        for line in context.splitlines()
+        if line.strip().startswith("*")
+    ]
+    excerpt_lines = lines[:4]
+    if not excerpt_lines:
+        excerpt_lines = [
+            re.sub(r"\s+", " ", line.strip())
+            for line in context.splitlines()
+            if line.strip() and not line.startswith(("Source:", "URL:", "##", "---"))
+        ][:4]
+
+    sources = "; ".join(disaster_guidance_sources(question))
+    return "\n".join([
+        "I could not reach the LLM, but these Ready.gov excerpts may help:",
+        *[f"- {line}" for line in excerpt_lines],
+        DISASTER_GUIDANCE_SAFETY_MESSAGE,
+        f"Sources: {sources}.",
+    ])
+
+
+def disaster_guidance_response(question):
+    context = build_disaster_guidance_context(question)
+    sources = "; ".join(disaster_guidance_sources(question))
+    prompt = f"""
+You are Hazardly, a disaster damage assessment chatbot.
+
+Answer the user's general disaster guidance question using only the Ready.gov/FEMA source excerpts below.
+
+User question: {question}
+
+Source excerpts:
+{context}
+
+Rules:
+- Use only the source excerpts. Do not invent guidance.
+- Keep the answer concise and practical.
+- Prefer 3-5 short bullet points.
+- Include "{DISASTER_GUIDANCE_SAFETY_MESSAGE}"
+- End with "Sources: {sources}."
+- Do not mention prompts, markdown, hidden context, or database details.
+"""
+
+    answer = call_nemotron(prompt)
+    if not answer:
+        return fallback_disaster_guidance_response(question, context)
+
+    cleaned_answer = str(answer).strip().strip('"')
+    if DISASTER_GUIDANCE_SAFETY_MESSAGE.lower() not in cleaned_answer.lower():
+        cleaned_answer = f"{cleaned_answer}\n{DISASTER_GUIDANCE_SAFETY_MESSAGE}"
+    if "sources:" not in cleaned_answer.lower():
+        cleaned_answer = f"{cleaned_answer}\nSources: {sources}."
+    return cleaned_answer
 
 
 
@@ -2517,14 +2854,14 @@ def is_acknowledgement_query(question):
 def greeting_response():
     return (
         "Hi, I am Hazardly. Ask me about disaster damage counts, affected cities, damaged buildings near a "
-        "location, xBD scenes, or safety and repair guidance from the active dataset."
+        "location, xBD scenes, or general flood and hurricane safety guidance."
     )
 
 
 def identity_response():
     return (
         "I am Hazardly, a disaster damage assessment assistant for the active dataset. I can help with damage "
-        "counts, affected cities, damaged buildings near a location, xBD scenes, and safety or repair guidance."
+        "counts, affected cities, damaged buildings near a location, xBD scenes, and general flood or hurricane guidance."
     )
 
 
@@ -2536,18 +2873,18 @@ def help_response():
     options = [
         "\n".join([
             "I can help with disaster damage assessment questions for the active dataset.",
-            "Try asking for a dataset summary, affected cities, damage counts, damaged buildings near a city or address, a specific xBD scene, misclassified buildings, or safety/repair guidance based on nearby damage levels.",
-            "Examples: \"Show major damage near Houston\", \"Summarize damage in Sugar Land\", or \"What cities have the most major damage?\"",
+            "Try asking for a dataset summary, affected cities, damage counts, damaged buildings near a city or address, a specific xBD scene, misclassified buildings, or general flood and hurricane safety guidance.",
+            "Examples: \"Show major damage near Houston\", \"Summarize damage in Sugar Land\", or \"What should I do during a flood?\"",
         ]),
         "\n".join([
             "I can help you explore damage patterns in the active disaster dataset.",
-            "You can ask about affected cities, scene-level damage, building counts by severity, misclassified buildings, or conditions near a city, area, address, or xBD scene.",
-            "Examples: \"What happened to Richmond?\", \"Show scene 18\", or \"Which cities have the most destroyed buildings?\"",
+            "You can ask about affected cities, scene-level damage, building counts by severity, misclassified buildings, Ready.gov flood or hurricane guidance, or conditions near a city, area, address, or xBD scene.",
+            "Examples: \"What happened to Richmond?\", \"Show scene 18\", or \"How should I prepare for a hurricane?\"",
         ]),
         "\n".join([
             "I am best at answering questions about disaster damage assessment data.",
-            "Ask me to summarize the dataset, compare locations, list affected cities, find damaged buildings, explain damage labels, or give safety and repair guidance based on nearby damage.",
-            "Examples: \"Summarize the full dataset\", \"Compare Missouri City and Cypress\", or \"What damage labels exist?\"",
+            "Ask me to summarize the dataset, compare locations, list affected cities, find damaged buildings, explain damage labels, or give general flood and hurricane guidance.",
+            "Examples: \"Summarize the full dataset\", \"Compare Missouri City and Cypress\", or \"What should I do after a hurricane?\"",
         ]),
     ]
 
@@ -2578,19 +2915,21 @@ def unsupported_query_response():
     return (
         "I understand this is related to disaster damage assessment, but I have not been taught how to answer that "
         "kind of request yet. Try asking about damage counts, affected cities, damaged buildings near a location, "
-        "xBD scenes, or safety and repair guidance from the active dataset."
+        "xBD scenes, or general flood and hurricane safety guidance."
     )
 
 
 def out_of_scope_query_response():
     return (
         "That is outside my disaster damage assessment scope. I can help with damage counts, affected cities, "
-        "damaged buildings near a location, xBD scenes, or safety and repair guidance from the active dataset."
+        "damaged buildings near a location, xBD scenes, or general flood and hurricane safety guidance."
     )
 
 
 def is_untrained_disaster_request(question):
     q = question.lower()
+    if is_disaster_guidance_query(question):
+        return False
     if "predicted damage" in q:
         return False
     unsupported_terms = [
@@ -2639,6 +2978,9 @@ def classify_query_intent_heuristic(question):
 
     if is_help_query(question):
         return "help"
+
+    if is_disaster_guidance_query(question):
+        return "disaster_guidance"
 
     if is_untrained_disaster_request(question):
         return "unsupported"
@@ -2733,6 +3075,7 @@ Choose exactly one label from this list:
 - acknowledgement
 - active_disaster
 - help
+- disaster_guidance
 - location_comparison
 - location_percentage
 - conversation_summary
@@ -2757,6 +3100,7 @@ Definitions:
 - acknowledgement: brief thanks or acknowledgement after the assistant has answered
 - active_disaster: asks which active disaster or disaster dataset is being viewed
 - help: asks what the assistant can do or what questions are supported
+- disaster_guidance: asks for general flood, hurricane, Ready.gov, or FEMA preparedness/safety/recovery guidance, without asking for active dataset counts or map results
 - location_comparison: compares two named locations
 - location_percentage: asks what percentage/share of buildings in a place fit a damage level
 - conversation_summary: asks for a recap of the conversation
@@ -2779,6 +3123,12 @@ Label: city_list
 
 Question: What can you help with?
 Label: help
+
+Question: What should I do during a flood?
+Label: disaster_guidance
+
+Question: How should I prepare for a hurricane?
+Label: disaster_guidance
 
 Question: What disaster is this?
 Label: active_disaster
@@ -2830,6 +3180,7 @@ Label:
         "acknowledgement",
         "active_disaster",
         "help",
+        "disaster_guidance",
         "location_comparison",
         "location_percentage",
         "conversation_summary",
@@ -2978,6 +3329,7 @@ def parse_structured_query(question):
         "acknowledgement": "acknowledgement",
         "active_disaster": "active_disaster",
         "help": "help",
+        "disaster_guidance": "disaster_guidance",
         "location_comparison": "location_comparison",
         "location_percentage": "location_percentage",
         "conversation_summary": "conversation_summary",
@@ -3111,6 +3463,7 @@ def parse_structured_query(question):
         "acknowledgement",
         "active_disaster",
         "help",
+        "disaster_guidance",
         "conversation_summary",
         "scene_count",
         "scene_ranking",
@@ -3341,6 +3694,17 @@ def handle_chat_query(question, session_id=None):
 
     if intent == "help":
         answer = help_response()
+        save_turn(question, answer)
+        return {
+            "answer": answer,
+            "response": answer,
+            "focus": None,
+            "highlighted_buildings": [],
+            "action": build_no_action()
+        }
+
+    if intent == "disaster_guidance":
+        answer = disaster_guidance_response(question)
         save_turn(question, answer)
         return {
             "answer": answer,
