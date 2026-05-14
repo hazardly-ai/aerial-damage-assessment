@@ -790,7 +790,7 @@ def fallback_disaster_guidance_response(question, context):
 
     sources = "; ".join(disaster_guidance_sources(question))
     return "\n".join([
-        "I could not reach the LLM, but these Ready.gov excerpts may help:",
+        "Here are the most relevant Ready.gov guidance points:",
         *[f"- {line}" for line in excerpt_lines],
         DISASTER_GUIDANCE_SAFETY_MESSAGE,
         f"Sources: {sources}.",
