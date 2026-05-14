@@ -1,4 +1,5 @@
 # importing libraries needed for database, API calls, and environment variables
+from collections import OrderedDict
 from contextvars import ContextVar
 import logging
 import psycopg  # used to connect to PostgreSQL (Supabase)
@@ -21,13 +22,14 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CHAT_SESSION_ID = "default"
 MAX_CHAT_HISTORY_MESSAGES = 40
+MAX_CHAT_HISTORY_SESSIONS = 100
 DEFAULT_NEMOTRON_MODEL = "mistralai/mistral-nemotron"
 DEFAULT_NEMOTRON_FALLBACK_MODEL = ""
 _active_chat_session_id = ContextVar(
     "active_chat_session_id",
     default=DEFAULT_CHAT_SESSION_ID,
 )
-chat_histories = {}
+chat_histories = OrderedDict()
 
 
 def set_active_chat_session(session_id=None):
@@ -37,7 +39,17 @@ def set_active_chat_session(session_id=None):
 
 def get_chat_history():
     session_id = _active_chat_session_id.get()
-    return chat_histories.setdefault(session_id, [])
+    history = chat_histories.get(session_id)
+    if history is None:
+        history = []
+        chat_histories[session_id] = history
+    else:
+        chat_histories.move_to_end(session_id)
+
+    while len(chat_histories) > MAX_CHAT_HISTORY_SESSIONS:
+        chat_histories.popitem(last=False)
+
+    return history
 
 
 def save_turn(question, answer):
