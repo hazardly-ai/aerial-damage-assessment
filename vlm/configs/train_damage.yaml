@@ -12,7 +12,7 @@ split:
   train:
     paired_crops_root: vlm/imagery/train/paired_crops
     disasters: [hurricane-harvey]
-    max_pairs_per_disaster: 2500
+    max_pairs_per_disaster: 4000
   val:
     paired_crops_root: vlm/imagery/hold/paired_crops
     disasters: [hurricane-harvey]
@@ -20,7 +20,7 @@ split:
   test:
     paired_crops_root: vlm/imagery/test/paired_crops
     disasters: [hurricane-harvey]
-    max_pairs_per_disaster: 500
+    max_pairs_per_disaster: 1
 
 model:
   name: ViT-L-14
