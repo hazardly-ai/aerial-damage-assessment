@@ -2410,6 +2410,13 @@ def is_untrained_disaster_request(question):
 def classify_query_intent_heuristic(question):
     lowered_question = question.lower()
 
+    if (
+        any(phrase in lowered_question for phrase in ["how many", "count"])
+        and extract_damage_filter(question) is not None
+        and re.search(r"\b(?:near|in|on|around|at)\b", lowered_question)
+    ):
+        return "location_query"
+
     if is_scope_clarification_prompt(question):
         return "unsupported"
 
