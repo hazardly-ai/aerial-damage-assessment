@@ -17,10 +17,6 @@ export default function Dashboard() {
 		document.title = `Dashboard - ${PAGE_TITLE_SUFFIX}`;
 	}, []);
 
-	useEffect(() => {
-		document.title = "Dashboard";
-	}, []);
-
 	return (
 		<div className="min-h-screen bg-background text-foreground">
 			<Header />
