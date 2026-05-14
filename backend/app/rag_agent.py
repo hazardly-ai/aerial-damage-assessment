@@ -4378,10 +4378,7 @@ def handle_chat_query(question, session_id=None):
     if not geo:
         display_address = format_location_label(address)
         all_buildings = get_all_buildings_by_address_text(address)
-        filtered_buildings = [
-            b for b in all_buildings
-            if b.get("damage") == damage_type
-        ]
+        filtered_buildings = filter_buildings_by_damage(all_buildings, damage_type)
         primary_all_xbd_id = get_dominant_xbd_id(all_buildings)
         primary_filtered_xbd_id = get_dominant_xbd_id(filtered_buildings)
         scene_all_buildings = get_buildings_for_primary_scene(all_buildings, primary_all_xbd_id)
