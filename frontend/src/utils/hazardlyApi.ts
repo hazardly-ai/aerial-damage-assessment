@@ -12,6 +12,7 @@ const IMAGE_BASE_URL = import.meta.env.VITE_HAZARDLY_IMAGE_BASE_URL?.replace(
 	/\/$/,
 	"",
 );
+const API_FETCH_TIMEOUT_MS = 30000;
 
 const getRequiredApiBaseUrl = (): string => {
 	if (!API_BASE_URL) {
@@ -320,16 +321,50 @@ async function apiFetch<T>(
 	options?: ApiFetchOptions,
 	context?: string,
 ): Promise<T> {
-	const res = await fetch(`${getRequiredApiBaseUrl()}${path}`, {
-		signal: options?.signal,
-	});
-	if (!res.ok) {
-		const message = context
-			? `${context}: API error ${res.status} for ${path}: ${res.statusText}`
-			: `API error ${res.status} for ${path}: ${res.statusText}`;
-		throw new ApiError(message, res.status, path);
+	const controller = new AbortController();
+	const handleAbort = () => controller.abort();
+	const timeoutId = window.setTimeout(
+		() => controller.abort(),
+		API_FETCH_TIMEOUT_MS,
+	);
+
+	if (options?.signal) {
+		if (options.signal.aborted) {
+			controller.abort();
+		} else {
+			options.signal.addEventListener("abort", handleAbort, { once: true });
+		}
 	}
-	return (await res.json()) as T;
+
+	try {
+		const res = await fetch(`${getRequiredApiBaseUrl()}${path}`, {
+			signal: controller.signal,
+		});
+		if (!res.ok) {
+			const message = context
+				? `${context}: API error ${res.status} for ${path}: ${res.statusText}`
+				: `API error ${res.status} for ${path}: ${res.statusText}`;
+			throw new ApiError(message, res.status, path);
+		}
+		return (await res.json()) as T;
+	} catch (error) {
+		if (
+			error instanceof DOMException &&
+			error.name === "AbortError" &&
+			!options?.signal?.aborted
+		) {
+			const message = context
+				? `${context}: Request timed out after ${API_FETCH_TIMEOUT_MS / 1000}s`
+				: `Request timed out after ${API_FETCH_TIMEOUT_MS / 1000}s for ${path}`;
+			throw new Error(message);
+		}
+		throw error;
+	} finally {
+		window.clearTimeout(timeoutId);
+		if (options?.signal) {
+			options.signal.removeEventListener("abort", handleAbort);
+		}
+	}
 }
 
 // ─── Public API functions ────────────────────────────────────────────────────

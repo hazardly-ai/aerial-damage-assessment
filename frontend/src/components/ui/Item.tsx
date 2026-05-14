@@ -1,4 +1,5 @@
 import { Maximize2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 type ItemProps = {
@@ -7,6 +8,7 @@ type ItemProps = {
 	title: string;
 	subtitle?: string;
 	meta?: string;
+	titleAccessory?: ReactNode;
 	imageOverlayLabel?: string;
 	onImageClick?: () => void;
 	imageButtonLabel?: string;
@@ -19,6 +21,7 @@ export default function Item({
 	title,
 	subtitle,
 	meta,
+	titleAccessory,
 	imageOverlayLabel,
 	onImageClick,
 	imageButtonLabel,
@@ -67,9 +70,14 @@ export default function Item({
 			)}
 
 			<div className="min-w-0">
-				<p className="truncate text-sm font-medium text-card-foreground">
-					{title}
-				</p>
+				<div className="flex items-start gap-2">
+					<p className="min-w-0 flex-1 truncate text-sm font-medium text-card-foreground">
+						{title}
+					</p>
+					{titleAccessory ? (
+						<div className="shrink-0">{titleAccessory}</div>
+					) : null}
+				</div>
 				{subtitle && (
 					<p className="truncate text-xs text-muted-foreground">{subtitle}</p>
 				)}

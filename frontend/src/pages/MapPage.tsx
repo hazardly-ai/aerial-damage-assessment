@@ -1,34 +1,33 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-	useLocation,
-	useNavigate,
-	useParams,
-	useSearchParams,
-} from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import DisasterResponseAssistant from "@/components/features/DisasterResponseAssistant.tsx";
 import MapMetricsPanel from "@/components/features/MapMetricsPanel.tsx";
 import MapView from "@/components/features/MapView.tsx";
 import { useXbdSelectorState } from "@/components/features/XbdSelector";
 import Footer from "@/components/layout/Footer.tsx";
 import Header from "@/components/layout/Header.tsx";
+import { SpinnerEmpty } from "@/components/ui/SpinnerEmpty";
 import { PAGE_TITLE_SUFFIX } from "@/constants/app";
+import type { ChatMapCommand } from "@/types/chat";
 import type { SceneMetrics } from "@/types/map";
 import { getDisasterIdByName } from "@/utils/hazardlyApi.ts";
 
-export default function MapPage() {
+interface MapPageProps {
+	chatCommand?: ChatMapCommand | null;
+	highlightResetToken?: number;
+}
+
+export default function MapPage({
+	chatCommand = null,
+	highlightResetToken = 0,
+}: MapPageProps) {
 	const { disaster_name, xbdid } = useParams<{
 		disaster_name: string;
 		xbdid: string;
 	}>();
-	const location = useLocation();
 	const navigate = useNavigate();
 	const [searchParams] = useSearchParams();
-	const suppressMissingSceneToast =
-		location.state !== null &&
-		typeof location.state === "object" &&
-		"suppressMissingSceneToast" in location.state &&
-		location.state.suppressMissingSceneToast === true;
+	const suppressMissingSceneToast = false;
 	const buildingFromUrl = searchParams.get("building")?.trim() ?? undefined;
 	const normalizedDisasterParam = disaster_name?.trim();
 	const requiresDisasterResolution = Boolean(normalizedDisasterParam);
@@ -53,6 +52,7 @@ export default function MapPage() {
 	const parsedXbdId =
 		isXbdMissing || isXbdMalformed ? 18 : Number(normalizedXbdId);
 	const [selectedXbdId, setSelectedXbdId] = useState(parsedXbdId);
+	const lastAppliedChatSceneIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		setSelectedXbdId(parsedXbdId);
@@ -137,7 +137,6 @@ export default function MapPage() {
 		isXbdMalformed,
 		disasterFallbackPath,
 		navigate,
-		suppressMissingSceneToast,
 	]);
 
 	const handleInvalidScene = useCallback(
@@ -145,11 +144,23 @@ export default function MapPage() {
 			toast.error(message);
 			navigate(disasterFallbackPath, {
 				replace: true,
-				state: { suppressMissingSceneToast: true },
 			});
 		},
 		[disasterFallbackPath, navigate],
 	);
+
+	useEffect(() => {
+		if (!chatCommand?.targetXbdId) {
+			return;
+		}
+		if (lastAppliedChatSceneIdRef.current === chatCommand.id) {
+			return;
+		}
+		if (chatCommand.targetXbdId !== selectedXbdId) {
+			setSelectedXbdId(chatCommand.targetXbdId);
+		}
+		lastAppliedChatSceneIdRef.current = chatCommand.id;
+	}, [chatCommand, selectedXbdId]);
 
 	const disasterId = resolvedDisasterId ?? 1;
 	const xbdSelector = useXbdSelectorState({
@@ -163,7 +174,19 @@ export default function MapPage() {
 		requiresDisasterResolution &&
 		(isLoading || resolvedDisasterId === null)
 	) {
-		return null;
+		return (
+			<div className="flex min-h-screen flex-col bg-background text-foreground">
+				<Header />
+				<div className="flex flex-1 items-center justify-center px-4">
+					<SpinnerEmpty
+						title="Loading Map"
+						description="Resolving the requested disaster and scene..."
+						className="border-0"
+					/>
+				</div>
+				<Footer />
+			</div>
+		);
 	}
 
 	return (
@@ -186,6 +209,8 @@ export default function MapPage() {
 							canGoNext={xbdSelector.canGoNext}
 							onPrev={xbdSelector.goPrev}
 							onNext={xbdSelector.goNext}
+							chatCommand={chatCommand}
+							highlightResetToken={highlightResetToken}
 						/>
 					</div>
 					<div className="xl:col-span-3 h-[80vh]">
@@ -203,7 +228,6 @@ export default function MapPage() {
 					</div>
 				</div>
 			</div>
-			<DisasterResponseAssistant />
 			<Footer />
 		</div>
 	);
