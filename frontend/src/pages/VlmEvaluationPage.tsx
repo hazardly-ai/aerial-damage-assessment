@@ -145,12 +145,16 @@ export default function VlmEvaluationPage() {
 			if (prePreview) {
 				URL.revokeObjectURL(prePreview);
 			}
+		};
+	}, [prePreview]);
 
+	useEffect(() => {
+		return () => {
 			if (postPreview) {
 				URL.revokeObjectURL(postPreview);
 			}
 		};
-	}, [prePreview, postPreview]);
+	}, [postPreview]);
 
 	const validateImage = (file: File) =>
 		["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type);
@@ -168,18 +172,10 @@ export default function VlmEvaluationPage() {
 		const url = URL.createObjectURL(file);
 
 		if (type === "pre") {
-			if (prePreview) {
-				URL.revokeObjectURL(prePreview);
-			}
-
 			setPreImage(file);
 			setPrePreview(url);
 
 			return;
-		}
-
-		if (postPreview) {
-			URL.revokeObjectURL(postPreview);
 		}
 
 		setPostImage(file);
@@ -207,18 +203,10 @@ export default function VlmEvaluationPage() {
 		setResult(null);
 
 		if (type === "pre") {
-			if (prePreview) {
-				URL.revokeObjectURL(prePreview);
-			}
-
 			setPreImage(null);
 			setPrePreview(null);
 
 			return;
-		}
-
-		if (postPreview) {
-			URL.revokeObjectURL(postPreview);
 		}
 
 		setPostImage(null);
