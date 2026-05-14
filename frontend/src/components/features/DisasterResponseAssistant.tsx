@@ -1,29 +1,299 @@
 /* DisasterResponsesAssistant.tsx */
-import { Sparkles, Trash2, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+	ArrowDown,
+	Eraser,
+	MessageCircle,
+	SendHorizontal,
+	Trash2,
+	X,
+} from "lucide-react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
+import type { ChatMessage, ChatResponse } from "@/types/chat";
 
-interface ResponseMessage {
-	id: string;
-	role: "fieldUser" | "responseAssistant";
-	content: string;
+interface DisasterResponseAssistantProps {
+	onChatResponse?: (response: ChatResponse) => void;
+	onClearMapHighlights?: () => void;
+	onRunSuggestedAction?: (response: ChatResponse) => void;
 }
 
-export default function DisasterResponseAssistant() {
+const stripInlineMarkdown = (content: string): string =>
+	content
+		.replace(/\*\*(.*?)\*\*/g, "$1")
+		.replace(/__(.*?)__/g, "$1")
+		.replace(/\*(.*?)\*/g, "$1")
+		.replace(/_(.*?)_/g, "$1")
+		.replace(/`(.*?)`/g, "$1");
+
+const normalizeMessageContent = (content: string): string => content.trim();
+
+function AnimatedAssistantText({
+	content,
+	animate,
+	onProgress,
+	onComplete,
+}: {
+	content: string;
+	animate: boolean;
+	onProgress?: () => void;
+	onComplete?: () => void;
+}) {
+	const [visibleLength, setVisibleLength] = useState(
+		animate ? 0 : content.length,
+	);
+	const onProgressRef = useRef(onProgress);
+	const onCompleteRef = useRef(onComplete);
+
+	useEffect(() => {
+		onProgressRef.current = onProgress;
+		onCompleteRef.current = onComplete;
+	}, [onProgress, onComplete]);
+
+	useEffect(() => {
+		if (!animate) {
+			setVisibleLength(content.length);
+			return;
+		}
+
+		setVisibleLength(0);
+		if (!content) return;
+
+		let index = 0;
+		const timer = window.setInterval(() => {
+			index += 3;
+			if (index >= content.length) {
+				window.clearInterval(timer);
+				setVisibleLength(content.length);
+				onProgressRef.current?.();
+				onCompleteRef.current?.();
+				return;
+			}
+			setVisibleLength(index);
+			onProgressRef.current?.();
+		}, 12);
+
+		return () => window.clearInterval(timer);
+	}, [animate, content]);
+
+	return <>{content.slice(0, visibleLength)}</>;
+}
+
+function SelectableMessageText({
+	children,
+	enableTripleClickSelectAll,
+}: {
+	children: ReactNode;
+	enableTripleClickSelectAll: boolean;
+}) {
+	const containerRef = useRef<HTMLSpanElement | null>(null);
+
+	useEffect(() => {
+		const node = containerRef.current;
+		if (!node || !enableTripleClickSelectAll) {
+			return;
+		}
+
+		const handleMouseDown = (event: MouseEvent) => {
+			if (event.detail !== 3) {
+				return;
+			}
+
+			const selection = window.getSelection();
+			if (!selection) {
+				return;
+			}
+
+			const range = document.createRange();
+			range.selectNodeContents(node);
+			selection.removeAllRanges();
+			selection.addRange(range);
+			event.preventDefault();
+		};
+
+		node.addEventListener("mousedown", handleMouseDown);
+		return () => {
+			node.removeEventListener("mousedown", handleMouseDown);
+		};
+	}, [enableTripleClickSelectAll]);
+
+	return <span ref={containerRef}>{children}</span>;
+}
+
+const requiresExplicitExampleAction = (response: ChatResponse): boolean =>
+	response.action?.reason === "address_query" &&
+	response.action?.target === "map" &&
+	!response.focus;
+
+const isStreetLevelAddress = (address: string | undefined): boolean => {
+	if (!address) return false;
+
+	return /\b(street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|lane|ln|way|court|ct|place|pl|circle|cir|parkway|pkwy|highway|hwy)\b/i.test(
+		address,
+	);
+};
+
+const shouldAutoRunExplicitExample = (
+	query: string,
+	response: ChatResponse,
+): boolean => {
+	if (!requiresExplicitExampleAction(response)) {
+		return false;
+	}
+
+	const normalizedQuery = query.trim().toLowerCase();
+	const isRepairCountQuery =
+		(normalizedQuery.startsWith("how many ") ||
+			normalizedQuery.startsWith("count ") ||
+			normalizedQuery.startsWith("number of ")) &&
+		(normalizedQuery.includes("need repair") ||
+			normalizedQuery.includes("need to be repaired") ||
+			normalizedQuery.includes("repaired") ||
+			normalizedQuery.includes("repair"));
+	const actionAddress =
+		typeof response.action?.params?.address === "string"
+			? response.action.params.address
+			: undefined;
+
+	return (
+		(isRepairCountQuery && isStreetLevelAddress(actionAddress)) ||
+		normalizedQuery.startsWith("show ") ||
+		normalizedQuery.startsWith("show me ") ||
+		normalizedQuery.startsWith("take me ") ||
+		normalizedQuery.startsWith("open ") ||
+		normalizedQuery.startsWith("go to ")
+	);
+};
+
+const buildExplicitExampleSummary = (
+	response: ChatResponse,
+): string | undefined => {
+	const targetXbdId = response.action?.params?.xbd_id;
+	const addressText =
+		typeof response.action?.params?.address === "string"
+			? response.action.params.address
+			: undefined;
+
+	if (addressText && typeof targetXbdId === "number") {
+		return `Matched buildings for ${addressText}. Representative scene available on XBD ${targetXbdId}.`;
+	}
+	if (addressText) {
+		return `Matched buildings for ${addressText}. Representative scene available.`;
+	}
+	if (typeof targetXbdId === "number") {
+		return `Representative scene available on XBD ${targetXbdId}.`;
+	}
+	return "Representative scene available.";
+};
+
+const buildMapCommandSummary = (response: ChatResponse): string | undefined => {
+	const targetXbdId = response.action?.params?.xbd_id;
+	const actionAddress =
+		typeof response.action?.params?.address === "string"
+			? response.action.params.address
+			: undefined;
+	const displayAddress = response.focus?.address ?? actionAddress;
+	const totalMatchedBuildings =
+		response.action?.params?.building_ids?.length ?? 0;
+	const showingRepresentativeScene =
+		typeof targetXbdId === "number" &&
+		totalMatchedBuildings > 0 &&
+		response.highlighted_buildings.length > 0 &&
+		totalMatchedBuildings > response.highlighted_buildings.length;
+	if (response.action?.target === "building") {
+		return typeof targetXbdId === "number"
+			? `Opened the matched building on XBD ${targetXbdId}.`
+			: "Opened the matched building on the map.";
+	}
+	if (
+		response.action?.reason === "address_query" &&
+		displayAddress &&
+		response.action?.target === "map"
+	) {
+		return typeof targetXbdId === "number"
+			? showingRepresentativeScene
+				? `Moved the map to ${displayAddress}, showing representative XBD ${targetXbdId}.`
+				: `Moved the map to ${displayAddress} on XBD ${targetXbdId}.`
+			: `Moved the map to ${displayAddress}.`;
+	}
+	if (response.action?.target === "map" && response.focus?.address) {
+		return typeof targetXbdId === "number"
+			? showingRepresentativeScene
+				? `Moved the map to ${response.focus.address}, showing representative XBD ${targetXbdId}.`
+				: `Moved the map to ${response.focus.address} on XBD ${targetXbdId}.`
+			: `Moved the map to ${response.focus.address}.`;
+	}
+	if (response.highlighted_buildings.length > 0) {
+		const count = response.highlighted_buildings.length;
+		return `Highlighted ${count} building${count === 1 ? "" : "s"} on the map.`;
+	}
+	if (response.focus) {
+		return "Moved the map to the referenced location.";
+	}
+	return undefined;
+};
+
+export default function DisasterResponseAssistant({
+	onChatResponse,
+	onClearMapHighlights,
+	onRunSuggestedAction,
+}: DisasterResponseAssistantProps) {
 	const API_BASE_URL = import.meta.env.VITE_HAZARDLY_API_BASE_URL?.replace(
 		/\/*$/,
 		"",
 	);
+	const [chatSessionId, setChatSessionId] = useState(() => {
+		const storedSessionId = sessionStorage.getItem("chatSessionId");
+		const sessionId = storedSessionId || crypto.randomUUID();
+		sessionStorage.setItem("chatSessionId", sessionId);
+		return sessionId;
+	});
 
-	const initialMessage: ResponseMessage = {
+	const initialMessage: ChatMessage = {
 		id: crypto.randomUUID(),
 		role: "responseAssistant",
 		content:
-			"Hi, I'm your Disaster Response Assistant. I can help you review damage severity, impacted areas, and assessment insights. What would you like to explore?",
+			"Hi, I'm Hazardly. I can help you review damage severity, impacted areas, and assessment insights. What would you like to explore?",
 	};
 
-	const [responseLog, setResponseLog] = useState<ResponseMessage[]>(() => {
+	const sanitizeStoredMessages = (
+		messages: ChatMessage[] | null | undefined,
+	): ChatMessage[] => {
+		if (!Array.isArray(messages) || messages.length === 0) {
+			return [initialMessage];
+		}
+
+		const cleanedMessages = messages.filter(
+			(entry) =>
+				!(
+					entry.isPending ||
+					(entry.role === "responseAssistant" &&
+						entry.content === "" &&
+						!entry.mapCommandSummary &&
+						!entry.suggestedActionLabel &&
+						!entry.actionPayload)
+				),
+		);
+
+		const normalizedMessages = cleanedMessages.map((entry) => ({
+			...entry,
+			content: normalizeMessageContent(entry.content),
+		}));
+
+		return normalizedMessages.length > 0
+			? normalizedMessages
+			: [initialMessage];
+	};
+
+	const [responseLog, setResponseLog] = useState<ChatMessage[]>(() => {
 		const saved = sessionStorage.getItem("chatHistory");
-		return saved ? JSON.parse(saved) : [initialMessage];
+		return saved
+			? sanitizeStoredMessages(JSON.parse(saved) as ChatMessage[])
+			: [initialMessage];
 	});
 
 	// Persist only for the current browser tab/session.
@@ -32,76 +302,238 @@ export default function DisasterResponseAssistant() {
 	});
 
 	const [currentQuery, setCurrentQuery] = useState("");
+	const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
+	const [animatingMessageId, setAnimatingMessageId] = useState<string | null>(
+		null,
+	);
+	const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+	const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 	const bottomRef = useRef<HTMLDivElement | null>(null);
-	const messageCount = responseLog.length;
+	const inputRef = useRef<HTMLTextAreaElement | null>(null);
+	const shouldAutoScrollRef = useRef(true);
+	const isProgrammaticScrollRef = useRef(false);
+	const programmaticScrollTimerRef = useRef<number | null>(null);
 
-	useEffect(() => {
-		if (messageCount > 0) {
-			bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+	const isMessagesContainerAtBottom = useCallback(() => {
+		const container = messagesContainerRef.current;
+		if (!container) return true;
+
+		const distanceFromBottom =
+			container.scrollHeight - container.scrollTop - container.clientHeight;
+		return distanceFromBottom < 64;
+	}, []);
+
+	const scrollToBottom = useCallback(
+		(behavior: ScrollBehavior = "smooth") => {
+			isProgrammaticScrollRef.current = true;
+			if (programmaticScrollTimerRef.current !== null) {
+				window.clearTimeout(programmaticScrollTimerRef.current);
+			}
+			bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+			shouldAutoScrollRef.current = true;
+			setShowScrollToBottom(false);
+			programmaticScrollTimerRef.current = window.setTimeout(
+				() => {
+					isProgrammaticScrollRef.current = false;
+					programmaticScrollTimerRef.current = null;
+					setShowScrollToBottom(!isMessagesContainerAtBottom());
+				},
+				behavior === "smooth" ? 350 : 80,
+			);
+		},
+		[isMessagesContainerAtBottom],
+	);
+
+	const handleMessagesScroll = useCallback(() => {
+		if (isProgrammaticScrollRef.current) {
+			return;
 		}
-	}, [messageCount]);
+		const isAtBottom = isMessagesContainerAtBottom();
+		shouldAutoScrollRef.current = isAtBottom;
+		setShowScrollToBottom(!isAtBottom);
+	}, [isMessagesContainerAtBottom]);
+
+	const resizeComposer = useCallback(() => {
+		const textarea = inputRef.current;
+		if (!textarea) return;
+		const computedStyle = window.getComputedStyle(textarea);
+		const lineHeight = Number.parseFloat(computedStyle.lineHeight) || 20;
+		const verticalPadding =
+			Number.parseFloat(computedStyle.paddingTop) +
+				Number.parseFloat(computedStyle.paddingBottom) || 0;
+		const maxHeight = lineHeight * 6 + verticalPadding;
+
+		textarea.style.height = "auto";
+		const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+		textarea.style.height = `${nextHeight}px`;
+		textarea.style.overflowY =
+			textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+	}, []);
 
 	useEffect(() => {
-		sessionStorage.setItem("chatHistory", JSON.stringify(responseLog));
+		resizeComposer();
+	}, [resizeComposer]);
+
+	useEffect(() => {
+		return () => {
+			if (programmaticScrollTimerRef.current !== null) {
+				window.clearTimeout(programmaticScrollTimerRef.current);
+			}
+		};
+	}, []);
+
+	useEffect(() => {
+		if (responseLog.length > 0) {
+			if (shouldAutoScrollRef.current) {
+				scrollToBottom("smooth");
+			} else {
+				setShowScrollToBottom(true);
+			}
+		}
+	}, [responseLog, scrollToBottom]);
+
+	useEffect(() => {
+		const persistedMessages = responseLog.filter((entry) => !entry.isPending);
+		sessionStorage.setItem("chatHistory", JSON.stringify(persistedMessages));
 		sessionStorage.setItem("chatOpen", isOpen.toString());
 	}, [responseLog, isOpen]);
 
 	const clearChat = () => {
+		const sessionId = crypto.randomUUID();
+		sessionStorage.setItem("chatSessionId", sessionId);
+		setChatSessionId(sessionId);
 		setResponseLog([initialMessage]);
+		setIsAwaitingResponse(false);
+		setAnimatingMessageId(null);
+		setCurrentQuery("");
 		sessionStorage.removeItem("chatHistory");
 	};
 
 	const handleQuery = async () => {
-		if (!currentQuery.trim()) return;
-		const userEntry: ResponseMessage = {
+		if (!currentQuery.trim() || isAwaitingResponse) return;
+		shouldAutoScrollRef.current = true;
+		setShowScrollToBottom(false);
+		const userEntry: ChatMessage = {
 			id: crypto.randomUUID(),
 			role: "fieldUser",
-			content: currentQuery,
+			content: normalizeMessageContent(currentQuery),
 		};
+		const pendingMessageId = crypto.randomUUID();
 		setResponseLog((prev) => [...prev, userEntry]);
 		const queryToSend = currentQuery;
 		setCurrentQuery("");
+		window.requestAnimationFrame(() => resizeComposer());
+		setIsAwaitingResponse(true);
+		setResponseLog((prev) => [
+			...prev,
+			{
+				id: pendingMessageId,
+				role: "responseAssistant",
+				content: "",
+				isPending: true,
+			},
+		]);
 		try {
 			const backendResponse = await fetch(`${API_BASE_URL}/chat`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ query: queryToSend }),
+				body: JSON.stringify({
+					question: queryToSend,
+					session_id: chatSessionId,
+				}),
 			});
-			const data = await backendResponse.json();
-			const assistantEntry: ResponseMessage = {
+			if (!backendResponse.ok) {
+				setResponseLog((prev) =>
+					prev.map((entry) =>
+						entry.id === pendingMessageId
+							? {
+									id: crypto.randomUUID(),
+									role: "responseAssistant",
+									content:
+										"I'm having trouble reaching the backend service right now. Please try again.",
+								}
+							: entry,
+					),
+				);
+				setIsAwaitingResponse(false);
+				return;
+			}
+			const data = (await backendResponse.json()) as ChatResponse;
+			const autoRunExplicitExample = shouldAutoRunExplicitExample(
+				queryToSend,
+				data,
+			);
+			const assistantEntry: ChatMessage = {
 				id: crypto.randomUUID(),
 				role: "responseAssistant",
-				content:
-					data.response ||
-					"Your request has been received. Results will appear here.",
+				content: normalizeMessageContent(
+					data.answer ||
+						data.response ||
+						"Your request has been received. Results will appear here.",
+				),
+				mapCommandSummary: requiresExplicitExampleAction(data)
+					? autoRunExplicitExample
+						? buildMapCommandSummary(data)
+						: buildExplicitExampleSummary(data)
+					: buildMapCommandSummary(data),
+				suggestedActionLabel: requiresExplicitExampleAction(data)
+					? autoRunExplicitExample
+						? undefined
+						: "Show example XBD"
+					: undefined,
+				actionPayload:
+					requiresExplicitExampleAction(data) && !autoRunExplicitExample
+						? data
+						: undefined,
 			};
-			setResponseLog((prev) => [...prev, assistantEntry]);
+			setResponseLog((prev) =>
+				prev.map((entry) =>
+					entry.id === pendingMessageId ? assistantEntry : entry,
+				),
+			);
+			setIsAwaitingResponse(false);
+			setAnimatingMessageId(assistantEntry.id);
+			if (
+				onChatResponse &&
+				(!requiresExplicitExampleAction(data) || autoRunExplicitExample)
+			) {
+				try {
+					onChatResponse(data);
+				} catch (error) {
+					console.error("Chat response handling failed:", error);
+				}
+			}
 		} catch {
-			setResponseLog((prev) => [
-				...prev,
-				{
-					id: crypto.randomUUID(),
-					role: "responseAssistant",
-					content:
-						"I'm having trouble reaching the backend service right now. Please try again.",
-				},
-			]);
+			setResponseLog((prev) =>
+				prev.map((entry) =>
+					entry.id === pendingMessageId
+						? {
+								id: crypto.randomUUID(),
+								role: "responseAssistant",
+								content:
+									"I'm having trouble reaching the backend service right now. Please try again.",
+							}
+						: entry,
+				),
+			);
+			setIsAwaitingResponse(false);
+			setAnimatingMessageId(null);
 		}
 	};
 
 	return (
 		<div className="pointer-events-none fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-3">
 			<div
-				className={`chat-panel-container pointer-events-auto w-[min(360px,calc(100vw-3rem))] h-[min(calc(100dvh-12rem),700px)] bg-card text-card-foreground border border-border shadow-2xl rounded-2xl flex flex-col overflow-hidden ${
+				className={`chat-panel-container pointer-events-auto w-[min(408px,calc(100vw-2rem))] h-[min(calc(100dvh-10rem),720px)] overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl backdrop-blur-sm flex flex-col ${
 					isOpen ? "chat-panel-open" : "chat-panel-closed"
 				}`}
 			>
 				{/* Header */}
-				<div className="flex items-center justify-between px-4 py-3 border-b bg-gradient-to-r from-primary to-indigo-500 text-white">
+				<div className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-primary via-primary to-indigo-500 px-4 py-3 text-white">
 					<div className="flex flex-col">
 						<span className="flex items-center gap-2 font-semibold">
-							<Sparkles className="h-4 w-4" />
-							Disaster Response Assistant
+							<MessageCircle className="h-4 w-4" />
+							Hazardly
 						</span>
 						<span className="text-[11px] opacity-80">
 							Chat history persists in session
@@ -110,15 +542,28 @@ export default function DisasterResponseAssistant() {
 					<div className="flex items-center gap-2">
 						<button
 							type="button"
+							onClick={onClearMapHighlights}
+							className="rounded-md p-1.5 transition-colors duration-200 hover:bg-white/15"
+							aria-label="Clear highlighted buildings"
+							title="Clear highlights"
+						>
+							<Eraser className="h-4 w-4" />
+						</button>
+						<button
+							type="button"
 							onClick={clearChat}
-							className="p-1 rounded-md transition-colors duration-200 hover:bg-white/20"
+							className="rounded-md p-1.5 transition-colors duration-200 hover:bg-white/15"
+							aria-label="Clear chat"
+							title="Clear chat"
 						>
 							<Trash2 className="h-4 w-4" />
 						</button>
 						<button
 							type="button"
 							onClick={() => setIsOpen(false)}
-							className="ui-fade-opacity hover:opacity-80"
+							className="rounded-md p-1.5 transition-colors duration-200 hover:bg-white/15"
+							aria-label="Close chat"
+							title="Close"
 						>
 							<X className="h-4 w-4" />
 						</button>
@@ -126,39 +571,138 @@ export default function DisasterResponseAssistant() {
 				</div>
 
 				{/* Messages */}
-				<div className="flex-1 p-4 overflow-y-auto text-sm space-y-4 bg-background">
-					{responseLog.map((entry) => (
-						<div
-							key={entry.id}
-							className={`p-3 rounded-xl max-w-[85%] border transition-colors duration-theme ease-theme ${
-								entry.role === "fieldUser"
-									? "ml-auto bg-primary text-primary-foreground border-primary"
-									: "bg-card text-foreground border-border shadow-sm"
-							}`}
+				<div className="relative min-h-0 flex-1">
+					<div
+						ref={messagesContainerRef}
+						onScroll={handleMessagesScroll}
+						className="h-full space-y-4 overflow-y-auto bg-muted/20 p-4 text-sm"
+					>
+						{responseLog.map((entry) => (
+							<div
+								key={entry.id}
+								className={
+									entry.role === "fieldUser"
+										? "ml-auto max-w-[88%]"
+										: "max-w-[88%]"
+								}
+							>
+								<div
+									className={`mb-1 px-1 text-[11px] font-medium uppercase tracking-[0.08em] ${
+										entry.role === "fieldUser"
+											? "text-right text-primary/80"
+											: "text-muted-foreground"
+									}`}
+								>
+									{entry.role === "fieldUser" ? "You" : "Hazardly"}
+								</div>
+								<div
+									className={`rounded-2xl border transition-colors duration-theme ease-theme ${
+										entry.role === "fieldUser"
+											? "bg-primary px-3.5 py-3 text-primary-foreground border-primary shadow-sm"
+											: entry.isPending
+												? "w-fit max-w-[72px] border-border bg-card px-3 py-2 text-foreground shadow-sm"
+												: "border-border bg-card px-3.5 py-3 text-foreground shadow-sm"
+									}`}
+								>
+									{entry.isPending ? (
+										<div className="flex items-center gap-1.5 py-1">
+											<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.2s]" />
+											<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.1s]" />
+											<span className="h-2 w-2 animate-bounce rounded-full bg-muted-foreground" />
+										</div>
+									) : (
+										<div className="whitespace-pre-wrap break-words leading-6">
+											<SelectableMessageText
+												enableTripleClickSelectAll={entry.role === "fieldUser"}
+											>
+												<AnimatedAssistantText
+													content={stripInlineMarkdown(entry.content)}
+													animate={
+														entry.role === "responseAssistant" &&
+														animatingMessageId === entry.id
+													}
+													onProgress={() => {
+														if (shouldAutoScrollRef.current) {
+															scrollToBottom("auto");
+														}
+													}}
+													onComplete={() => {
+														if (animatingMessageId === entry.id) {
+															setAnimatingMessageId(null);
+														}
+													}}
+												/>
+											</SelectableMessageText>
+										</div>
+									)}
+									{entry.mapCommandSummary ? (
+										<div className="mt-3 border-t border-border/70 pt-2 text-xs text-muted-foreground">
+											{entry.mapCommandSummary}
+										</div>
+									) : null}
+									{entry.suggestedActionLabel && entry.actionPayload ? (
+										<div className="mt-3">
+											<button
+												type="button"
+												onClick={() => {
+													if (entry.actionPayload) {
+														onRunSuggestedAction?.(entry.actionPayload);
+													}
+												}}
+												className="inline-flex items-center rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+											>
+												{entry.suggestedActionLabel}
+											</button>
+										</div>
+									) : null}
+								</div>
+							</div>
+						))}
+						<div ref={bottomRef} />
+					</div>
+					{showScrollToBottom ? (
+						<button
+							type="button"
+							onClick={() => scrollToBottom()}
+							className="absolute bottom-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-lg transition-colors hover:bg-accent"
+							aria-label="Scroll to latest chatbot message"
+							title="Scroll to bottom"
 						>
-							{entry.content}
-						</div>
-					))}
-					<div ref={bottomRef} />
+							<ArrowDown className="h-3.5 w-3.5" />
+							Latest
+						</button>
+					) : null}
 				</div>
 
 				{/* Input */}
-				<div className="border-t border-border p-3 bg-card">
-					<div className="flex gap-2">
-						<input
-							type="text"
+				<div className="border-t border-border bg-card p-3">
+					<div className="flex items-center gap-2">
+						<textarea
+							ref={inputRef}
 							value={currentQuery}
-							onChange={(e) => setCurrentQuery(e.target.value)}
-							onKeyDown={(e) => e.key === "Enter" && handleQuery()}
-							className="flex-1 bg-background text-foreground border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-							placeholder="Ask Disaster Response Assistant..."
+							onChange={(e) => {
+								setCurrentQuery(e.target.value);
+								resizeComposer();
+							}}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" && !e.shiftKey) {
+									e.preventDefault();
+									handleQuery();
+								}
+							}}
+							disabled={isAwaitingResponse}
+							rows={1}
+							className="min-h-[44px] min-w-0 flex-1 resize-none rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-70"
+							placeholder="Ask Hazardly..."
 						/>
 						<button
 							type="button"
 							onClick={handleQuery}
-							className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm hover:opacity-90"
+							disabled={isAwaitingResponse}
+							className="inline-flex h-11 w-[112px] shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
 						>
-							Send
+							<SendHorizontal className="h-4 w-4" />
+							{isAwaitingResponse ? "Waiting" : "Send"}
 						</button>
 					</div>
 				</div>
@@ -174,7 +718,7 @@ export default function DisasterResponseAssistant() {
 					<X className="h-5 w-5" />
 				) : (
 					<>
-						<Sparkles className="h-6 w-6" />
+						<MessageCircle className="h-6 w-6" />
 						<span className="absolute -bottom-1 -right-1 bg-background text-foreground text-[9px] font-semibold px-1.5 py-0.5 rounded-full border border-border">
 							AI
 						</span>

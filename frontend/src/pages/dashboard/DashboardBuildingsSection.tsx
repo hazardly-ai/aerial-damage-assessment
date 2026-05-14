@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import ImagePreviewDialog from "@/components/ui/ImagePreviewDialog";
@@ -58,6 +58,61 @@ type PreviewImage = {
 
 const resolveStorageUrl = (path?: string | null): string | null =>
 	path ? resolveImageUrl(path) : null;
+
+function AddressCopyButton({ address }: { address: string }) {
+	const [copied, setCopied] = useState(false);
+	const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		return () => {
+			if (copyTimerRef.current !== null) {
+				clearTimeout(copyTimerRef.current);
+			}
+		};
+	}, []);
+
+	const handleCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
+		event.stopPropagation();
+		try {
+			await navigator.clipboard.writeText(address);
+			setCopied(true);
+			if (copyTimerRef.current !== null) {
+				clearTimeout(copyTimerRef.current);
+			}
+			copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+		} catch (error) {
+			console.error("Failed to copy address:", error);
+		}
+	};
+
+	return (
+		<button
+			className="copy-btn"
+			onClick={handleCopy}
+			aria-label="Copy address"
+			type="button"
+			title={copied ? "Copied" : "Copy address"}
+		>
+			<svg
+				className={`copy-icon ${copied ? "copied" : ""}`}
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="2"
+			>
+				<title>{copied ? "Copied" : "Copy to clipboard"}</title>
+				{copied ? (
+					<polyline points="20 6 9 17 4 12" />
+				) : (
+					<>
+						<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+						<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+					</>
+				)}
+			</svg>
+		</button>
+	);
+}
 
 export default function DashboardBuildingsSection({
 	totalItems,
@@ -269,6 +324,11 @@ export default function DashboardBuildingsSection({
 													imageAlt={`Building ${building.uid}`}
 													title={building.address || building.uid}
 													subtitle={building.address ? building.uid : undefined}
+													titleAccessory={
+														building.address ? (
+															<AddressCopyButton address={building.address} />
+														) : undefined
+													}
 													imageOverlayLabel="Preview"
 													imageButtonLabel={`Preview building ${building.uid}`}
 													onImageClick={() => {
