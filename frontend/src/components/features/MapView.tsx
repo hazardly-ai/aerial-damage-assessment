@@ -1,15 +1,26 @@
 import mapboxgl from "mapbox-gl";
 import type Compare from "mapbox-gl-compare";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "mapbox-gl-compare/dist/mapbox-gl-compare.css";
 
+import { toast } from "sonner";
 import { BuildingPopup } from "@/components/features/BuildingPopup";
 import { MapControls } from "@/components/features/MapControls";
 import { MapLoadingOverlay } from "@/components/features/MapLoadingOverlay";
 import { useLoadingOverlay } from "@/hooks/useLoadingOverlay";
-import type { MapStatus } from "@/types/map.ts";
+import type { ChatMapCommand } from "@/types/chat";
+import type { MapStatus, SceneMetrics } from "@/types/map.ts";
 import { BUILDINGS_SOURCE_ID } from "@/utils/addBuildingLayer";
+import { rollupBuildingClassificationMetrics } from "@/utils/classificationMetrics";
+import type { BuildingFeature, BuildingsResponse } from "@/utils/hazardlyApi";
 import {
 	fetchMapData,
 	type ImageBounds,
@@ -18,22 +29,114 @@ import {
 import {
 	addInitialSourcesAndLayers,
 	bindBuildingInteractions,
+	clearHighlightedBuildings,
 	createCompareInstance,
 	createMapInstance,
 	POST_IMAGE_LAYER_ID,
 	type PopupData,
 	PRE_IMAGE_LAYER_ID,
+	selectBuildingByUid,
 	setBuildingVisibility,
+	setHighlightedBuildingsByUid,
 	setImageryVisibility,
 	setSatelliteOpacity,
 	waitForMapsLoad,
 } from "@/utils/mapViewSetup";
 
-const DISASTER_ID = 1;
-const XBD_ID = 18;
+interface MapViewProps {
+	initialDisasterId: number;
+	selectedXbdId: number;
+	onXbdChange: (xbdId: number) => void;
+	/** When set (e.g. from `?building=` on first load), selects that footprint and opens the popup. */
+	initialBuildingUid?: string;
+	onInitialBuildingHandled?: () => void;
+	onSceneError?: (message: string) => void;
+	onMetricsChange?: (metrics: SceneMetrics | null) => void;
+	xbdSelectorStatus: "loading" | "ready" | "error";
+	xbdIds: number[];
+	canGoPrev: boolean;
+	canGoNext: boolean;
+	onPrev: () => void;
+	onNext: () => void;
+	chatCommand?: ChatMapCommand | null;
+	highlightResetToken?: number;
+}
+
+const CHAT_FOCUS_FALLBACK_ZOOM = 18;
+const CHAT_FIT_PADDING = 72;
+const MAP_LOADING_WATCHDOG_MS = 45000;
+
+function extendBoundsWithGeometry(
+	bounds: mapboxgl.LngLatBounds,
+	geometry: GeoJSON.Geometry,
+) {
+	const extendCoordinates = (coordinates: number[][]) => {
+		for (const coordinate of coordinates) {
+			bounds.extend([coordinate[0], coordinate[1]]);
+		}
+	};
+
+	if (geometry.type === "Polygon") {
+		for (const ring of geometry.coordinates) {
+			extendCoordinates(ring);
+		}
+		return;
+	}
+
+	if (geometry.type === "MultiPolygon") {
+		for (const polygon of geometry.coordinates) {
+			for (const ring of polygon) {
+				extendCoordinates(ring);
+			}
+		}
+	}
+}
+
+function computeSceneMetrics(
+	xbdId: number,
+	buildings: BuildingsResponse,
+): SceneMetrics {
+	const features = buildings.features as BuildingFeature[];
+	const r = rollupBuildingClassificationMetrics(features);
+
+	return {
+		xbdId,
+		totalBuildings: features.length,
+		damageDistribution: { ...r.predictedDistribution },
+		actualDamageDistribution: { ...r.actualDistribution },
+		evaluatedPredictions: r.comparedCount,
+		correctPredictions: r.correctCount,
+		accuracy:
+			r.comparedCount > 0 ? (r.correctCount / r.comparedCount) * 100 : null,
+		precisionMacro: r.precisionMacro,
+		recallMacro: r.recallMacro,
+		f1Macro: r.f1Macro,
+		perClassMetrics: { ...r.perClassMetrics },
+		confusionMatrix: r.confusionMatrix,
+		matrixTotal: r.comparedCount,
+		matrixMax: r.matrixMax,
+	};
+}
+
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
-export default function MapView() {
+export default function MapView({
+	initialDisasterId,
+	selectedXbdId,
+	onXbdChange,
+	initialBuildingUid,
+	onInitialBuildingHandled,
+	onSceneError,
+	onMetricsChange,
+	xbdSelectorStatus,
+	xbdIds,
+	canGoPrev,
+	canGoNext,
+	onPrev,
+	onNext,
+	chatCommand,
+	highlightResetToken = 0,
+}: MapViewProps) {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const compareRef = useRef<Compare | null>(null);
 	const compareIdleTimerRef = useRef<number | null>(null);
@@ -41,9 +144,10 @@ export default function MapView() {
 	const afterMapRef = useRef<mapboxgl.Map | null>(null);
 	const layersReadyRef = useRef(false);
 
-	const [xbdId, setXbdId] = useState<number>(XBD_ID);
+	const [disasterId, setDisasterId] = useState(initialDisasterId);
 	const [sceneLoading, setSceneLoading] = useState(false);
-	const [retryCount, setRetryCount] = useState(0);
+	const [bootstrapRetryCount, setBootstrapRetryCount] = useState(0);
+	const [sceneRetryCount, setSceneRetryCount] = useState(0);
 	const [buildingsVisible, setBuildingsVisible] = useState(true);
 	const [imageryVisible, setImageryVisible] = useState(true);
 	const [compareIdle, setCompareIdle] = useState(false);
@@ -53,21 +157,105 @@ export default function MapView() {
 	const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
 		null,
 	);
+	const [popupPlacement, setPopupPlacement] = useState<"above" | "below">(
+		"above",
+	);
 
 	const loadingOverlay = useLoadingOverlay(status);
 	const popupDataRef = useRef<PopupData | null>(null);
+	const popupPosRef = useRef<{ x: number; y: number } | null>(null);
+	const popupOverlayRef = useRef<HTMLDivElement>(null);
+	const popupPlacementObserverRef = useRef<ResizeObserver | null>(null);
+	const popupPlacementSessionRef = useRef<string | null>(null);
 	const selectedBuildingIdRef = useRef<string | number | null>(null);
+	const highlightedBuildingIdsRef = useRef<Array<string | number>>([]);
+	const lastAppliedChatCommandIdRef = useRef<string | null>(null);
+	const loadedSceneXbdIdRef = useRef<number | null>(null);
 	const imageryVisibleRef = useRef(imageryVisible);
 	const boundsRef = useRef<ImageBounds | null>(null);
 	const scheduleCompareIdleRef = useRef<() => void>(() => {});
 	imageryVisibleRef.current = imageryVisible;
+	const bootstrapRetryCountRef = useRef(bootstrapRetryCount);
+	const sceneRetryCountRef = useRef(sceneRetryCount);
+	bootstrapRetryCountRef.current = bootstrapRetryCount;
+	sceneRetryCountRef.current = sceneRetryCount;
+
+	useEffect(() => {
+		if (status !== "loading") return;
+
+		const timeoutId = window.setTimeout(() => {
+			setErrorMessage(
+				"Map loading took too long and was stopped. Please retry the map.",
+			);
+			setStatus("error");
+			setSceneLoading(false);
+			onMetricsChange?.(null);
+		}, MAP_LOADING_WATCHDOG_MS);
+
+		return () => window.clearTimeout(timeoutId);
+	}, [status, onMetricsChange]);
+
+	useEffect(() => {
+		setDisasterId(initialDisasterId);
+	}, [initialDisasterId]);
 
 	const updatePopupPos = useCallback(() => {
 		if (popupDataRef.current && afterMapRef.current) {
 			const { x, y } = afterMapRef.current.project(popupDataRef.current.lngLat);
-			setPopupPos({ x, y });
+			const next = { x, y };
+			popupPosRef.current = next;
+			setPopupPos(next);
 		}
 	}, []);
+
+	const applyPopupPlacement = useCallback(() => {
+		const pos = popupPosRef.current;
+		const node = popupOverlayRef.current;
+		const mapContainer = containerRef.current;
+		if (!pos || !node || !mapContainer || !popupDataRef.current) return;
+
+		const margin = 12;
+		const arrowSlack = 10;
+		const needed = node.offsetHeight + margin + arrowSlack;
+		const spaceAbove = pos.y;
+		const spaceBelow = mapContainer.clientHeight - pos.y;
+
+		let next: "above" | "below";
+		if (spaceAbove >= needed) {
+			next = "above";
+		} else if (spaceBelow >= needed) {
+			next = "below";
+		} else {
+			next = spaceAbove >= spaceBelow ? "above" : "below";
+		}
+
+		setPopupPlacement((prev) => (prev === next ? prev : next));
+	}, []);
+
+	/** Flip popup below the anchor when it would clip the top of the map; prefer the roomier side if both are tight. */
+	useLayoutEffect(() => {
+		if (!popupData || !popupPos) {
+			popupPlacementObserverRef.current?.disconnect();
+			popupPlacementObserverRef.current = null;
+			popupPlacementSessionRef.current = null;
+			return;
+		}
+
+		const el = popupOverlayRef.current;
+		if (!el) return;
+
+		applyPopupPlacement();
+
+		const sessionKey = popupData.uid;
+		if (popupPlacementSessionRef.current !== sessionKey) {
+			popupPlacementObserverRef.current?.disconnect();
+			popupPlacementObserverRef.current = new ResizeObserver(
+				applyPopupPlacement,
+			);
+			popupPlacementObserverRef.current.observe(el);
+			popupPlacementSessionRef.current = sessionKey;
+		}
+	}, [popupData, popupPos, applyPopupPlacement]);
 
 	const scheduleCompareIdle = useCallback(() => {
 		if (compareIdleTimerRef.current !== null) {
@@ -96,8 +284,10 @@ export default function MapView() {
 		}
 		selectedBuildingIdRef.current = null;
 		popupDataRef.current = null;
+		popupPosRef.current = null;
 		setPopupData(null);
 		setPopupPos(null);
+		setPopupPlacement("above");
 	}, []);
 
 	const openPopup = useCallback(
@@ -152,27 +342,43 @@ export default function MapView() {
 		after.fitBounds([bounds.sw, bounds.ne], { padding: 0, animate: true });
 	}, []);
 
-	const xbdIdRef = useRef(xbdId);
-	xbdIdRef.current = xbdId;
+	const xbdIdRef = useRef(selectedXbdId);
+	xbdIdRef.current = selectedXbdId;
+	const normalizedInitialBuildingUid = useMemo(
+		() => initialBuildingUid?.trim() || undefined,
+		[initialBuildingUid],
+	);
 
 	useEffect(() => {
 		if (!containerRef.current) return;
+
+		const buildingUidForInitialSelect = normalizedInitialBuildingUid;
+		const retryCountAtStart = bootstrapRetryCount;
 
 		let cancelled = false;
 		const abortController = new AbortController();
 		let beforeMap: mapboxgl.Map | null = null;
 		let afterMap: mapboxgl.Map | null = null;
 
-		void retryCount;
-
 		setStatus("loading");
 		setErrorMessage(null);
+		onMetricsChange?.(null);
 
-		fetchMapData(DISASTER_ID, xbdIdRef.current, {
+		fetchMapData(disasterId, xbdIdRef.current, {
 			signal: abortController.signal,
 		})
 			.then(({ imagePair, buildings, bounds }) => {
-				if (cancelled || !containerRef.current) return;
+				if (!imagePair || !bounds) {
+					throw new Error(
+						"The requested scene coordinates or imagery could not be found.",
+					);
+				}
+				if (
+					cancelled ||
+					retryCountAtStart !== bootstrapRetryCountRef.current ||
+					!containerRef.current
+				)
+					return;
 				boundsRef.current = bounds;
 
 				containerRef.current.innerHTML = "";
@@ -206,7 +412,8 @@ export default function MapView() {
 				const _after = afterMap;
 
 				const onMapsLoaded = () => {
-					if (cancelled) return;
+					if (cancelled || retryCountAtStart !== bootstrapRetryCountRef.current)
+						return;
 
 					addInitialSourcesAndLayers({
 						beforeMap: _before,
@@ -232,6 +439,10 @@ export default function MapView() {
 					});
 
 					setStatus("ready");
+					loadedSceneXbdIdRef.current = imagePair.properties.xbd_id;
+					onMetricsChange?.(
+						computeSceneMetrics(imagePair.properties.xbd_id, buildings),
+					);
 					bindBuildingInteractions({
 						beforeMap: _before,
 						afterMap: _after,
@@ -250,19 +461,55 @@ export default function MapView() {
 					}
 
 					_before.fitBounds([sw, ne], { padding: 0, animate: false });
+
+					_after.once("idle", () => {
+						if (
+							cancelled ||
+							retryCountAtStart !== bootstrapRetryCountRef.current
+						)
+							return;
+						if (buildingUidForInitialSelect) {
+							const buildingSelected = selectBuildingByUid({
+								beforeMap: _before,
+								afterMap: _after,
+								uid: buildingUidForInitialSelect,
+								selectedBuildingIdRef,
+								onPopupOpen: openPopup,
+							});
+							if (!buildingSelected) {
+								toast.warning(
+									`"${buildingUidForInitialSelect}" is not a valid building ID.`,
+									{ id: "invalid-building-id" },
+								);
+							}
+							onInitialBuildingHandled?.();
+						}
+					});
 				};
 
-				waitForMapsLoad(_before, _after).then(onMapsLoaded);
+				return waitForMapsLoad(_before, _after).then(onMapsLoaded);
 			})
 			.catch((err: unknown) => {
-				if (cancelled) return;
+				if (cancelled || retryCountAtStart !== bootstrapRetryCountRef.current)
+					return;
 				if (err instanceof DOMException && err.name === "AbortError") return;
-				const msg =
-					err instanceof Error
-						? err.message
-						: "Unknown error fetching map data.";
-				setErrorMessage(msg);
+
+				const errorMsg =
+					err instanceof Error ? err.message : "Scene imagery unavailable.";
+
+				// 2. Check if the error is a "not found" (404)
+				if (errorMsg.includes("404") || errorMsg.includes("not found")) {
+					if (onSceneError) {
+						onSceneError(
+							`Scene ${xbdIdRef.current} not found. Returning to default.`,
+						);
+						return; // Stop here so we don't show the local error overlay
+					}
+				}
+
+				setErrorMessage(errorMsg);
 				setStatus("error");
+				onMetricsChange?.(null);
 			});
 
 		return () => {
@@ -273,6 +520,15 @@ export default function MapView() {
 				compareIdleTimerRef.current = null;
 			}
 			selectedBuildingIdRef.current = null;
+			if (beforeMap && afterMap) {
+				clearHighlightedBuildings({
+					beforeMap,
+					afterMap,
+					highlightedBuildingIdsRef,
+				});
+			} else {
+				highlightedBuildingIdsRef.current = [];
+			}
 			boundsRef.current = null;
 			layersReadyRef.current = false;
 			compareRef.current?.remove();
@@ -280,24 +536,42 @@ export default function MapView() {
 			afterMap?.remove();
 			beforeMapRef.current = null;
 			afterMapRef.current = null;
+			loadedSceneXbdIdRef.current = null;
 		};
-		// xbdId is intentionally excluded; scene switches are handled by Effect 2.
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [openPopup, updatePopupPos, retryCount, handleResetView]);
+		// selectedXbdId is intentionally excluded; scene switches are handled by Effect 2.
+	}, [
+		openPopup,
+		updatePopupPos,
+		handleResetView,
+		onSceneError,
+		onMetricsChange,
+		disasterId,
+		bootstrapRetryCount,
+		normalizedInitialBuildingUid,
+		onInitialBuildingHandled,
+	]);
 
 	useEffect(() => {
 		const before = beforeMapRef.current;
 		const after = afterMapRef.current;
 		if (!before || !after || !layersReadyRef.current) return;
+		const retryCountAtStart = sceneRetryCount;
 
 		let cancelled = false;
 		const abortController = new AbortController();
 		setSceneLoading(true);
 		closePopup();
+		onMetricsChange?.(null);
 
-		fetchMapData(DISASTER_ID, xbdId, { signal: abortController.signal })
+		fetchMapData(disasterId, selectedXbdId, { signal: abortController.signal })
 			.then(({ imagePair, buildings, bounds }) => {
-				if (cancelled || !beforeMapRef.current || !afterMapRef.current) return;
+				if (
+					cancelled ||
+					retryCountAtStart !== sceneRetryCountRef.current ||
+					!beforeMapRef.current ||
+					!afterMapRef.current
+				)
+					return;
 				boundsRef.current = bounds;
 
 				const _before = beforeMapRef.current;
@@ -321,8 +595,15 @@ export default function MapView() {
 
 				selectedBuildingIdRef.current = null;
 				popupDataRef.current = null;
+				popupPosRef.current = null;
 				setPopupData(null);
 				setPopupPos(null);
+				setPopupPlacement("above");
+				clearHighlightedBuildings({
+					beforeMap: _before,
+					afterMap: _after,
+					highlightedBuildingIdsRef,
+				});
 
 				const beforeSource = _before.getSource(
 					BUILDINGS_SOURCE_ID,
@@ -339,23 +620,55 @@ export default function MapView() {
 				_before.fitBounds([sw, ne], { padding: 0, animate: true });
 				setErrorMessage(null);
 				setStatus("ready");
-				setSceneLoading(false);
+				loadedSceneXbdIdRef.current = imagePair.properties.xbd_id;
+				onMetricsChange?.(
+					computeSceneMetrics(imagePair.properties.xbd_id, buildings),
+				);
 			})
 			.catch((err: unknown) => {
-				if (cancelled) return;
+				if (cancelled || retryCountAtStart !== sceneRetryCountRef.current)
+					return;
 				if (err instanceof DOMException && err.name === "AbortError") return;
-				const msg =
-					err instanceof Error ? err.message : "Failed to load scene.";
-				setErrorMessage(msg);
+
+				const errorMsg = err instanceof Error ? err.message : String(err);
+
+				// SPECIFIC CHECK: The Disaster exists, but this specific Scene number does not
+				if (
+					errorMsg.includes("404") ||
+					errorMsg.toLowerCase().includes("not found")
+				) {
+					if (onSceneError) {
+						onSceneError(
+							`Scene #${xbdIdRef.current} is not available for this disaster. Returning to default view.`,
+						);
+						return;
+					}
+				}
+
+				// Generic fallback for network issues/server crashes
+				toast.error("Map Data Error: Unable to fetch satellite imagery.");
+				setErrorMessage(errorMsg);
 				setStatus("error");
-				setSceneLoading(false);
+				onMetricsChange?.(null);
+			})
+			.finally(() => {
+				if (!cancelled && retryCountAtStart === sceneRetryCountRef.current) {
+					setSceneLoading(false);
+				}
 			});
 
 		return () => {
 			cancelled = true;
 			abortController.abort();
 		};
-	}, [xbdId, closePopup]);
+	}, [
+		selectedXbdId,
+		disasterId,
+		sceneRetryCount,
+		closePopup,
+		onSceneError,
+		onMetricsChange,
+	]);
 
 	useEffect(() => {
 		if (!imageryVisible) {
@@ -386,18 +699,131 @@ export default function MapView() {
 		};
 	}, [imageryVisible, scheduleCompareIdle]);
 
+	useEffect(() => {
+		if (!chatCommand || status !== "ready" || sceneLoading) return;
+		if (lastAppliedChatCommandIdRef.current === chatCommand.id) {
+			return;
+		}
+		if (loadedSceneXbdIdRef.current !== selectedXbdId) {
+			return;
+		}
+		if (chatCommand.targetXbdId && chatCommand.targetXbdId !== selectedXbdId) {
+			return;
+		}
+
+		const before = beforeMapRef.current;
+		const after = afterMapRef.current;
+		if (!before || !after || !layersReadyRef.current) return;
+
+		setBuildingsVisible((current) => {
+			if (!current) {
+				setBuildingVisibility(before, true);
+				setBuildingVisibility(after, true);
+			}
+			return true;
+		});
+
+		let cancelled = false;
+		const applyHighlights = () => {
+			if (cancelled) return 0;
+			return setHighlightedBuildingsByUid({
+				beforeMap: before,
+				afterMap: after,
+				uids: chatCommand.highlightedBuildingIds,
+				highlightedBuildingIdsRef,
+			});
+		};
+
+		const highlightedCount = applyHighlights();
+		if (
+			highlightedCount === 0 &&
+			chatCommand.highlightedBuildingIds.length > 0
+		) {
+			const retryHighlights = () => {
+				if (cancelled) return;
+				applyHighlights();
+			};
+			before.once("idle", retryHighlights);
+			after.once("idle", retryHighlights);
+		}
+
+		if (chatCommand.highlightedBuildingGeometries.length > 0) {
+			const bounds = new mapboxgl.LngLatBounds();
+			for (const geometry of chatCommand.highlightedBuildingGeometries) {
+				extendBoundsWithGeometry(bounds, geometry);
+			}
+			if (!bounds.isEmpty()) {
+				before.fitBounds(bounds, {
+					padding: CHAT_FIT_PADDING,
+					duration: 1200,
+					maxZoom: CHAT_FOCUS_FALLBACK_ZOOM,
+				});
+				after.fitBounds(bounds, {
+					padding: CHAT_FIT_PADDING,
+					duration: 1200,
+					maxZoom: CHAT_FOCUS_FALLBACK_ZOOM,
+				});
+			}
+		} else if (chatCommand.focus) {
+			const center: [number, number] = [
+				chatCommand.focus.lon,
+				chatCommand.focus.lat,
+			];
+			const nextZoom = Math.max(before.getZoom(), CHAT_FOCUS_FALLBACK_ZOOM);
+			before.easeTo({ center, zoom: nextZoom, duration: 1200 });
+			after.easeTo({ center, zoom: nextZoom, duration: 1200 });
+		}
+
+		if (chatCommand.targetBuildingUid) {
+			selectBuildingByUid({
+				beforeMap: before,
+				afterMap: after,
+				uid: chatCommand.targetBuildingUid,
+				selectedBuildingIdRef,
+				onPopupOpen: openPopup,
+			});
+		}
+		lastAppliedChatCommandIdRef.current = chatCommand.id;
+
+		return () => {
+			cancelled = true;
+		};
+	}, [chatCommand, openPopup, sceneLoading, selectedXbdId, status]);
+
+	useEffect(() => {
+		if (highlightResetToken === 0) return;
+
+		const before = beforeMapRef.current;
+		const after = afterMapRef.current;
+		if (!before || !after || !layersReadyRef.current) return;
+
+		clearHighlightedBuildings({
+			beforeMap: before,
+			afterMap: after,
+			highlightedBuildingIdsRef,
+		});
+	}, [highlightResetToken]);
+
 	return (
 		<div
-			className={`map-wrapper${compareIdle ? " map-wrapper--compare-idle" : ""}`}
+			className={`map-wrapper w-full relative${
+				compareIdle ? " map-wrapper--compare-idle" : ""
+			}`}
+			style={{ height: "80vh" }}
 			data-imagery-visible={imageryVisible ? "true" : "false"}
 			data-compare-idle={compareIdle ? "true" : "false"}
 		>
-			<div ref={containerRef} className="map-container" />
+			<div ref={containerRef} className="map-container w-full h-full" />
 
 			<MapControls
-				disasterId={DISASTER_ID}
-				selectedXbdId={xbdId}
-				onXbdChange={setXbdId}
+				selectedXbdId={selectedXbdId}
+				onXbdChange={onXbdChange}
+				xbdSelectorStatus={xbdSelectorStatus}
+				xbdIds={xbdIds}
+				canGoPrev={canGoPrev}
+				canGoNext={canGoNext}
+				onPrev={onPrev}
+				onNext={onNext}
 				sceneDisabled={status !== "ready"}
 				sceneLoading={sceneLoading}
 				imageryVisible={imageryVisible}
@@ -423,7 +849,11 @@ export default function MapView() {
 						onClick={() => {
 							setStatus("loading");
 							setErrorMessage(null);
-							setRetryCount((c) => c + 1);
+							if (layersReadyRef.current) {
+								setSceneRetryCount((c) => c + 1);
+								return;
+							}
+							setBootstrapRetryCount((c) => c + 1);
 						}}
 					>
 						Retry
@@ -433,16 +863,19 @@ export default function MapView() {
 
 			{popupData && popupPos && (
 				<div
-					className="popup-overlay"
+					ref={popupOverlayRef}
+					className={`popup-overlay${popupPlacement === "below" ? " popup-overlay--below" : ""}`}
 					style={{ left: popupPos.x, top: popupPos.y }}
 				>
 					<BuildingPopup
 						uid={popupData.uid}
+						address={popupData.address}
 						predictedDamage={popupData.predictedDamage}
 						predictedDamageColor={popupData.predictedDamageColor}
 						actualDamage={popupData.actualDamage}
 						actualDamageColor={popupData.actualDamageColor}
 						onClose={closePopup}
+						placement={popupPlacement}
 					/>
 				</div>
 			)}

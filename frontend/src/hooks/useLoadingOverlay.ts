@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { MapStatus } from "@/types/map.ts";
 
-const FADE_DURATION_MS = 400;
+const FADE_DURATION_MS = 280;
 
 interface LoadingOverlayState {
 	show: boolean;

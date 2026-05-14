@@ -12,6 +12,7 @@ const IMAGE_BASE_URL = import.meta.env.VITE_HAZARDLY_IMAGE_BASE_URL?.replace(
 	/\/$/,
 	"",
 );
+const API_FETCH_TIMEOUT_MS = 30000;
 
 const getRequiredApiBaseUrl = (): string => {
 	if (!API_BASE_URL) {
@@ -132,9 +133,15 @@ export interface XbdIdsResponse {
  * - `actual_damage` — ground-truth label when available.
  */
 export interface BuildingProperties {
+	id: number;
 	uid: string;
+	image_pair_id: number;
+	address?: string | null;
 	predicted_damage?: string;
 	actual_damage?: string;
+	is_correct?: boolean | null;
+	created_at?: string | null;
+	geom_bbox?: GeoJSON.Geometry | null;
 	[key: string]: unknown;
 }
 
@@ -157,6 +164,42 @@ export interface BuildingFeature {
 export interface BuildingsResponse {
 	type: "FeatureCollection";
 	features: BuildingFeature[];
+}
+
+/** Building features for `GET /disasters/:id/buildings` (no `geom_bbox` in properties). */
+export interface BuildingsNoBoxResponse {
+	type: "FeatureCollection";
+	features: BuildingFeature[];
+}
+
+/** Response from `GET /disasters/:id/buildings/stats`. */
+export interface BuildingStatsResponse {
+	total: number;
+	no_damage: number;
+	by_damage: Record<string, number>;
+}
+
+export interface PaginatedBuildingListItem {
+	id: number;
+	uid: string;
+	address?: string | null;
+	image_pair_id: number;
+	xbd_id: number;
+	actual_damage: string;
+	predicted_damage?: string | null;
+	is_correct?: boolean | null;
+	created_at?: string | null;
+	pre_image_path?: string | null;
+	post_image_path?: string | null;
+}
+
+/** Response from `GET /disasters/:id/buildings/paged`. */
+export interface PaginatedBuildingsResponse {
+	items: PaginatedBuildingListItem[];
+	page: number;
+	page_size: number;
+	total_items: number;
+	total_pages: number;
 }
 
 // ─── Bounds ──────────────────────────────────────────────────────────────────
@@ -249,6 +292,18 @@ interface ApiFetchOptions {
 	signal?: AbortSignal;
 }
 
+export class ApiError extends Error {
+	status: number;
+	path: string;
+
+	constructor(message: string, status: number, path: string) {
+		super(message);
+		this.name = "ApiError";
+		this.status = status;
+		this.path = path;
+	}
+}
+
 /**
  * Internal wrapper around `fetch` that prepends {@link API_BASE_URL}, checks for
  * non-OK HTTP status codes, and deserializes the JSON response body.
@@ -266,16 +321,50 @@ async function apiFetch<T>(
 	options?: ApiFetchOptions,
 	context?: string,
 ): Promise<T> {
-	const res = await fetch(`${getRequiredApiBaseUrl()}${path}`, {
-		signal: options?.signal,
-	});
-	if (!res.ok) {
-		const message = context
-			? `${context}: API error ${res.status} for ${path}: ${res.statusText}`
-			: `API error ${res.status} for ${path}: ${res.statusText}`;
-		throw new Error(message);
+	const controller = new AbortController();
+	const handleAbort = () => controller.abort();
+	const timeoutId = window.setTimeout(
+		() => controller.abort(),
+		API_FETCH_TIMEOUT_MS,
+	);
+
+	if (options?.signal) {
+		if (options.signal.aborted) {
+			controller.abort();
+		} else {
+			options.signal.addEventListener("abort", handleAbort, { once: true });
+		}
 	}
-	return (await res.json()) as T;
+
+	try {
+		const res = await fetch(`${getRequiredApiBaseUrl()}${path}`, {
+			signal: controller.signal,
+		});
+		if (!res.ok) {
+			const message = context
+				? `${context}: API error ${res.status} for ${path}: ${res.statusText}`
+				: `API error ${res.status} for ${path}: ${res.statusText}`;
+			throw new ApiError(message, res.status, path);
+		}
+		return (await res.json()) as T;
+	} catch (error) {
+		if (
+			error instanceof DOMException &&
+			error.name === "AbortError" &&
+			!options?.signal?.aborted
+		) {
+			const message = context
+				? `${context}: Request timed out after ${API_FETCH_TIMEOUT_MS / 1000}s`
+				: `Request timed out after ${API_FETCH_TIMEOUT_MS / 1000}s for ${path}`;
+			throw new Error(message);
+		}
+		throw error;
+	} finally {
+		window.clearTimeout(timeoutId);
+		if (options?.signal) {
+			options.signal.removeEventListener("abort", handleAbort);
+		}
+	}
 }
 
 // ─── Public API functions ────────────────────────────────────────────────────
@@ -295,6 +384,29 @@ export const fetchDisasters = (): Promise<DisastersResponse> =>
 		undefined,
 		"Failed to fetch disasters",
 	);
+
+/**
+ * Maps disaster name → disaster id (based on API /disasters response).
+ * This is a lightweight helper for routing.
+ * @param name - The name of the disaster
+ * @example getDisasterIdByName("hurricane_harvey")
+ * @author James Harrison
+ */
+export async function getDisasterIdByName(
+	name: string,
+): Promise<number | null> {
+	if (!name) return null;
+
+	const normalized = name.toLowerCase().trim();
+
+	const disasters = await fetchDisasters();
+
+	const match = disasters.find(
+		(d) => d.name.toLowerCase().trim() === normalized,
+	);
+
+	return match ? match.id : null;
+}
 
 /**
  * Fetches all satellite image pairs associated with a given disaster.
@@ -381,6 +493,49 @@ export const fetchBuildings = (
 		`Failed to fetch buildings for image pair ${xbdId}, disaster ${disasterId}`,
 	);
 
+export const fetchBuildingsForDisaster = (
+	disasterId: number,
+	options?: ApiFetchOptions,
+): Promise<BuildingsNoBoxResponse> =>
+	apiFetch<BuildingsNoBoxResponse>(
+		`/disasters/${disasterId}/buildings`,
+		options,
+		`Failed to fetch buildings for disaster ${disasterId}`,
+	);
+
+export const fetchBuildingStatsForDisaster = (
+	disasterId: number,
+	options?: ApiFetchOptions,
+): Promise<BuildingStatsResponse> =>
+	apiFetch<BuildingStatsResponse>(
+		`/disasters/${disasterId}/buildings/stats`,
+		options,
+		`Failed to fetch building stats for disaster ${disasterId}`,
+	);
+
+export const fetchPaginatedBuildingsForDisaster = (
+	disasterId: number,
+	params: {
+		page: number;
+		pageSize: number;
+		damage?: string;
+	},
+	options?: ApiFetchOptions,
+): Promise<PaginatedBuildingsResponse> => {
+	const query = new URLSearchParams({
+		page: String(params.page),
+		page_size: String(params.pageSize),
+	});
+	if (params.damage && params.damage !== "all") {
+		query.set("damage", params.damage);
+	}
+	return apiFetch<PaginatedBuildingsResponse>(
+		`/disasters/${disasterId}/buildings/paged?${query.toString()}`,
+		options,
+		`Failed to fetch paginated buildings for disaster ${disasterId}`,
+	);
+};
+
 /**
  * Convenience function that fetches an image pair and its buildings in parallel,
  * then computes the image's geographic bounds.
@@ -411,4 +566,67 @@ export async function fetchMapData(
 
 	const bounds = computeImageBounds(imagePair.properties);
 	return { imagePair, buildings, bounds };
+}
+
+// ─── VLM Evaluation ─────────────────────────────────────────────────────────
+
+export interface VlmDamageProbabilities {
+	no_damage: number;
+	minor_damage: number;
+	major_damage: number;
+	destroyed: number;
+}
+
+export interface VlmPrediction {
+	damage_class: string;
+	confidence: number;
+	probabilities: VlmDamageProbabilities;
+	description: string;
+}
+
+export interface VlmEvaluationResult {
+	prediction: VlmPrediction;
+	model_version: string;
+	is_mock: boolean;
+	raw_response?: Record<string, unknown> | null;
+}
+
+export async function evaluateVlm(
+	preImage: File,
+	postImage: File,
+): Promise<VlmEvaluationResult> {
+	const base = getRequiredApiBaseUrl();
+	const formData = new FormData();
+	formData.append("pre_image", preImage);
+	formData.append("post_image", postImage);
+
+	const url = `${base}/vlm/evaluate`;
+	let res: Response;
+
+	try {
+		res = await fetch(url, {
+			method: "POST",
+			body: formData,
+		});
+	} catch (e) {
+		const orig = e instanceof Error ? e.message : String(e);
+		throw new Error(
+			`${orig} (${url}). Check that the API is reachable, VITE_HAZARDLY_API_BASE_URL is correct, the backend is running, and you are not loading an HTTPS page against http://localhost (mixed content is blocked).`,
+		);
+	}
+
+	if (!res.ok) {
+		const text = await res.text().catch(() => res.statusText);
+		const suffix =
+			res.status === 404
+				? ` POST /vlm/evaluate is missing on ${base} (deploy the backend that includes the VLM router, or set VITE_HAZARDLY_API_BASE_URL to a server that has it, e.g. local http://127.0.0.1:8000).`
+				: "";
+		throw new ApiError(
+			`VLM evaluation failed: ${text}${suffix}`,
+			res.status,
+			"/vlm/evaluate",
+		);
+	}
+
+	return (await res.json()) as VlmEvaluationResult;
 }
