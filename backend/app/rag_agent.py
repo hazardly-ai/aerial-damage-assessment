@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CHAT_SESSION_ID = "default"
 MAX_CHAT_HISTORY_MESSAGES = 40
+DEFAULT_NEMOTRON_MODEL = "mistralai/mistral-nemotron"
+DEFAULT_NEMOTRON_FALLBACK_MODEL = ""
 _active_chat_session_id = ContextVar(
     "active_chat_session_id",
     default=DEFAULT_CHAT_SESSION_ID,
@@ -767,6 +769,35 @@ def format_city_list_response(rows):
 
     sample = city_names[:12]
     return "Cities in the dataset are: " + ", ".join(sample) + "."
+
+
+def clean_city_list_response(answer, fallback, rows):
+    if not answer:
+        return fallback
+
+    city_names = [str(row[0]).strip() for row in rows if str(row[0]).strip()]
+    bad_phrases = [
+        "provided facts",
+        "following your rules",
+        "strictly adhere",
+        "plain list",
+        "here's a list",
+        "here is a list",
+    ]
+
+    for line in str(answer).splitlines():
+        candidate = line.strip()
+        if not candidate:
+            continue
+        lower_candidate = candidate.lower()
+        if any(phrase in lower_candidate for phrase in bad_phrases):
+            continue
+        if candidate.startswith("[") or candidate.endswith("]"):
+            continue
+        if any(city.lower() in lower_candidate for city in city_names):
+            return candidate
+
+    return fallback
 
 
 def resolve_location_buildings(location_text):
@@ -1880,6 +1911,8 @@ def call_nemotron(prompt):
 
     url = os.getenv("NEMOTRON_URL")  # API endpoint
     api_key = os.getenv("NEMOTRON_API_KEY")  # API key
+    model = os.getenv("NEMOTRON_MODEL", DEFAULT_NEMOTRON_MODEL).strip() or DEFAULT_NEMOTRON_MODEL
+    fallback_model = os.getenv("NEMOTRON_FALLBACK_MODEL", DEFAULT_NEMOTRON_FALLBACK_MODEL).strip()
 
     # checking if config exists
     if not url or not api_key:
@@ -1896,27 +1929,40 @@ def call_nemotron(prompt):
         {"role": "user", "content": prompt}
     ]
 
-    payload = {
-        "model": "mistralai/mistral-nemotron",
-        "messages": messages,
-        "max_tokens": 300
-    }
+    models = [model]
+    if fallback_model and fallback_model not in models:
+        models.append(fallback_model)
 
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
-        response.raise_for_status()
-        data = response.json()
-        content = data["choices"][0]["message"]["content"]
-        if not isinstance(content, str):
-            return None
-        content = content.strip('"')
-        return content if content else None
-    except requests.RequestException as exc:
-        logger.warning("Nemotron request failed: %s", exc)
-        return None
-    except (KeyError, IndexError, TypeError, ValueError) as exc:
-        logger.warning("Nemotron response had an unexpected shape: %s", exc)
-        return None
+    for model_name in models:
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "max_tokens": 300
+        }
+
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            if not isinstance(content, str):
+                return None
+            content = content.strip('"')
+            return content if content else None
+        except requests.HTTPError as exc:
+            response_text = getattr(exc.response, "text", "")
+            logger.warning(
+                "Nemotron request failed for model %s: %s. Response: %s",
+                model_name,
+                exc,
+                response_text[:500],
+            )
+        except requests.RequestException as exc:
+            logger.warning("Nemotron request failed for model %s: %s", model_name, exc)
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            logger.warning("Nemotron response had an unexpected shape for model %s: %s", model_name, exc)
+
+    return None
 
 
 def synthesize_structured_answer(prompt, fallback_answer):
@@ -2927,21 +2973,32 @@ def format_city_damage_stats(rows):
 
 def synthesize_city_damage_stats_answer(rows):
     fallback = format_city_list_response(rows)
+    city_names = []
+    seen = set()
+    for row in rows:
+        city = str(row[0]).strip()
+        if not city or city.lower() in seen:
+            continue
+        seen.add(city.lower())
+        city_names.append(city)
+
     prompt = f"""
 You are Hazardly, a disaster damage assessment assistant.
 
-Use only these exact facts:
-City rows: {rows[:8]}
+The user asked which cities are in the active disaster dataset.
 
-Write a concise answer for the user.
+City names:
+{", ".join(city_names[:12])}
+
+Write one concise answer sentence.
 
 Rules:
-- Return a plain list of city names only.
-- Do not include damage counts or rankings.
-- Use a natural city-list intro sentence.
-- Do not invent extra places or numbers.
+- Mention the city names naturally in one sentence.
+- Do not include counts, rankings, brackets, bullets, or Python list syntax.
+- Do not mention prompts, rules, instructions, or provided facts.
+- Do not add a second answer or correction.
 """
-    return synthesize_structured_answer(prompt, fallback)
+    return clean_city_list_response(call_nemotron(prompt), fallback, rows)
 
 
 def summarize_damage_data(buildings, address):
