@@ -1,0 +1,38 @@
+seed: 42
+
+output_dir: vlm/artifacts
+checkpoint_dir: vlm/checkpoints
+
+split:
+  # Per-split data roots. Under each root: <disaster_name>/*.png (paired pre/post files).
+  # Optional disasters: whitelist of subfolder names; omit or [] for all subfolders under that root.
+  # max_pairs_per_disaster: optional default cap per disaster when a split omits its own.
+  max_pairs_per_disaster: 500
+
+  train:
+    paired_crops_root: vlm/imagery/train/paired_crops
+    disasters: [hurricane-harvey]
+    max_pairs_per_disaster: 4000
+  val:
+    paired_crops_root: vlm/imagery/hold/paired_crops
+    disasters: [hurricane-harvey]
+    max_pairs_per_disaster: 500
+  test:
+    paired_crops_root: vlm/imagery/test/paired_crops
+    disasters: [hurricane-harvey]
+    max_pairs_per_disaster: 1
+
+model:
+  name: ViT-L-14
+  remoteclip_checkpoint: "vlm/checkpoints/models--chendelong--RemoteCLIP/snapshots/bf1d8a3ccf2ddbf7c875705e46373bfe542bce38/RemoteCLIP-ViT-L-14.pt"
+  num_classes: 4
+  freeze_encoder: true
+  head_hidden_dim: 1024
+
+training:
+  epochs: 10
+  batch_size: 100
+  num_workers: 8
+  lr: 0.001
+  weight_decay: 0.0001
+  max_grad_norm: 1.0

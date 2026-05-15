@@ -1,0 +1,35 @@
+{
+  "train": {
+    "paired_crops_root": "vlm/imagery/train/paired_crops",
+    "disasters": [
+      "hurricane-harvey"
+    ],
+    "max_pairs_per_disaster": 4000,
+    "disasters_in_data": [
+      "hurricane-harvey"
+    ],
+    "count": 4000
+  },
+  "val": {
+    "paired_crops_root": "vlm/imagery/hold/paired_crops",
+    "disasters": [
+      "hurricane-harvey"
+    ],
+    "max_pairs_per_disaster": 500,
+    "disasters_in_data": [
+      "hurricane-harvey"
+    ],
+    "count": 500
+  },
+  "test": {
+    "paired_crops_root": "vlm/imagery/test/paired_crops",
+    "disasters": [
+      "hurricane-harvey"
+    ],
+    "max_pairs_per_disaster": 1,
+    "disasters_in_data": [
+      "hurricane-harvey"
+    ],
+    "count": 1
+  }
+}
