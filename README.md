@@ -1,5 +1,5 @@
 # aerial-damage-assessment
-Automated Disaster Damage Assessment from Aerial Imagery
+Aerial damage assessment helps responders and analysts estimate building damage from aerial imagery after disasters. The repo pairs a React (Vite) + Tailwind web app with a FastAPI backend so users can explore disasters, building footprints, and pre/post image pairs. Damage classification powered by a RemoteCLIP image encoder and a lightweight MLP damage head trained on XBD data.
 
 ## Structure
 - frontend: React + Vite + Tailwind + shadcn
@@ -7,11 +7,10 @@ Automated Disaster Damage Assessment from Aerial Imagery
 
 ## Frontend setup
 ```bash
-cd frontend
 npm install
 npm run dev
 ```
-### 🧹 Code Quality (Biome)
+### Code Quality (Biome)
 This project uses **Biome** for formatting, linting, and import organization.
 
 #### Run Locally before Commits
