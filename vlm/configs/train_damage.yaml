@@ -12,7 +12,7 @@ split:
   train:
     paired_crops_root: vlm/imagery/train/paired_crops
     disasters: [hurricane-harvey]
-    max_pairs_per_disaster: 4000
+    max_pairs_per_disaster: 5000
   val:
     paired_crops_root: vlm/imagery/hold/paired_crops
     disasters: [hurricane-harvey]
